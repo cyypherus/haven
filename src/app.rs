@@ -1034,30 +1034,8 @@ impl<State: 'static> App<'_, State> {
             .get(&window_id)
             .and_then(|ws| ws.cursor_position);
         if let Some(point) = cursor_position {
-            for (_, area, handler) in
-                self.gesture_handlers(window_id)
-                    .iter()
-                    .rev()
-                    .filter(|(_, area, handler)| {
-                        handler.interaction_type.click_outside
-                            && !area_contains_padded(area, point, 10.)
-                    })
-            {
-                if handler.interaction_type.click_outside
-                    && let Some(ref on_click_outside) = handler.interaction_handler
-                {
-                    on_click_outside(
-                        &mut self.state,
-                        &mut self.app_state,
-                        Interaction::ClickOutside(
-                            ClickState::Started,
-                            ClickLocation::new(point, *area),
-                        ),
-                    );
-                }
-            }
             let handlers = self.gesture_handlers(window_id);
-            if let Some((capturer, area, handler)) = handlers
+            let winner = handlers
                 .iter()
                 .rev()
                 .find(|(_, area, handler)| {
@@ -1074,8 +1052,27 @@ impl<State: 'static> App<'_, State> {
                         },
                         point,
                     ) && (handler.interaction_type.click || handler.interaction_type.drag)
-                }))
+                }));
+            let winner_id = winner.map(|(id, _, _)| *id);
+            for (id, area, handler) in handlers
+                .iter()
+                .rev()
+                .filter(|(_, _, h)| h.interaction_type.click_outside)
             {
+                if Some(*id) != winner_id
+                    && let Some(ref on_click_outside) = handler.interaction_handler
+                {
+                    on_click_outside(
+                        &mut self.state,
+                        &mut self.app_state,
+                        Interaction::ClickOutside(
+                            ClickState::Started,
+                            ClickLocation::new(point, *area),
+                        ),
+                    );
+                }
+            }
+            if let Some((capturer, area, handler)) = winner {
                 needs_redraw = true;
                 if handler.interaction_type.click
                     && let Some(ref on_click) = handler.interaction_handler
@@ -1214,17 +1211,16 @@ impl<State: 'static> App<'_, State> {
                         }
                     });
             }
-            let press_start = match gesture_state {
-                GestureState::Dragging { start, .. } => Some(start),
+            let press_capturer = match gesture_state {
+                GestureState::Dragging { capturer, .. } => Some(capturer),
                 _ => None,
             };
-            for (_, area, handler) in self
+            for (id, area, handler) in self
                 .gesture_handlers(window_id)
                 .iter()
                 .filter(|(_, _, h)| h.interaction_type.click_outside)
             {
-                if !area_contains_padded(area, current, 10.)
-                    && press_start.is_some_and(|s| !area_contains_padded(area, s, 10.))
+                if Some(*id) != press_capturer
                     && let Some(ref handler) = handler.interaction_handler
                 {
                     needs_redraw = true;
