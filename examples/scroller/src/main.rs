@@ -1,10 +1,41 @@
 use haven::*;
-use std::{cell::RefCell, rc::Rc};
 
 #[derive(Clone)]
 struct State {
     texts: Vec<String>,
-    scroller: Rc<RefCell<ScrollerState>>,
+}
+
+fn backing<State: 'static>(app: &mut AppState) -> Layout<'static, View<State>, AppCtx> {
+    rect(id!())
+        .corner_rounding(10.)
+        .stroke(Color::from_rgb8(50, 50, 50), Stroke::new(2.))
+        .fill(Color::from_rgb8(30, 30, 30))
+        .build(app.ctx())
+}
+
+fn text_cell<'a>(
+    i: usize,
+    s: &str,
+    ctx: &mut AppCtx,
+) -> Layout<'a, View<State>, AppCtx> {
+    stack(vec![
+        rect(id!(i as u64))
+            .fill(Color::from_rgb8(40, 40, 40))
+            .corner_rounding(5.)
+            .build(ctx),
+        row(vec![
+            text(id!(i as u64), s.to_string())
+                .fill(Color::WHITE)
+                .align(parley::Alignment::Start)
+                .wrap()
+                .build(ctx)
+                .pad(10.),
+            svg(id!(i as u64), include_str!("../../../assets/tiger.svg"))
+                .finish(ctx)
+                .height(100.),
+        ]),
+    ])
+    .pad(6.)
 }
 
 fn main() {
@@ -34,58 +65,56 @@ fn main() {
                 "Visual coherence is often more important than immediate accuracy.".to_string(),
                 "In extreme cases, dropping frames can be better than introducing stutter.".to_string(),
             ],
-            scroller: Rc::new(RefCell::new(ScrollerState::default())),
         },
         Window::new("main", |state, app| {
-            let texts = state.texts.clone();
-            let scroller_state = state.scroller.clone();
-            row(vec![
-                space(),
-                scroller(
-                    id!(),
-                    Some(
-                        rect(id!())
-                            .corner_rounding(10.)
-                            .stroke(Color::from_rgb8(50, 50, 50), Stroke::new(2.))
-                            .fill(Color::from_rgb8(30, 30, 30))
-                            .build(app.ctx()),
-                    ),
-                    scroller_state,
-                    move |index, _id, ctx| {
-                        texts.get(index).map(|s| {
-                            column(vec![
-                                if index == 0 {
-                                    space().height(10.)
-                                } else {
-                                    empty()
-                                },
-                                stack(vec![
-                                    rect(id!(index as u64))
-                                        .fill(Color::from_rgb8(40, 40, 40))
-                                        .corner_rounding(5.)
-                                        .build(ctx),
-                                    row(vec![
-                                        text(id!(index as u64), s.clone())
-                                            .fill(Color::WHITE)
-                                            .align(parley::Alignment::Start)
-                                            .wrap()
-                                            .build(ctx)
-                                            .pad(10.),
-                                        svg(id!(index as u64), include_str!("../../../assets/tiger.svg"))
-                                            .finish(ctx)
-                                            .height(100.),
-                                    ]),
-                                ]),
-                                space().height(10.),
-                            ])
-                            .pad_x(10.)
-                        })
-                    },
-                    app.ctx(),
-                ),
-                space(),
-            ])
-            .pad_y(25.)
+            let short = vec![state.texts[0].clone()];
+            let long = state.texts.clone();
+
+            let short_scroller = scroller(
+                id!(),
+                Some(backing(app)),
+                move |index, _id, ctx| short.get(index).map(|s| text_cell(index, s, ctx)),
+                app.ctx(),
+            );
+
+            let long_scroller = scroller(
+                id!(),
+                Some(backing(app)),
+                {
+                    let long = long.clone();
+                    move |index, _id, ctx| long.get(index).map(|s| text_cell(index, s, ctx))
+                },
+                app.ctx(),
+            );
+
+            let unconstrained_scroller = scroller(
+                id!(),
+                Some(backing(app)),
+                move |index, _id, ctx| {
+                    if index < 3 {
+                        Some(
+                            rect(id!(index as u64))
+                                .fill(match index % 3 {
+                                    0 => Color::from_rgb8(80, 40, 40),
+                                    1 => Color::from_rgb8(40, 80, 40),
+                                    _ => Color::from_rgb8(40, 40, 80),
+                                })
+                                .corner_rounding(5.)
+                                .build(ctx)
+                                .pad(6.),
+                        )
+                    } else {
+                        None
+                    }
+                },
+                app.ctx(),
+            );
+
+            row_spaced(
+                12.,
+                vec![short_scroller, long_scroller, unconstrained_scroller],
+            )
+            .pad(20.)
         }),
     )
 }

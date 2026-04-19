@@ -91,8 +91,11 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
         let on_select = self.on_select.clone();
         let background_fn = self.background;
         let dd_state = self.state.clone();
+        let options = self.options.clone();
+        let view_fn = self.view_fn.clone();
+        let row_binding = binding.clone();
 
-        let row = |index: usize, option: &T, ctx: &mut AppCtx| -> Layout<'a, View<State>, AppCtx> {
+        let row = move |index: usize, option: &T, ctx: &mut AppCtx| -> Layout<'a, View<State>, AppCtx> {
             let item_ctx = DropdownItemCtx {
                 index,
                 value: option,
@@ -100,7 +103,7 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
                 hovered: hovered == Some(index),
                 expanded,
             };
-            let content = (self.view_fn)(item_ctx, ctx);
+            let content = (view_fn)(item_ctx, ctx);
 
             stack(vec![
                 {
@@ -109,7 +112,7 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
                         .fill(TRANSPARENT)
                         .view()
                         .on_click({
-                            let binding = binding.clone();
+                            let binding = row_binding.clone();
                             let on_select = on_select.clone();
                             move |state: &mut State, app, click, _pos| {
                                 let ClickState::Completed = click else { return };
@@ -130,7 +133,7 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
                             }
                         })
                         .on_hover({
-                            let binding = binding.clone();
+                            let binding = row_binding.clone();
                             move |state: &mut State, _app, hovered| {
                                 binding.update(state, move |s| {
                                     if expanded && hovered {
@@ -147,50 +150,64 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
             .expand_x()
         };
 
-        let visible: Vec<_> = if expanded {
-            self.options.iter().enumerate().collect()
-        } else {
-            vec![(0, &self.options[selected_index])]
-        };
-        let rows: Vec<_> = visible
-            .into_iter()
-            .map(|(index, option)| row(index, option, ctx))
-            .collect();
-
-        let bg = {
-            let binding = binding.clone();
-            if let Some(f) = background_fn {
+        let surface = |ctx: &mut AppCtx| -> Layout<'a, View<State>, AppCtx> {
+            if let Some(ref f) = background_fn {
                 f(&dd_state, ctx)
             } else {
-                draw(move |area, ctx: &mut AppCtx| {
-                    rect(crate::id!(id))
-                        .fill(Color::from_rgb8(50, 50, 50))
-                        .stroke(Color::from_rgb8(60, 60, 60), Stroke::new(1.))
-                        .corner_rounding(DEFAULT_CORNER_ROUNDING)
-                        .view()
-                        .on_click_outside({
-                            let binding = binding.clone();
-                            move |state: &mut State, _app, click, _pos| {
-                                let ClickState::Completed = click else { return };
-                                binding.update(state, |s| s.expanded = false);
-                            }
-                        })
-                        .on_hover({
-                            let binding = binding.clone();
-                            move |state: &mut State, _app, hovered| {
-                                binding.update(state, move |s| {
-                                    if !hovered {
-                                        s.hovered = None
-                                    }
-                                });
-                            }
-                        })
-                        .finish(ctx)
-                        .draw(area, ctx)
-                })
+                rect(crate::id!(id))
+                    .fill(Color::from_rgb8(50, 50, 50))
+                    .stroke(Color::from_rgb8(60, 60, 60), Stroke::new(1.))
+                    .corner_rounding(DEFAULT_CORNER_ROUNDING)
+                    .build(ctx)
             }
         };
 
-        stack(vec![bg.inert(), column(rows).align(Align::Top)])
+        let visible_layer = stack(vec![
+            surface(ctx).inert(),
+            row(selected_index, &options[selected_index], ctx),
+        ]);
+
+        if !expanded {
+            return visible_layer;
+        }
+
+        let interactive_bg = rect(crate::id!(id, 1u64))
+            .fill(TRANSPARENT)
+            .view()
+            .on_click_outside({
+                let binding = binding.clone();
+                move |state: &mut State, _app, click, _pos| {
+                    let ClickState::Completed = click else { return };
+                    binding.update(state, |s| s.expanded = false);
+                }
+            })
+            .on_hover({
+                let binding = binding.clone();
+                move |state: &mut State, _app, hovered| {
+                    binding.update(state, move |s| {
+                        if !hovered {
+                            s.hovered = None
+                        }
+                    });
+                }
+            })
+            .finish(ctx);
+
+        let all_rows: Vec<_> = options
+            .iter()
+            .enumerate()
+            .map(|(index, option)| row(index, option, ctx))
+            .collect();
+
+        let popup = stack(vec![
+            surface(ctx).inert(),
+            interactive_bg.inert(),
+            column(all_rows).align(Align::Top),
+        ])
+        .align(Align::Top)
+        .inert_y()
+        .layer(1);
+
+        stack(vec![visible_layer, popup])
     }
 }

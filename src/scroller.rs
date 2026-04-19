@@ -8,49 +8,16 @@ use backer::{
     Area, Layout,
     nodes::{column, draw, empty, stack},
 };
-use std::{cell::RefCell, rc::Rc};
 use vello_svg::vello::kurbo::{RoundedRect, Shape as _};
 
 #[derive(Debug, Clone, Default)]
-pub struct ScrollerState {
-    visible_window: Vec<Element>,
+pub(crate) struct ScrollerState {
+    engine: ScrollEngine,
     dt: f32,
-    compensated: f32,
-    offset: f32,
     area: Area,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
-struct Element {
-    height: f32,
-    index: usize,
-}
-
 impl ScrollerState {
-    fn fill_forwards<'a, State>(
-        &mut self,
-        ctx: &mut AppCtx,
-        available_area: Area,
-        id: u64,
-        cell: &dyn Fn(usize, u64, &mut AppCtx) -> Option<Layout<'a, View<State>, AppCtx>>,
-    ) {
-        let mut current_height = self.visible_window.iter().fold(0., |acc, e| acc + e.height);
-        let mut index = self.visible_window.last().map(|l| l.index).unwrap_or(0)
-            + if self.visible_window.is_empty() { 0 } else { 1 };
-        while current_height + self.compensated < available_area.height {
-            if let Some(added_height) = cell_height::<State>(ctx, index, id, available_area, cell) {
-                current_height += added_height;
-                self.visible_window.push(Element {
-                    height: added_height,
-                    index,
-                });
-                index += 1;
-            } else {
-                break;
-            }
-        }
-    }
-
     fn update<'a, State>(
         &mut self,
         available_area: Area,
@@ -58,76 +25,20 @@ impl ScrollerState {
         id: u64,
         cell: &dyn Fn(usize, u64, &mut AppCtx) -> Option<Layout<'a, View<State>, AppCtx>>,
     ) {
-        if self.area != available_area && self.visible_window.len() > 1 {
-            self.visible_window.drain(1..);
-            let index = self.visible_window[0].index;
-            self.visible_window[0].height =
-                cell_height::<State>(ctx, index, id, available_area, cell).unwrap_or(0.);
-            self.fill_forwards::<State>(ctx, available_area, id, cell);
-        }
-        if self.visible_window.is_empty() {
-            self.fill_forwards::<State>(ctx, available_area, id, cell);
-        }
-        if self.dt != 0. {
-            if self.dt.is_sign_negative() {
-                self.compensated += self.dt;
-                self.dt = 0.;
-                if self
-                    .visible_window
-                    .last()
-                    .and_then(|l| cell_height::<State>(ctx, l.index + 1, id, available_area, cell))
-                    .is_none()
-                {
-                    self.compensated = self.compensated.max(
-                        available_area.height
-                            - self.visible_window.iter().fold(0., |acc, e| acc + e.height),
-                    );
-                } else {
-                    while let Some(true) = self
-                        .visible_window
-                        .first()
-                        .map(|first| first.height < -self.compensated && -self.compensated > 0.)
-                    {
-                        let removed = self.visible_window.remove(0);
-                        self.compensated += removed.height;
-                    }
-                    self.fill_forwards::<State>(ctx, available_area, id, cell);
-                }
-            } else if self.dt.is_sign_positive() {
-                self.compensated += self.dt;
-                self.dt = 0.;
-                while let Some((ch, true, idx)) = self.visible_window.first().and_then(|f| {
-                    if f.index > 0 {
-                        cell_height::<State>(ctx, f.index - 1, id, available_area, cell)
-                            .map(|ch| (ch, self.compensated >= 0., f.index - 1))
-                    } else {
-                        self.compensated = self.compensated.min(0.);
-                        None
-                    }
-                }) {
-                    self.visible_window.insert(
-                        0,
-                        Element {
-                            height: ch,
-                            index: idx,
-                        },
-                    );
-                    self.compensated -= ch;
-                }
-                while self.visible_window.len() > 1
-                    && self.visible_window.iter().fold(0., |acc, e| acc + e.height)
-                        - self.visible_window.last().map(|l| l.height).unwrap_or(0.)
-                        + self.compensated
-                        > available_area.height
-                {
-                    self.visible_window.pop();
-                }
-            }
-        }
-        self.offset = -(available_area.height
-            - self.visible_window.iter().fold(0., |acc, e| acc + e.height))
-            * 0.5;
+        let area_changed = self.area != available_area;
+        let mut height_of = |index: usize| cell_height::<State>(ctx, index, id, available_area, cell);
+        let dt = std::mem::replace(&mut self.dt, 0.);
+        self.engine
+            .update(available_area.height, area_changed, dt, &mut height_of);
         self.area = available_area;
+    }
+
+    fn offset_total(&self) -> f32 {
+        self.engine.offset + self.engine.compensated
+    }
+
+    fn visible_window(&self) -> &[Element] {
+        &self.engine.visible_window
     }
 }
 
@@ -138,17 +49,155 @@ fn cell_height<'a, State>(
     available_area: Area,
     cell: &dyn Fn(usize, u64, &mut AppCtx) -> Option<Layout<'a, View<State>, AppCtx>>,
 ) -> Option<f32> {
-    cell(index, id, ctx).and_then(|mut layout| layout.min_height(available_area, ctx))
+    cell(index, id, ctx).map(|mut layout| {
+        layout
+            .min_height(available_area, ctx)
+            .unwrap_or(available_area.height)
+    })
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+struct Element {
+    height: f32,
+    index: usize,
+}
+
+#[derive(Debug, Clone, Default)]
+struct ScrollEngine {
+    visible_window: Vec<Element>,
+    compensated: f32,
+    offset: f32,
+    available_height: f32,
+}
+
+impl ScrollEngine {
+    fn sum(&self) -> f32 {
+        self.visible_window.iter().fold(0., |acc, e| acc + e.height)
+    }
+
+    fn fill_forwards(
+        &mut self,
+        available_height: f32,
+        cell_height: &mut dyn FnMut(usize) -> Option<f32>,
+    ) {
+        let mut current = self.sum();
+        let mut index = self
+            .visible_window
+            .last()
+            .map(|l| l.index + 1)
+            .unwrap_or(0);
+        while current + self.compensated < available_height {
+            let Some(h) = cell_height(index) else { break };
+            current += h;
+            self.visible_window.push(Element { height: h, index });
+            index += 1;
+        }
+    }
+
+    fn update(
+        &mut self,
+        available_height: f32,
+        area_changed: bool,
+        dt: f32,
+        cell_height: &mut dyn FnMut(usize) -> Option<f32>,
+    ) {
+        // Always re-measure cached cell heights: content may have changed between frames.
+        // Also handles area_changed (resize) by re-running layout at new width.
+        if !self.visible_window.is_empty() {
+            for i in 0..self.visible_window.len() {
+                let idx = self.visible_window[i].index;
+                if let Some(h) = cell_height(idx) {
+                    self.visible_window[i].height = h;
+                }
+            }
+            // After re-measure, cells may have shrunk; fill any newly-exposed bottom space.
+            self.fill_forwards(available_height, cell_height);
+        }
+        if area_changed && !self.visible_window.is_empty() {
+            self.visible_window.drain(1..);
+            self.fill_forwards(available_height, cell_height);
+        }
+        if self.visible_window.is_empty() {
+            self.fill_forwards(available_height, cell_height);
+        }
+
+        self.compensated += dt;
+
+        if dt > 0. {
+            // Scrolling up: prepend earlier cells as they come into view.
+            loop {
+                let Some(first) = self.visible_window.first().copied() else { break };
+                if first.index == 0 || self.compensated < 0. {
+                    break;
+                }
+                let Some(h) = cell_height(first.index - 1) else { break };
+                self.visible_window.insert(
+                    0,
+                    Element {
+                        height: h,
+                        index: first.index - 1,
+                    },
+                );
+                self.compensated -= h;
+            }
+        } else if dt < 0. {
+            // Scrolling down: fetch cells at the end as they come into view.
+            self.fill_forwards(available_height, cell_height);
+        }
+
+        // Clamp at top: can't scroll past first cell.
+        if self
+            .visible_window
+            .first()
+            .map(|f| f.index == 0)
+            .unwrap_or(false)
+            && self.compensated > 0.
+        {
+            self.compensated = 0.;
+        }
+
+        // Clamp at bottom: can't scroll past last cell.
+        let at_end = self
+            .visible_window
+            .last()
+            .map(|l| cell_height(l.index + 1).is_none())
+            .unwrap_or(true);
+        if at_end {
+            let lower_bound = (available_height - self.sum()).min(0.);
+            if self.compensated < lower_bound {
+                self.compensated = lower_bound;
+            }
+        }
+
+        // Pop cells that ended up fully off the top after clamping.
+        while let Some(first) = self.visible_window.first()
+            && first.height <= -self.compensated
+            && self.visible_window.len() > 1
+        {
+            let removed = self.visible_window.remove(0);
+            self.compensated += removed.height;
+        }
+
+        // Pop cells that ended up fully off the bottom after clamping.
+        while self.visible_window.len() > 1
+            && self.sum() - self.visible_window.last().map(|l| l.height).unwrap_or(0.)
+                + self.compensated
+                >= available_height
+        {
+            self.visible_window.pop();
+        }
+
+        self.offset = -(available_height - self.sum()) * 0.5;
+        self.available_height = available_height;
+    }
 }
 
 pub fn scroller<'a, State: 'static>(
     id: u64,
     backing: Option<Layout<'a, View<State>, AppCtx>>,
-    state: Rc<RefCell<ScrollerState>>,
     cell: impl Fn(usize, u64, &mut AppCtx) -> Option<Layout<'a, View<State>, AppCtx>> + 'a,
     ctx: &mut AppCtx,
 ) -> Layout<'a, View<State>, AppCtx> {
-    let scroll_state = state.clone();
     stack(vec![
         backing.unwrap_or(empty()),
         clipping(
@@ -164,21 +213,19 @@ pub fn scroller<'a, State: 'static>(
                 )
                 .to_path(0.1)
             },
-            draw({
-                let state = state.clone();
-                move |area, ctx: &mut AppCtx| {
-                    let mut s = state.borrow_mut();
-                    s.update::<State>(area, ctx, id, &cell);
-                    let mut cells = Vec::new();
-                    for element in &s.visible_window {
-                        if let Some(c) = cell(element.index, id, ctx) {
-                            cells.push(c.height(element.height));
-                        }
+            draw(move |area, ctx: &mut AppCtx| {
+                let mut s = ctx.scrollers.remove(&id).unwrap_or_default();
+                s.update::<State>(area, ctx, id, &cell);
+                let offset_total = s.offset_total();
+                let visible: Vec<Element> = s.visible_window().to_vec();
+                ctx.scrollers.insert(id, s);
+                let mut cells = Vec::new();
+                for element in &visible {
+                    if let Some(c) = cell(element.index, id, ctx) {
+                        cells.push(c.height(element.height));
                     }
-                    let offset = s.offset;
-                    let comp = s.compensated;
-                    column(cells).offset_y(offset + comp).draw(area, ctx)
                 }
+                column(cells).offset_y(offset_total).draw(area, ctx)
             })
             .expand(),
         ),
@@ -186,12 +233,131 @@ pub fn scroller<'a, State: 'static>(
             .corner_rounding(DEFAULT_CORNER_ROUNDING)
             .fill(TRANSPARENT)
             .view()
-            .on_scroll({
-                move |_s: &mut State, _app: &mut AppState, dt| {
-                    let mut state = scroll_state.borrow_mut();
-                    state.dt += dt.y;
-                }
+            .on_scroll(move |_s: &mut State, app: &mut AppState, dt| {
+                let entry = app.app_context.scrollers.entry(id).or_default();
+                entry.dt += dt.y * 0.5;
             })
             .finish(ctx),
     ])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn heights(hs: Vec<f32>) -> impl FnMut(usize) -> Option<f32> {
+        move |i| hs.get(i).copied()
+    }
+
+    fn step(engine: &mut ScrollEngine, available: f32, dt: f32, hs: &[f32]) {
+        let hs = hs.to_vec();
+        let mut height_of = heights(hs);
+        engine.update(available, false, dt, &mut height_of);
+    }
+
+    fn content_top(engine: &ScrollEngine, available: f32) -> f32 {
+        // In the scroller, cells are drawn via column(cells).offset_y(offset + compensated).
+        // column is center-aligned by default, so content y = area.y + (area.h - sum)/2 + offset_total.
+        // With offset = -(area.h - sum)/2, content y = area.y + compensated.
+        let _ = available;
+        engine.compensated
+    }
+
+    #[test]
+    fn short_content_does_not_scroll_down() {
+        let mut engine = ScrollEngine::default();
+        let hs = vec![20., 20.];
+        step(&mut engine, 100., 0., &hs);
+        assert_eq!(engine.visible_window.len(), 2);
+        // scroll down
+        step(&mut engine, 100., -50., &hs);
+        assert_eq!(engine.compensated, 0., "short content must not scroll down");
+        assert_eq!(content_top(&engine, 100.), 0.);
+    }
+
+    #[test]
+    fn short_content_does_not_scroll_up() {
+        let mut engine = ScrollEngine::default();
+        let hs = vec![20., 20.];
+        step(&mut engine, 100., 0., &hs);
+        step(&mut engine, 100., 50., &hs);
+        assert_eq!(engine.compensated, 0., "short content must not scroll up");
+    }
+
+    #[test]
+    fn exactly_fit_content_does_not_scroll() {
+        let mut engine = ScrollEngine::default();
+        let hs = vec![50., 50.];
+        step(&mut engine, 100., 0., &hs);
+        step(&mut engine, 100., -30., &hs);
+        assert_eq!(engine.compensated, 0.);
+        step(&mut engine, 100., 30., &hs);
+        assert_eq!(engine.compensated, 0.);
+    }
+
+    #[test]
+    fn tall_content_scrolls_down_and_clamps_at_bottom() {
+        let mut engine = ScrollEngine::default();
+        let hs = vec![60., 60., 60.]; // total 180, area 100
+        step(&mut engine, 100., 0., &hs);
+        // scroll way down
+        step(&mut engine, 100., -500., &hs);
+        // at bottom, last cell's bottom == area bottom.
+        // visible_window should end with the final cell, and compensated bounded.
+        let last_idx = engine.visible_window.last().unwrap().index;
+        assert_eq!(last_idx, 2);
+        // Content visible covers [compensated, compensated + sum(visible)]
+        // At bottom, compensated + sum_visible == area.height
+        let total = engine.sum();
+        assert!(
+            (engine.compensated + total - 100.).abs() < 0.01,
+            "at bottom, content bottom should equal area bottom; comp={} sum={}",
+            engine.compensated,
+            total
+        );
+    }
+
+    #[test]
+    fn tall_content_scrolls_up_and_clamps_at_top() {
+        let mut engine = ScrollEngine::default();
+        let hs = vec![60., 60., 60.];
+        step(&mut engine, 100., 0., &hs);
+        step(&mut engine, 100., -500., &hs); // go to bottom
+        step(&mut engine, 100., 500., &hs);  // back to top
+        assert_eq!(engine.visible_window.first().unwrap().index, 0);
+        assert_eq!(engine.compensated, 0.);
+    }
+
+    #[test]
+    fn empty_content_stays_empty() {
+        let mut engine = ScrollEngine::default();
+        let hs: Vec<f32> = vec![];
+        step(&mut engine, 100., 0., &hs);
+        assert!(engine.visible_window.is_empty());
+        step(&mut engine, 100., -50., &hs);
+        assert_eq!(engine.compensated, 0.);
+    }
+
+    #[test]
+    fn resize_rebuilds_visible_window() {
+        let mut engine = ScrollEngine::default();
+        let hs = vec![30., 30., 30., 30., 30.];
+        step(&mut engine, 100., 0., &hs);
+        let initial_count = engine.visible_window.len();
+        // simulate area change
+        let mut height_of = heights(hs.clone());
+        engine.update(200., true, 0., &mut height_of);
+        assert!(engine.visible_window.len() >= initial_count);
+    }
+
+    #[test]
+    fn scroll_then_return_is_stable() {
+        let mut engine = ScrollEngine::default();
+        let hs = vec![40., 40., 40., 40.]; // 160 total, area 100
+        step(&mut engine, 100., 0., &hs);
+        step(&mut engine, 100., -30., &hs);
+        step(&mut engine, 100., 30., &hs);
+        assert_eq!(engine.visible_window.first().unwrap().index, 0);
+        assert!(engine.compensated.abs() < 0.01);
+    }
 }

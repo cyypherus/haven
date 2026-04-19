@@ -215,6 +215,7 @@ pub struct AppCtx {
     pub(crate) scale_factor: f64,
     pub(crate) editor: Option<EditState>,
     pub(crate) editor_areas: HashMap<u64, Area>,
+    pub(crate) scrollers: HashMap<u64, crate::scroller::ScrollerState>,
 }
 
 pub struct AppState {
@@ -612,6 +613,7 @@ impl<State: 'static> App<'_, State> {
                     scale_factor: 1.,
                     editor: None,
                     editor_areas: HashMap::new(),
+                    scrollers: HashMap::new(),
                 },
                 layout_cache: HashMap::new(),
                 image_scenes: HashMap::new(),

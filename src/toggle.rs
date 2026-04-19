@@ -107,29 +107,28 @@ impl<'a, State> Toggle<'a, State> {
                     .width(width)
             };
 
-            let knob = if let Some(ref f) = knob_fn {
+            let knob_inner = if let Some(ref f) = knob_fn {
                 f(state, area, ctx)
             } else {
                 let knob_brush =
                     adjust_brush(&Brush::Solid(DEFAULT_FG), state.depressed, state.hovered);
-                circle(id!(id))
-                    .fill(knob_brush)
-                    .finish(ctx)
-                    .pad(height * 0.1)
-                    .height(height)
-                    .width(height)
-                    .offset(
-                        {
-                            let button_padding = height - (height * 0.5);
-                            if state.on {
-                                (width * 0.5) - button_padding
-                            } else {
-                                (-width * 0.5) + button_padding
-                            }
-                        },
-                        0.,
-                    )
+                circle(id!(id)).fill(knob_brush).finish(ctx)
             };
+            let knob = knob_inner
+                .pad(height * 0.1)
+                .height(height)
+                .width(height)
+                .offset(
+                    {
+                        let button_padding = height * 0.5;
+                        if state.on {
+                            (width * 0.5) - button_padding
+                        } else {
+                            (-width * 0.5) + button_padding
+                        }
+                    },
+                    0.,
+                );
 
             stack(vec![
                 track,
