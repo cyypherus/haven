@@ -31,7 +31,7 @@ pub use circle::circle;
 pub use dropdown::*;
 pub use gestures::{ClickState, DragState, EditInteraction, GestureHandler, GestureState};
 pub use image::{ImageSource, image, image_from_bytes, image_from_path};
-pub use parley::{Alignment, FontWeight};
+pub use parley::{Alignment, FontWeight, StyleProperty};
 pub use path::path;
 pub use rect::rect;
 pub use scroller::*;

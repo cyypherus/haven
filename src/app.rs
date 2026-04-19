@@ -46,6 +46,7 @@ pub struct Window<State> {
     resizable: Option<bool>,
     title: Option<String>,
     transparent: Option<bool>,
+    background: Option<Color>,
     decorations: Option<bool>,
     open_at_start: bool,
 }
@@ -59,6 +60,7 @@ impl<State> Window<State> {
             resizable: None,
             title: None,
             transparent: None,
+            background: None,
             decorations: None,
             open_at_start: true,
         }
@@ -81,6 +83,11 @@ impl<State> Window<State> {
 
     pub fn transparent(mut self, transparent: bool) -> Self {
         self.transparent = Some(transparent);
+        self
+    }
+
+    pub fn background(mut self, color: Color) -> Self {
+        self.background = Some(color);
         self
     }
 
@@ -199,6 +206,7 @@ pub(crate) struct WindowState<'surface, State> {
     pub(crate) window: Arc<WinitWindow>,
     pub(crate) scene: Scene,
     pub(crate) name: &'static str,
+    pub(crate) base_color: Color,
     pub(crate) view: ViewFn<State>,
     pub(crate) gesture_handlers: Vec<(u64, Area, GestureHandler<State, AppState>)>,
     pub(crate) cursor_position: Option<Point>,
@@ -207,7 +215,16 @@ pub(crate) struct WindowState<'surface, State> {
     pub(crate) fullscreen_requested: bool,
 }
 
-pub(crate) type LayoutCache = HashMap<u64, Vec<(String, f32, parley::Layout<Brush>)>>;
+pub(crate) type LayoutCache = HashMap<
+    u64,
+    Vec<(
+        String,
+        Vec<(std::ops::Range<usize>, parley::StyleProperty<'static, Brush>)>,
+        Vec<(std::ops::Range<usize>, Brush)>,
+        f32,
+        parley::Layout<Brush>,
+    )>,
+>;
 
 pub struct AppCtx {
     pub(crate) text_layout: TextLayout,
@@ -539,6 +556,11 @@ impl<State: 'static> App<'_, State> {
                 window,
                 scene: Scene::new(),
                 name,
+                base_color: if transparent {
+                    Color::TRANSPARENT
+                } else {
+                    config.background.unwrap_or(Color::BLACK)
+                },
                 view: config.view,
                 gesture_handlers: Vec::new(),
                 cursor_position: None,
@@ -722,7 +744,7 @@ impl<State: 'static> App<'_, State> {
                         }
                         DrawableType::Layout(boxed) => {
                             let (layout, transform) = boxed.as_mut();
-                            draw_layout(None, *transform, layout, &mut ws.scene)
+                            draw_layout(*transform, layout, &mut ws.scene)
                         }
                         DrawableType::Path(v) => v.draw(
                             &mut ws.scene,
@@ -751,7 +773,7 @@ impl<State: 'static> App<'_, State> {
         let device_handle = &self.context.devices[ws.surface.dev_id];
 
         let render_params = vello_svg::vello::RenderParams {
-            base_color: Color::TRANSPARENT,
+            base_color: ws.base_color,
             width,
             height,
             antialiasing_method: vello_svg::vello::AaConfig::Msaa8,

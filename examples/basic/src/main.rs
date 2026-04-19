@@ -36,6 +36,22 @@ fn main() {
                         .font_size(30)
                         .wrap()
                         .build(app.ctx()),
+                        rich_text(
+                            id!(),
+                            [
+                                span("Harvest").bold(),
+                                " yields are up ".into(),
+                                span("12%").bold().color(Color::from_rgb8(120, 230, 140)),
+                                " across all ".into(),
+                                span("biomes").background(Color::from_rgb8(60, 40, 80)),
+                                " - ".into(),
+                                span("see notes").italic().underline().color(DEFAULT_PURP),
+                                ".".into(),
+                            ],
+                        )
+                        .wrap()
+                        .align(parley::Alignment::Start)
+                        .build(app.ctx()),
                         scope!(state, State, { style_dropdown, text } => DDTextState,
                             |sub_state| row_spaced(10., dropdown_and_text(sub_state, app))
                         ),
@@ -86,23 +102,37 @@ fn main() {
                 .align(Align::Top)
         }).inner_size(800, 600),
     )
-    .window(Window::new("thrusters", thrusters_view).open_at_start(false).title("Thrusters").inner_size(400, 300))
+    .window(
+        Window::new("thrusters", thrusters_view)
+            .open_at_start(false)
+            .title("Thrusters")
+            .inner_size(400, 300)
+            .transparent(true),
+    )
     .start()
 }
 
 fn thrusters_view<'a>(_state: &'a State, app: &mut AppState) -> Layout<'a, View<State>, AppCtx> {
-    column_spaced(
-        10.,
-        vec![
-            text(id!(), "Thrusters Engaged")
-                .font_weight(FontWeight::BOLD)
-                .font_size(24)
-                .build(app.ctx()),
-            text(id!(), "All systems nominal. Quantum drive is spooling up.")
-                .wrap()
-                .build(app.ctx()),
-        ],
-    )
+    stack(vec![
+        rect(id!())
+            .fill(Color::from_rgb8(30, 30, 40).with_alpha(0.75))
+            .corner_rounding(16.)
+            .stroke(Color::from_rgb8(120, 120, 160).with_alpha(0.5), Stroke::new(1.))
+            .build(app.ctx()),
+        column_spaced(
+            10.,
+            vec![
+                text(id!(), "Thrusters Engaged")
+                    .font_weight(FontWeight::BOLD)
+                    .font_size(24)
+                    .build(app.ctx()),
+                text(id!(), "All systems nominal. Quantum drive is spooling up.")
+                    .wrap()
+                    .build(app.ctx()),
+            ],
+        )
+        .pad(20.),
+    ])
     .pad(20.)
 }
 

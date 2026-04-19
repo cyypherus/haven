@@ -337,17 +337,22 @@ impl<'a, State> TextField<'a, State> {
                 alignment,
                 line_height,
                 wrap,
+                styles: Vec::new(),
+                backgrounds: Vec::new(),
             }
             .view()
             .finish(ctx)
         };
-        let content = text_content.pad(if editable { self.padding } else { 0. });
+        let content = stack(vec![
+            draw(move |area, _| vec![View::EditorArea(root_id, area)]).inert(),
+            text_content,
+        ])
+        .pad(if editable { self.padding } else { 0. });
         let sensor = {
             let binding = binding.clone();
             let font_family = self.font_family.clone();
             let on_edit = self.on_edit.clone();
             stack(vec![
-                draw(move |area, _| vec![View::EditorArea(root_id, area)]),
                 rect(root_id)
                     .fill(TRANSPARENT)
                     .view()

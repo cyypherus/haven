@@ -6,7 +6,6 @@ use vello_svg::vello::{
 };
 
 pub(crate) fn draw_layout(
-    fill: Option<Brush>,
     transform: Affine,
     layout: &Layout<Brush>,
     scene: &mut Scene,
@@ -59,7 +58,7 @@ pub(crate) fn draw_layout(
                 .skew()
                 .map(|angle| Affine::skew(angle.to_radians().tan() as f64, 0.0));
 
-            let brush = fill.as_ref().unwrap_or(&style.brush);
+            let brush = &style.brush;
 
             scene
                 .draw_glyphs(font)
