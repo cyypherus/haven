@@ -13,18 +13,14 @@ fn backing<State: 'static>(app: &mut AppState) -> Layout<'static, View<State>, A
         .build(app.ctx())
 }
 
-fn text_cell<'a>(
-    i: usize,
-    s: &str,
-    ctx: &mut AppCtx,
-) -> Layout<'a, View<State>, AppCtx> {
+fn text_cell<'a>(i: usize, s: &str, ctx: &mut AppCtx) -> Layout<'a, View<State>, AppCtx> {
     stack(vec![
         rect(id!(i as u64))
             .fill(Color::from_rgb8(40, 40, 40))
             .corner_rounding(5.)
             .build(ctx),
         row(vec![
-            text(id!(i as u64), s.to_string())
+            text(id!(i as u64), s)
                 .fill(Color::WHITE)
                 .align(parley::Alignment::Start)
                 .wrap()
@@ -67,7 +63,7 @@ fn main() {
             ],
         },
         Window::new("main", |state, app| {
-            let short = vec![state.texts[0].clone()];
+            let short = [state.texts[0].clone()];
             let long = state.texts.clone();
 
             let short_scroller = scroller(
