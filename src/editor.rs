@@ -7,13 +7,13 @@ use vello_svg::vello::{
 };
 use winit::{event::Modifiers, keyboard::NamedKey};
 
-pub use parley::editing::Generation;
+pub(crate) use parley::editing::Generation;
 use parley::{FontContext, LayoutContext, PlainEditor, PlainEditorDriver};
 
 use crate::Key;
 
 #[derive(Clone)]
-pub struct Editor {
+pub(crate) struct Editor {
     pub(crate) editor: PlainEditor<Brush>,
     pub(crate) last_click_time: Option<Instant>,
     pub(crate) click_count: u32,
@@ -25,6 +25,7 @@ pub struct Editor {
     pub(crate) blink_period: Duration,
 }
 
+#[allow(dead_code)]
 impl Editor {
     pub fn new(text: &str) -> Self {
         let mut editor = PlainEditor::new(32.0);

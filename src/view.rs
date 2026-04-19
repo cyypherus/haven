@@ -10,7 +10,7 @@ use backer::{Area, Layout, nodes::*};
 use parley::Layout as TextLayout;
 use std::rc::Rc;
 use vello_svg::vello::kurbo::{Affine, BezPath};
-use vello_svg::vello::peniko::Brush;
+use vello_svg::vello::peniko::{self, Brush};
 
 // A simple const FNV-1a hash for our purposes
 const FNV_OFFSET: u64 = 1469598103934665603;
@@ -86,14 +86,94 @@ macro_rules! scope {
     }};
 }
 
-pub fn clipping<'a, State>(
-    path: fn(Area) -> BezPath,
+pub fn rect_path(area: Area) -> BezPath {
+    use vello_svg::vello::kurbo::{Rect, Shape};
+    Rect::new(
+        area.x as f64,
+        area.y as f64,
+        (area.x + area.width) as f64,
+        (area.y + area.height) as f64,
+    )
+    .to_path(0.1)
+}
+
+pub fn rounded_rect_path(area: Area, radius: f32) -> BezPath {
+    use vello_svg::vello::kurbo::{Rect, RoundedRect, Shape};
+    RoundedRect::from_rect(
+        Rect::new(
+            area.x as f64,
+            area.y as f64,
+            (area.x + area.width) as f64,
+            (area.y + area.height) as f64,
+        ),
+        radius as f64,
+    )
+    .to_path(0.1)
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum BlendMode {
+    Normal,
+    Additive,
+    Screen,
+    Multiply,
+}
+
+impl BlendMode {
+    fn to_peniko(self) -> peniko::BlendMode {
+        use vello_svg::vello::peniko::{Compose, Mix};
+        match self {
+            BlendMode::Normal => peniko::BlendMode::default(),
+            BlendMode::Additive => peniko::BlendMode {
+                mix: Mix::Normal,
+                compose: Compose::Plus,
+            },
+            BlendMode::Screen => peniko::BlendMode {
+                mix: Mix::Screen,
+                compose: Compose::SrcOver,
+            },
+            BlendMode::Multiply => peniko::BlendMode {
+                mix: Mix::Multiply,
+                compose: Compose::SrcOver,
+            },
+        }
+    }
+}
+
+pub trait Compositing<'a, State> {
+    fn clipped(self, path: impl Fn(Area) -> BezPath + 'static) -> Self;
+    fn blend(self, mode: BlendMode) -> Self;
+    fn opacity(self, alpha: f32) -> Self;
+}
+
+impl<'a, State: 'static> Compositing<'a, State> for Layout<'a, View<State>, AppCtx> {
+    fn clipped(self, path: impl Fn(Area) -> BezPath + 'static) -> Self {
+        wrap_layer(self, path, peniko::BlendMode::default(), 1.0)
+    }
+    fn blend(self, mode: BlendMode) -> Self {
+        wrap_layer(self, rect_path, mode.to_peniko(), 1.0)
+    }
+    fn opacity(self, alpha: f32) -> Self {
+        wrap_layer(self, rect_path, peniko::BlendMode::default(), alpha.clamp(0., 1.))
+    }
+}
+
+fn wrap_layer<'a, State>(
     content: Layout<'a, View<State>, AppCtx>,
+    path: impl Fn(Area) -> BezPath + 'static,
+    blend: peniko::BlendMode,
+    alpha: f32,
 ) -> Layout<'a, View<State>, AppCtx> {
     stack(vec![
-        draw(move |area, _| vec![View::PushClip { path: path(area) }]),
+        draw(move |area, _| {
+            vec![View::PushLayer {
+                path: path(area),
+                blend,
+                alpha,
+            }]
+        }),
         content,
-        draw(|_, _| vec![View::PopClip]),
+        draw(|_, _| vec![View::PopLayer]),
     ])
 }
 
@@ -294,8 +374,8 @@ pub fn scope<'a, Root: 'static, Sub: 'static>(
                 .collect(),
             area,
         },
-        View::PushClip { path } => View::PushClip { path },
-        View::PopClip => View::PopClip,
+        View::PushLayer { path, blend, alpha } => View::PushLayer { path, blend, alpha },
+        View::PopLayer => View::PopLayer,
         View::EditorArea(id, area) => View::EditorArea(id, area),
         View::Empty => View::Empty,
     })

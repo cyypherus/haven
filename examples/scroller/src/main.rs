@@ -7,7 +7,7 @@ struct State {
 
 fn backing<State: 'static>(app: &mut AppState) -> Layout<'static, View<State>, AppCtx> {
     rect(id!())
-        .corner_rounding(10.)
+        .corner_rounding(DEFAULT_CORNER_ROUNDING)
         .stroke(Color::from_rgb8(50, 50, 50), Stroke::new(2.))
         .fill(Color::from_rgb8(30, 30, 30))
         .build(app.ctx())

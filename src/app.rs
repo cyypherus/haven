@@ -3,7 +3,8 @@ use crate::gestures::{ClickLocation, Interaction, ScrollDelta};
 
 use crate::text::TextLayout;
 use crate::view::DrawableType;
-use crate::{ClickState, DragState, Editor, GestureHandler, Point, area_contains};
+use crate::editor::Editor;
+use crate::{ClickState, DragState, GestureHandler, Point, area_contains};
 use crate::{GestureState, RUBIK_FONT, area_contains_padded, event};
 use backer::{Area, Layout};
 use parley::fontique::Blob;
@@ -20,7 +21,7 @@ use tokio::sync::mpsc::Sender;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use vello_svg::vello::kurbo::{Affine, BezPath};
-use vello_svg::vello::peniko::{Brush, Color, Fill, Mix};
+use vello_svg::vello::peniko::{self, Brush, Color, Fill};
 use vello_svg::vello::util::{RenderContext, RenderSurface};
 use vello_svg::vello::{Renderer, RendererOptions, Scene};
 use winit::event::{Modifiers, MouseScrollDelta};
@@ -216,6 +217,7 @@ pub struct AppCtx {
     pub(crate) editor: Option<EditState>,
     pub(crate) editor_areas: HashMap<u64, Area>,
     pub(crate) scrollers: HashMap<u64, crate::scroller::ScrollerState>,
+    pub(crate) needs_redraw: bool,
 }
 
 pub struct AppState {
@@ -238,10 +240,12 @@ pub enum View<State> {
         gesture_handlers: Vec<GestureHandler<State, AppState>>,
         area: Area,
     },
-    PushClip {
+    PushLayer {
         path: BezPath,
+        blend: peniko::BlendMode,
+        alpha: f32,
     },
-    PopClip,
+    PopLayer,
     EditorArea(u64, Area),
     Empty,
 }
@@ -614,6 +618,7 @@ impl<State: 'static> App<'_, State> {
                     editor: None,
                     editor_areas: HashMap::new(),
                     scrollers: HashMap::new(),
+                    needs_redraw: false,
                 },
                 layout_cache: HashMap::new(),
                 image_scenes: HashMap::new(),
@@ -677,19 +682,21 @@ impl<State: 'static> App<'_, State> {
             )
         };
 
+        let continue_animating = std::mem::take(&mut self.app_state.app_context.needs_redraw);
+
         let ws = self.windows.get_mut(&window_id).unwrap();
         for item in draw_items {
             match item {
-                View::PushClip { path } => {
+                View::PushLayer { path, blend, alpha } => {
                     ws.scene.push_layer(
                         Fill::NonZero,
-                        Mix::Normal,
-                        1.,
+                        blend,
+                        alpha,
                         Affine::scale(self.app_state.app_context.scale_factor),
                         &path,
                     );
                 }
-                View::PopClip => {
+                View::PopLayer => {
                     ws.scene.pop_layer();
                 }
                 View::EditorArea(id, area) => {
@@ -788,6 +795,9 @@ impl<State: 'static> App<'_, State> {
         surface_texture.present();
 
         ws.scene.reset();
+        if continue_animating {
+            self.request_redraw_window(window_id);
+        }
     }
 }
 

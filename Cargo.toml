@@ -31,6 +31,7 @@ image = { version = "0.25", default-features = false, features = [
     "gif",
     "webp",
 ] }
+lilt = "0.8"
 parley = "0.7.0"
 pollster = "0.4.0"
 

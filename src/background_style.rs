@@ -18,7 +18,7 @@ impl<V> BrushSource<V> {
         }
     }
 
-    pub fn resolve_to_stateless(&self, state: &V) -> BrushSource<()>
+    pub(crate) fn resolve_to_stateless(&self, state: &V) -> BrushSource<()>
     where
         V: Clone + 'static,
     {

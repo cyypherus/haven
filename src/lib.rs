@@ -29,7 +29,6 @@ pub use button::*;
 pub use bytemuck;
 pub use circle::circle;
 pub use dropdown::*;
-pub use editor::*;
 pub use gestures::{ClickState, DragState, EditInteraction, GestureHandler, GestureState};
 pub use image::{ImageSource, image, image_from_bytes, image_from_path};
 pub use parley::{Alignment, FontWeight};
@@ -43,9 +42,14 @@ pub use text_field::*;
 pub use toggle::*;
 use vello_svg::vello::peniko::color::AlphaColor;
 use vello_svg::vello::peniko::color::Srgb;
-pub use view::{clipping, const_hash, scope};
-pub use winit::keyboard::NamedKey;
-pub use winit::window::WindowId;
+pub use view::{BlendMode, Compositing, const_hash, rect_path, rounded_rect_path, scope};
+
+pub mod keyboard {
+    pub use winit::keyboard::NamedKey;
+}
+pub mod window {
+    pub use winit::window::WindowId;
+}
 
 pub use vello_svg::vello::kurbo::{BezPath, Cap, Join, Point, Stroke};
 pub use vello_svg::vello::peniko::{Brush, Gradient};
