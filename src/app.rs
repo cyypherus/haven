@@ -1,11 +1,11 @@
 use crate::draw_layout::draw_layout;
 use crate::gestures::{ClickLocation, Interaction, ScrollDelta};
 
+use crate::editor::Editor;
 use crate::text::TextLayout;
 use crate::view::DrawableType;
-use crate::editor::Editor;
 use crate::{ClickState, DragState, GestureHandler, Point, area_contains};
-use crate::{GestureState, RUBIK_FONT, area_contains_padded, event};
+use crate::{GestureState, RUBIK_FONT, event};
 use backer::{Area, Layout};
 use parley::fontique::Blob;
 use parley::fontique::FontInfoOverride;
@@ -219,7 +219,10 @@ pub(crate) type LayoutCache = HashMap<
     u64,
     Vec<(
         String,
-        Vec<(std::ops::Range<usize>, parley::StyleProperty<'static, Brush>)>,
+        Vec<(
+            std::ops::Range<usize>,
+            parley::StyleProperty<'static, Brush>,
+        )>,
         Vec<(std::ops::Range<usize>, Brush)>,
         f32,
         parley::Layout<Brush>,
@@ -1127,9 +1130,7 @@ impl<State: 'static> App<'_, State> {
                     };
                 }
             }
-            if let Some(EditState { id, editor, .. }) = self.app_state.app_context.editor.as_mut()
-                && let Some(area) = self.app_state.app_context.editor_areas.get(id).cloned()
-                && area_contains_padded(&area, point, 10.)
+            if let Some(EditState { editor, .. }) = self.app_state.app_context.editor.as_mut()
             {
                 editor.mouse_pressed(
                     &mut self.app_state.app_context.layout_cx,

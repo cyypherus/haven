@@ -17,19 +17,6 @@ pub(crate) fn area_contains(area: &Area, point: Point) -> bool {
     false
 }
 
-pub(crate) fn area_contains_padded(area: &Area, point: Point, padding: f64) -> bool {
-    let x = point.x;
-    let y = point.y;
-    if x > area.x as f64 - padding
-        && y > area.y as f64 - padding
-        && y < area.y as f64 + area.height as f64 + padding
-        && x < area.x as f64 + area.width as f64 + padding
-    {
-        return true;
-    }
-    false
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Key<Str = SmolStr> {
     Named(NamedKey),
