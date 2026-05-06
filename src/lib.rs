@@ -7,7 +7,6 @@ mod circle;
 mod draw_layout;
 mod dropdown;
 mod editor;
-mod event;
 mod gestures;
 mod image;
 mod models;
@@ -21,15 +20,22 @@ mod text;
 mod text_field;
 mod toggle;
 mod view;
+pub mod winit;
 
-pub use app::{App, AppBuilder, AppCtx, AppState, Callback, RedrawTrigger, View, Window};
+pub use app::{Callback, Redraw, RedrawTrigger, Root, RootCtx, RootEffect, RootState, View};
+pub(crate) use app::RootRuntime;
+pub type AppCtx = RootCtx;
+pub type AppState = RootState;
+pub type AppEffect = RootEffect;
 pub use backer::{Area, Layout, nodes::*};
 pub use background_style::BrushSource;
 pub use button::*;
 pub use bytemuck;
 pub use circle::circle;
 pub use dropdown::*;
-pub use gestures::{ClickState, DragState, EditInteraction, GestureHandler, GestureState};
+pub use gestures::{
+    ClickState, DragState, EditInteraction, GestureHandler, GestureState, ScrollDelta,
+};
 pub use image::{ImageSource, image, image_from_bytes, image_from_path};
 pub use parley::{Alignment, FontWeight, StyleProperty};
 pub use path::path;
@@ -43,13 +49,6 @@ pub use toggle::*;
 use vello_svg::vello::peniko::color::AlphaColor;
 use vello_svg::vello::peniko::color::Srgb;
 pub use view::{BlendMode, Compositing, const_hash, rect_path, rounded_rect_path, scope};
-
-pub mod keyboard {
-    pub use winit::keyboard::NamedKey;
-}
-pub mod window {
-    pub use winit::window::WindowId;
-}
 
 pub use vello_svg::vello::kurbo::{BezPath, Cap, Join, Point, Stroke};
 pub use vello_svg::vello::peniko::{Brush, Gradient};

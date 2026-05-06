@@ -1,7 +1,7 @@
 use crate::{
     Binding, DEFAULT_DARK_GRAY, DEFAULT_FG, DEFAULT_GRAY, DEFAULT_PURP, DragState, TRANSPARENT,
     adjust_brush,
-    app::{AppCtx, AppState, View},
+    app::{RootCtx, RootState, View},
     circle, id, rect,
 };
 use backer::{
@@ -19,7 +19,7 @@ pub struct SliderState {
 }
 
 type ViewFn<'a, State> =
-    Rc<dyn Fn(SliderState, Area, &mut AppCtx) -> Layout<'a, View<State>, AppCtx> + 'a>;
+    Rc<dyn Fn(SliderState, Area, &mut RootCtx) -> Layout<'a, View<State>, RootCtx> + 'a>;
 
 pub struct Slider<'a, State> {
     id: u64,
@@ -27,7 +27,7 @@ pub struct Slider<'a, State> {
     binding: Binding<State, SliderState>,
     min: f32,
     max: f32,
-    on_change: Option<Rc<dyn Fn(&mut State, &mut AppState, f32)>>,
+    on_change: Option<Rc<dyn Fn(&mut State, &mut RootState, f32)>>,
     knob: Option<ViewFn<'a, State>>,
     track: Option<ViewFn<'a, State>>,
     traveled_track: Option<ViewFn<'a, State>>,
@@ -61,7 +61,7 @@ impl<'a, State> Slider<'a, State> {
 
     pub fn on_change(
         mut self,
-        on_change: impl Fn(&mut State, &mut AppState, f32) + 'static,
+        on_change: impl Fn(&mut State, &mut RootState, f32) + 'static,
     ) -> Self {
         self.on_change = Some(Rc::new(on_change));
         self
@@ -69,7 +69,7 @@ impl<'a, State> Slider<'a, State> {
 
     pub fn knob(
         mut self,
-        f: impl Fn(SliderState, Area, &mut AppCtx) -> Layout<'a, View<State>, AppCtx> + 'a,
+        f: impl Fn(SliderState, Area, &mut RootCtx) -> Layout<'a, View<State>, RootCtx> + 'a,
     ) -> Self {
         self.knob = Some(Rc::new(f));
         self
@@ -77,7 +77,7 @@ impl<'a, State> Slider<'a, State> {
 
     pub fn track(
         mut self,
-        f: impl Fn(SliderState, Area, &mut AppCtx) -> Layout<'a, View<State>, AppCtx> + 'a,
+        f: impl Fn(SliderState, Area, &mut RootCtx) -> Layout<'a, View<State>, RootCtx> + 'a,
     ) -> Self {
         self.track = Some(Rc::new(f));
         self
@@ -85,7 +85,7 @@ impl<'a, State> Slider<'a, State> {
 
     pub fn traveled_track(
         mut self,
-        f: impl Fn(SliderState, Area, &mut AppCtx) -> Layout<'a, View<State>, AppCtx> + 'a,
+        f: impl Fn(SliderState, Area, &mut RootCtx) -> Layout<'a, View<State>, RootCtx> + 'a,
     ) -> Self {
         self.traveled_track = Some(Rc::new(f));
         self
@@ -93,13 +93,13 @@ impl<'a, State> Slider<'a, State> {
 
     pub fn background(
         mut self,
-        f: impl Fn(SliderState, Area, &mut AppCtx) -> Layout<'a, View<State>, AppCtx> + 'a,
+        f: impl Fn(SliderState, Area, &mut RootCtx) -> Layout<'a, View<State>, RootCtx> + 'a,
     ) -> Self {
         self.background = Some(Rc::new(f));
         self
     }
 
-    pub fn build(self, _ctx: &mut AppCtx) -> Layout<'a, View<State>, AppCtx>
+    pub fn build(self, _ctx: &mut RootCtx) -> Layout<'a, View<State>, RootCtx>
     where
         State: 'static,
     {
@@ -109,7 +109,7 @@ impl<'a, State> Slider<'a, State> {
         let traveled_track_fn = self.traveled_track;
         let background_fn = self.background;
         let id = self.id;
-        draw(move |area, ctx: &mut AppCtx| {
+        draw(move |area, ctx: &mut RootCtx| {
             let width = area.width;
             let height = area.height;
             let normalized_value = (state.value - self.min) / (self.max - self.min);
@@ -169,7 +169,7 @@ impl<'a, State> Slider<'a, State> {
                     .view()
                     .on_hover({
                         let binding = self.binding.clone();
-                        move |state: &mut State, _app: &mut AppState, h| {
+                        move |state: &mut State, _app: &mut RootState, h| {
                             binding.update(state, |s| s.hovered = h)
                         }
                     })
@@ -178,7 +178,7 @@ impl<'a, State> Slider<'a, State> {
                         let min = self.min;
                         let max = self.max;
                         let on_change = self.on_change.clone();
-                        move |state: &mut State, app: &mut AppState, drag_state| {
+                        move |state: &mut State, app: &mut RootState, drag_state| {
                             let gesture_padding = height / width;
                             let update_value = |x: f64| {
                                 let padded_start = gesture_padding * width;

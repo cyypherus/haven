@@ -5,11 +5,7 @@ use vello_svg::vello::{
     peniko::{Brush, Fill},
 };
 
-pub(crate) fn draw_layout(
-    transform: Affine,
-    layout: &Layout<Brush>,
-    scene: &mut Scene,
-) {
+pub(crate) fn draw_layout(transform: Affine, layout: &Layout<Brush>, scene: &mut Scene) {
     for line in layout.lines() {
         for item in line.items() {
             let PositionedLayoutItem::GlyphRun(glyph_run) = item else {

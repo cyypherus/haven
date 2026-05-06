@@ -93,6 +93,7 @@ pub(crate) struct InteractionType {
     pub(crate) scroll: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ScrollDelta {
     pub x: f32,
     pub y: f32,

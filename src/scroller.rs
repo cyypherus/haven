@@ -1,6 +1,6 @@
 use crate::{
     DEFAULT_CORNER_ROUNDING, TRANSPARENT,
-    app::{AppCtx, AppState, View},
+    app::{RootCtx, RootState, View},
     rect,
     view::{BlendMode, Compositing, rounded_rect_path},
 };
@@ -44,9 +44,9 @@ impl ScrollerState {
     fn update<'a, State>(
         &mut self,
         available_area: Area,
-        ctx: &mut AppCtx,
+        ctx: &mut RootCtx,
         id: u64,
-        cell: &dyn Fn(usize, u64, &mut AppCtx) -> Option<Layout<'a, View<State>, AppCtx>>,
+        cell: &dyn Fn(usize, u64, &mut RootCtx) -> Option<Layout<'a, View<State>, RootCtx>>,
     ) -> bool {
         let area_changed = self.area != available_area;
         let mut height_of =
@@ -81,11 +81,11 @@ impl ScrollerState {
 }
 
 fn cell_height<'a, State>(
-    ctx: &mut AppCtx,
+    ctx: &mut RootCtx,
     index: usize,
     id: u64,
     available_area: Area,
-    cell: &dyn Fn(usize, u64, &mut AppCtx) -> Option<Layout<'a, View<State>, AppCtx>>,
+    cell: &dyn Fn(usize, u64, &mut RootCtx) -> Option<Layout<'a, View<State>, RootCtx>>,
 ) -> Option<f32> {
     cell(index, id, ctx).map(|mut layout| {
         layout
@@ -95,10 +95,10 @@ fn cell_height<'a, State>(
 }
 
 fn edge_glow<'a, State: 'static>(
-    ctx: &mut AppCtx,
+    ctx: &mut RootCtx,
     top: bool,
     alpha: f32,
-) -> Layout<'a, View<State>, AppCtx> {
+) -> Layout<'a, View<State>, RootCtx> {
     if alpha <= 0.01 {
         return empty();
     }
@@ -282,13 +282,13 @@ enum EdgeHit {
 
 pub fn scroller<'a, State: 'static>(
     id: u64,
-    backing: Option<Layout<'a, View<State>, AppCtx>>,
-    cell: impl Fn(usize, u64, &mut AppCtx) -> Option<Layout<'a, View<State>, AppCtx>> + 'a,
-    ctx: &mut AppCtx,
-) -> Layout<'a, View<State>, AppCtx> {
+    backing: Option<Layout<'a, View<State>, RootCtx>>,
+    cell: impl Fn(usize, u64, &mut RootCtx) -> Option<Layout<'a, View<State>, RootCtx>> + 'a,
+    ctx: &mut RootCtx,
+) -> Layout<'a, View<State>, RootCtx> {
     stack(vec![
         backing.unwrap_or(empty()),
-        draw(move |area, ctx: &mut AppCtx| {
+        draw(move |area, ctx: &mut RootCtx| {
             let mut s = ctx.scrollers.remove(&id).unwrap_or_default();
             let animating = s.update::<State>(area, ctx, id, &cell);
             if animating {
@@ -325,7 +325,7 @@ pub fn scroller<'a, State: 'static>(
             .corner_rounding(DEFAULT_CORNER_ROUNDING)
             .fill(TRANSPARENT)
             .view()
-            .on_scroll(move |_s: &mut State, app: &mut AppState, dt| {
+            .on_scroll(move |_s: &mut State, app: &mut RootState, dt| {
                 let entry = app.app_context.scrollers.entry(id).or_default();
                 entry.dt += dt.y * 0.5;
             })

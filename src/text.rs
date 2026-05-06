@@ -1,4 +1,4 @@
-use crate::app::{AppCtx, AppState, LayoutCache, View};
+use crate::app::{RootCtx, RootState, LayoutCache, View};
 use crate::background_style::BrushSource;
 use crate::draw_layout::draw_layout;
 use crate::view::{Drawable, DrawableType};
@@ -197,7 +197,7 @@ impl Text {
             gesture_handlers: Vec::new(),
         }
     }
-    pub fn build<State: 'static>(self, ctx: &mut AppCtx) -> Layout<'static, View<State>, AppCtx> {
+    pub fn build<State: 'static>(self, ctx: &mut RootCtx) -> Layout<'static, View<State>, RootCtx> {
         self.view().finish(ctx)
     }
 }
@@ -260,9 +260,9 @@ impl TextLayout {
         };
 
         let mut layout = if text.styles.is_empty() {
-            let mut builder =
-                self.layout_cx
-                    .tree_builder(&mut self.font_cx, 1., true, &root_style);
+            let mut builder = self
+                .layout_cx
+                .tree_builder(&mut self.font_cx, 1., true, &root_style);
             builder.push_text(&current_text);
             builder.build().0
         } else {
@@ -312,7 +312,7 @@ impl Text {
         animated_area: Area,
         area: Area,
         scene: &mut Scene,
-        app: &mut AppState,
+        app: &mut RootState,
     ) {
         let fill = self.fill.resolve(area, &());
 
@@ -359,9 +359,9 @@ fn draw_background(
 impl Text {
     pub(crate) fn with_text_constraints<State>(
         self,
-        ctx: &mut AppCtx,
-        node: Layout<'static, View<State>, AppCtx>,
-    ) -> Layout<'static, View<State>, AppCtx> {
+        ctx: &mut RootCtx,
+        node: Layout<'static, View<State>, RootCtx>,
+    ) -> Layout<'static, View<State>, RootCtx> {
         if self.wrap {
             node.dynamic_height(move |w, ctx| {
                 let default_brush = Brush::Solid(crate::DEFAULT_FG_COLOR);

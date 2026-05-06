@@ -130,6 +130,7 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 [[package]]
 name = "backer"
 version = "0.11.1"
+source = "git+https://github.com/cyypherus/backer?branch=experiment#6affe8bc9709dc400698459bf1ef13ea3f32299e"
 
 [[package]]
 name = "backtrace"
@@ -156,7 +157,7 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 name = "basic"
 version = "0.1.0"
 dependencies = [
- "ui",
+ "haven",
 ]
 
 [[package]]
@@ -628,15 +629,6 @@ checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
 
 [[package]]
 name = "font-types"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02a596f5713680923a2080d86de50fe472fb290693cf0f701187a1c8b36996b7"
-dependencies = [
- "bytemuck",
-]
-
-[[package]]
-name = "font-types"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39a654f404bbcbd48ea58c617c2993ee91d1cb63727a37bf2323a4edeed1b8c5"
@@ -956,6 +948,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "haven"
+version = "0.1.0"
+dependencies = [
+ "backer",
+ "bytemuck",
+ "clipboard-rs",
+ "image",
+ "lilt",
+ "parley",
+ "pollster",
+ "tokio",
+ "tokio-util",
+ "vello_svg",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
 name = "hermit-abi"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1137,6 +1147,15 @@ dependencies = [
  "bitflags 2.9.4",
  "libc",
  "redox_syscall 0.5.17",
+]
+
+[[package]]
+name = "lilt"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f67562e5eff6b20553fa9be1c503356768420994e28f67e3eafe6f41910e57ad"
+dependencies = [
+ "web-time",
 ]
 
 [[package]]
@@ -2016,16 +2035,6 @@ checksum = "20675572f6f24e9e76ef639bc5552774ed45f1c30e2951e1e99c59888861c539"
 
 [[package]]
 name = "read-fonts"
-version = "0.33.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "50ea612a55c08586a1d15134be8a776186c440c312ebda3b9e8efbfe4255b7f4"
-dependencies = [
- "bytemuck",
- "font-types 0.9.0",
-]
-
-[[package]]
-name = "read-fonts"
 version = "0.35.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6717cf23b488adf64b9d711329542ba34de147df262370221940dfabc2c91358"
@@ -2239,16 +2248,6 @@ checksum = "56199f7ddabf13fe5074ce809e7d3f42b42ae711800501b5b16ea82ad029c39d"
 
 [[package]]
 name = "skrifa"
-version = "0.35.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "576e60c7de4bb6a803a0312f9bef17e78cf1e8d25a80e1ade76770d7a0237955"
-dependencies = [
- "bytemuck",
- "read-fonts 0.33.1",
-]
-
-[[package]]
-name = "skrifa"
 version = "0.37.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8c31071dedf532758ecf3fed987cdb4bd9509f900e026ab684b4ecb81ea49841"
@@ -2368,7 +2367,7 @@ version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47846491253e976bdd07d0f9cc24b7daf24720d11309302ccbbc6e6b6e53550a"
 dependencies = [
- "skrifa 0.35.0",
+ "skrifa 0.37.0",
  "yazi",
  "zeno",
 ]
@@ -2578,23 +2577,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
 dependencies = [
  "core_maths",
-]
-
-[[package]]
-name = "ui"
-version = "0.1.0"
-dependencies = [
- "backer",
- "bytemuck",
- "clipboard-rs",
- "image",
- "parley",
- "pollster",
- "tokio",
- "tokio-util",
- "vello_svg",
- "wgpu",
- "winit",
 ]
 
 [[package]]

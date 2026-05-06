@@ -1,5 +1,5 @@
-use crate::app::{AppCtx, View};
-use crate::{Binding, ClickState, DEFAULT_CORNER_ROUNDING, app::AppState, rect};
+use crate::app::{RootCtx, View};
+use crate::{Binding, ClickState, DEFAULT_CORNER_ROUNDING, app::RootState, rect};
 use crate::{Color, TRANSPARENT};
 use backer::{Align, Layout, nodes::*};
 use std::rc::Rc;
@@ -35,17 +35,17 @@ pub struct DropDown<'a, State, T> {
     state: DropdownState<T>,
     binding: Binding<State, DropdownState<T>>,
     options: Vec<T>,
-    view_fn: Rc<dyn Fn(DropdownItemCtx<T>, &mut AppCtx) -> Layout<'a, View<State>, AppCtx> + 'a>,
+    view_fn: Rc<dyn Fn(DropdownItemCtx<T>, &mut RootCtx) -> Layout<'a, View<State>, RootCtx> + 'a>,
     background:
-        Option<Rc<dyn Fn(&DropdownState<T>, &mut AppCtx) -> Layout<'a, View<State>, AppCtx> + 'a>>,
-    on_select: Option<Rc<dyn Fn(&mut State, &mut AppState, &T)>>,
+        Option<Rc<dyn Fn(&DropdownState<T>, &mut RootCtx) -> Layout<'a, View<State>, RootCtx> + 'a>>,
+    on_select: Option<Rc<dyn Fn(&mut State, &mut RootState, &T)>>,
 }
 
 pub fn dropdown<'a, State, T: Clone + PartialEq + 'static>(
     id: u64,
     state: (DropdownState<T>, Binding<State, DropdownState<T>>),
     options: Vec<T>,
-    view_fn: impl Fn(DropdownItemCtx<T>, &mut AppCtx) -> Layout<'a, View<State>, AppCtx> + 'a,
+    view_fn: impl Fn(DropdownItemCtx<T>, &mut RootCtx) -> Layout<'a, View<State>, RootCtx> + 'a,
 ) -> DropDown<'a, State, T> {
     DropDown {
         id,
@@ -61,7 +61,7 @@ pub fn dropdown<'a, State, T: Clone + PartialEq + 'static>(
 impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
     pub fn background(
         mut self,
-        f: impl Fn(&DropdownState<T>, &mut AppCtx) -> Layout<'a, View<State>, AppCtx> + 'a,
+        f: impl Fn(&DropdownState<T>, &mut RootCtx) -> Layout<'a, View<State>, RootCtx> + 'a,
     ) -> Self {
         self.background = Some(Rc::new(f));
         self
@@ -69,13 +69,13 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
 
     pub fn on_select(
         mut self,
-        on_select: impl Fn(&mut State, &mut AppState, &T) + 'static,
+        on_select: impl Fn(&mut State, &mut RootState, &T) + 'static,
     ) -> Self {
         self.on_select = Some(Rc::new(on_select));
         self
     }
 
-    pub fn build(self, ctx: &mut AppCtx) -> Layout<'a, View<State>, AppCtx>
+    pub fn build(self, ctx: &mut RootCtx) -> Layout<'a, View<State>, RootCtx>
     where
         State: 'static,
     {
@@ -95,62 +95,63 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
         let view_fn = self.view_fn.clone();
         let row_binding = binding.clone();
 
-        let row = move |index: usize, option: &T, ctx: &mut AppCtx| -> Layout<'a, View<State>, AppCtx> {
-            let item_ctx = DropdownItemCtx {
-                index,
-                value: option,
-                selected: selected_index == index,
-                hovered: hovered == Some(index),
-                expanded,
-            };
-            let content = (view_fn)(item_ctx, ctx);
+        let row =
+            move |index: usize, option: &T, ctx: &mut RootCtx| -> Layout<'a, View<State>, RootCtx> {
+                let item_ctx = DropdownItemCtx {
+                    index,
+                    value: option,
+                    selected: selected_index == index,
+                    hovered: hovered == Some(index),
+                    expanded,
+                };
+                let content = (view_fn)(item_ctx, ctx);
 
-            stack(vec![
-                {
-                    let option = option.clone();
-                    rect(crate::id!(index as u64, id))
-                        .fill(TRANSPARENT)
-                        .view()
-                        .on_click({
-                            let binding = row_binding.clone();
-                            let on_select = on_select.clone();
-                            move |state: &mut State, app, click, _pos| {
-                                let ClickState::Completed = click else { return };
-                                if expanded {
-                                    if let Some(ref on_select) = on_select {
-                                        on_select(state, app, &option);
+                stack(vec![
+                    {
+                        let option = option.clone();
+                        rect(crate::id!(index as u64, id))
+                            .fill(TRANSPARENT)
+                            .view()
+                            .on_click({
+                                let binding = row_binding.clone();
+                                let on_select = on_select.clone();
+                                move |state: &mut State, app, click, _pos| {
+                                    let ClickState::Completed = click else { return };
+                                    if expanded {
+                                        if let Some(ref on_select) = on_select {
+                                            on_select(state, app, &option);
+                                        }
+                                        binding.update(state, {
+                                            let option = option.clone();
+                                            move |s| {
+                                                s.selected = option.clone();
+                                                s.expanded = false;
+                                            }
+                                        });
+                                    } else {
+                                        binding.update(state, |s| s.expanded = true);
                                     }
-                                    binding.update(state, {
-                                        let option = option.clone();
-                                        move |s| {
-                                            s.selected = option.clone();
-                                            s.expanded = false;
+                                }
+                            })
+                            .on_hover({
+                                let binding = row_binding.clone();
+                                move |state: &mut State, _app, hovered| {
+                                    binding.update(state, move |s| {
+                                        if expanded && hovered {
+                                            s.hovered = Some(index)
                                         }
                                     });
-                                } else {
-                                    binding.update(state, |s| s.expanded = true);
                                 }
-                            }
-                        })
-                        .on_hover({
-                            let binding = row_binding.clone();
-                            move |state: &mut State, _app, hovered| {
-                                binding.update(state, move |s| {
-                                    if expanded && hovered {
-                                        s.hovered = Some(index)
-                                    }
-                                });
-                            }
-                        })
-                        .finish(ctx)
-                }
-                .inert(),
-                content,
-            ])
-            .expand_x()
-        };
+                            })
+                            .finish(ctx)
+                    }
+                    .inert(),
+                    content,
+                ])
+                .expand_x()
+            };
 
-        let surface = |ctx: &mut AppCtx| -> Layout<'a, View<State>, AppCtx> {
+        let surface = |ctx: &mut RootCtx| -> Layout<'a, View<State>, RootCtx> {
             if let Some(ref f) = background_fn {
                 f(&dd_state, ctx)
             } else {

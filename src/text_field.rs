@@ -1,10 +1,11 @@
-use crate::app::{AppCtx, AppState, EditState, View};
+use crate::app::{RootCtx, RootState, EditState, View};
 use crate::background_style::BrushSource;
 use crate::shape::{PathData, rect_path};
 use crate::view::DrawableType;
 use crate::{
     Binding, DEFAULT_CORNER_ROUNDING, DEFAULT_FG_COLOR, DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE,
-    DEFAULT_PADDING, DEFAULT_PURP, DEFAULT_STROKE_WIDTH, EditInteraction, Key, Text, rect,
+    DEFAULT_PADDING, DEFAULT_PURP, DEFAULT_STROKE_WIDTH, EditInteraction, Key, NamedKey, Text,
+    rect,
 };
 use backer::{Area, Layout, nodes::*};
 use parley::{Alignment, FontWeight};
@@ -56,7 +57,7 @@ pub fn text_field<'a, State>(
 }
 
 type BgViewFn<'a, State> =
-    Rc<dyn Fn(&TextState, Area, &mut AppCtx) -> Layout<'a, View<State>, AppCtx> + 'a>;
+    Rc<dyn Fn(&TextState, Area, &mut RootCtx) -> Layout<'a, View<State>, RootCtx> + 'a>;
 
 pub struct TextField<'a, State> {
     pub(crate) id: u64,
@@ -76,7 +77,7 @@ pub struct TextField<'a, State> {
     pub(crate) enter_end_editing: bool,
     pub(crate) cursor_fill: BrushSource<TextState>,
     pub(crate) highlight_fill: BrushSource<TextState>,
-    on_edit: Option<Rc<dyn Fn(&mut State, &mut AppState, EditInteraction)>>,
+    on_edit: Option<Rc<dyn Fn(&mut State, &mut RootState, EditInteraction)>>,
 }
 
 impl<State> Debug for TextField<'_, State> {
@@ -135,7 +136,7 @@ impl<'a, State> TextField<'a, State> {
     }
     pub fn on_edit(
         mut self,
-        on_edit: impl Fn(&mut State, &mut AppState, EditInteraction) + 'static,
+        on_edit: impl Fn(&mut State, &mut RootState, EditInteraction) + 'static,
     ) -> Self {
         self.on_edit = Some(Rc::new(on_edit));
         self
@@ -162,7 +163,7 @@ impl<'a, State> TextField<'a, State> {
     }
     pub fn background(
         mut self,
-        f: impl Fn(&TextState, Area, &mut AppCtx) -> Layout<'a, View<State>, AppCtx> + 'a,
+        f: impl Fn(&TextState, Area, &mut RootCtx) -> Layout<'a, View<State>, RootCtx> + 'a,
     ) -> Self {
         self.background = Some(Rc::new(f));
         self
@@ -186,7 +187,7 @@ impl<'a, State> TextField<'a, State> {
 }
 
 impl<'a, State> TextField<'a, State> {
-    pub fn build(self, ctx: &mut AppCtx) -> Layout<'a, View<State>, AppCtx>
+    pub fn build(self, ctx: &mut RootCtx) -> Layout<'a, View<State>, RootCtx>
     where
         State: 'static,
     {
@@ -360,10 +361,8 @@ impl<'a, State> TextField<'a, State> {
                         let on_edit = on_edit.clone();
                         let binding = binding.clone();
                         move |state, app, key| {
-                            if (self.enter_end_editing
-                                && key == Key::Named(winit::keyboard::NamedKey::Enter))
-                                || (self.esc_end_editing
-                                    && key == Key::Named(winit::keyboard::NamedKey::Escape))
+                            if (self.enter_end_editing && key == Key::Named(NamedKey::Enter))
+                                || (self.esc_end_editing && key == Key::Named(NamedKey::Escape))
                             {
                                 app.end_editing();
                                 binding.update(state, |s| s.editing = false);
@@ -372,9 +371,9 @@ impl<'a, State> TextField<'a, State> {
                                 }
                                 return;
                             };
-                            if let AppState {
+                            if let RootState {
                                 app_context:
-                                    AppCtx {
+                                    RootCtx {
                                         editor: Some(EditState { editor, id, .. }),
                                         layout_cx,
                                         font_cx,
@@ -409,9 +408,9 @@ impl<'a, State> TextField<'a, State> {
                         let binding = binding.clone();
                         let on_edit = on_edit.clone();
                         move |state: &mut State, app, _, _| {
-                            if let AppState {
+                            if let RootState {
                                 app_context:
-                                    AppCtx {
+                                    RootCtx {
                                         editor: Some(EditState { id, .. }),
                                         ..
                                     },
@@ -473,9 +472,9 @@ impl<'a, State> TextField<'a, State> {
         let background_fn = self.background;
         let ts = self.state.clone();
         let bg = if let Some(f) = background_fn {
-            draw(move |area, ctx: &mut AppCtx| f(&ts, area, ctx).draw(area, ctx))
+            draw(move |area, ctx: &mut RootCtx| f(&ts, area, ctx).draw(area, ctx))
         } else if editable {
-            draw(move |area, ctx: &mut AppCtx| {
+            draw(move |area, ctx: &mut RootCtx| {
                 rect(crate::id!(id))
                     .fill(Color::from_rgb8(50, 50, 50))
                     .stroke(

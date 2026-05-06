@@ -1,6 +1,5 @@
 use std::{fmt::Debug, rc::Rc};
 use vello_svg::vello::kurbo::Point;
-use winit::keyboard::{NamedKey, SmolStr};
 
 pub use backer::{Align, Area};
 
@@ -18,19 +17,38 @@ pub(crate) fn area_contains(area: &Area, point: Point) -> bool {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum Key<Str = SmolStr> {
+pub enum Key {
     Named(NamedKey),
-    Character(Str),
+    Character(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum NamedKey {
+    Enter,
+    Escape,
+    Space,
+    Backspace,
+    Delete,
+    ArrowLeft,
+    ArrowRight,
+    ArrowUp,
+    ArrowDown,
+    Home,
+    End,
+    Tab,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Modifiers {
+    pub shift: bool,
+    pub control: bool,
+    pub alt: bool,
+    pub super_key: bool,
 }
 
 impl Key {
-    pub(crate) fn from(value: winit::keyboard::Key) -> Option<Key> {
-        match value {
-            winit::keyboard::Key::Named(named_key) => Some(Key::Named(named_key)),
-            winit::keyboard::Key::Character(c) => Some(Key::Character(c)),
-            winit::keyboard::Key::Unidentified(_) => None,
-            winit::keyboard::Key::Dead(_) => None,
-        }
+    pub fn character(value: impl Into<String>) -> Self {
+        Self::Character(value.into())
     }
 }
 

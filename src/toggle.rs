@@ -1,5 +1,5 @@
-use crate::app::{AppCtx, View};
-use crate::{Binding, ClickState, adjust_brush, app::AppState, id, rect};
+use crate::app::{RootCtx, View};
+use crate::{Binding, ClickState, adjust_brush, app::RootState, id, rect};
 use crate::{DEFAULT_FG, DEFAULT_GRAY, DEFAULT_LIGHT_GRAY, TRANSPARENT, circle};
 use backer::{
     Area, Layout,
@@ -34,11 +34,11 @@ impl ToggleState {
 }
 
 type ViewFn<'a, State> =
-    Rc<dyn Fn(ToggleState, Area, &mut AppCtx) -> Layout<'a, View<State>, AppCtx> + 'a>;
+    Rc<dyn Fn(ToggleState, Area, &mut RootCtx) -> Layout<'a, View<State>, RootCtx> + 'a>;
 
 pub struct Toggle<'a, State> {
     id: u64,
-    on_toggle: Option<fn(&mut State, &mut AppState, bool)>,
+    on_toggle: Option<fn(&mut State, &mut RootState, bool)>,
     state: ToggleState,
     binding: Binding<State, ToggleState>,
     knob: Option<ViewFn<'a, State>>,
@@ -60,14 +60,14 @@ pub fn toggle<'a, State>(
 }
 
 impl<'a, State> Toggle<'a, State> {
-    pub fn on_toggle(mut self, on_toggle: fn(&mut State, &mut AppState, bool)) -> Self {
+    pub fn on_toggle(mut self, on_toggle: fn(&mut State, &mut RootState, bool)) -> Self {
         self.on_toggle = Some(on_toggle);
         self
     }
 
     pub fn knob(
         mut self,
-        f: impl Fn(ToggleState, Area, &mut AppCtx) -> Layout<'a, View<State>, AppCtx> + 'a,
+        f: impl Fn(ToggleState, Area, &mut RootCtx) -> Layout<'a, View<State>, RootCtx> + 'a,
     ) -> Self {
         self.knob = Some(Rc::new(f));
         self
@@ -75,12 +75,12 @@ impl<'a, State> Toggle<'a, State> {
 
     pub fn track(
         mut self,
-        f: impl Fn(ToggleState, Area, &mut AppCtx) -> Layout<'a, View<State>, AppCtx> + 'a,
+        f: impl Fn(ToggleState, Area, &mut RootCtx) -> Layout<'a, View<State>, RootCtx> + 'a,
     ) -> Self {
         self.track = Some(Rc::new(f));
         self
     }
-    pub fn build(self, _ctx: &mut AppCtx) -> Layout<'a, View<State>, AppCtx>
+    pub fn build(self, _ctx: &mut RootCtx) -> Layout<'a, View<State>, RootCtx>
     where
         State: 'static,
     {
@@ -88,7 +88,7 @@ impl<'a, State> Toggle<'a, State> {
         let knob_fn = self.knob;
         let track_fn = self.track;
         let id = self.id;
-        draw(move |area, ctx: &mut AppCtx| {
+        draw(move |area, ctx: &mut RootCtx| {
             let width = area.width;
             let height = area.height;
 
@@ -138,13 +138,13 @@ impl<'a, State> Toggle<'a, State> {
                     .view()
                     .on_hover({
                         let binding = self.binding.clone();
-                        move |state: &mut State, _app: &mut AppState, h| {
+                        move |state: &mut State, _app: &mut RootState, h| {
                             binding.update(state, |s| s.hovered = h)
                         }
                     })
                     .on_click({
                         let binding = self.binding.clone();
-                        move |state: &mut State, app: &mut AppState, click_state, _| {
+                        move |state: &mut State, app: &mut RootState, click_state, _| {
                             match click_state {
                                 ClickState::Started => {
                                     binding.update(state, |s| s.depressed = true)

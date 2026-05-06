@@ -6,19 +6,27 @@ publish = false
 
 [[example]]
 name = "basic"
-path = "examples/basic/src/main.rs"
+path = "examples/basic.rs"
 
 [[example]]
 name = "buttons"
-path = "examples/buttons/src/main.rs"
+path = "examples/buttons.rs"
 
 [[example]]
 name = "scroller"
-path = "examples/scroller/src/main.rs"
+path = "examples/scroller.rs"
 
 [[example]]
 name = "image"
-path = "examples/image/src/main.rs"
+path = "examples/image.rs"
+
+[[example]]
+name = "winit_basic"
+path = "examples/winit_basic.rs"
+
+[[example]]
+name = "winit_multi"
+path = "examples/winit_multi.rs"
 
 [dependencies]
 backer = { git = "https://github.com/cyypherus/backer", branch = "experiment" }

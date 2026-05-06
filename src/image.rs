@@ -1,4 +1,4 @@
-use crate::app::{AppCtx, AppState, View};
+use crate::app::{RootCtx, RootState, View};
 
 use crate::DEFAULT_CORNER_ROUNDING;
 use crate::view::{Drawable, DrawableType};
@@ -87,13 +87,13 @@ impl Image {
         }
     }
 
-    pub fn finish<State: 'static>(self, ctx: &mut AppCtx) -> Layout<'static, View<State>, AppCtx> {
+    pub fn finish<State: 'static>(self, ctx: &mut RootCtx) -> Layout<'static, View<State>, RootCtx> {
         self.view().finish(ctx)
     }
 }
 
 impl Image {
-    pub(crate) fn draw(&mut self, area: Area, scene: &mut Scene, app: &mut AppState) {
+    pub(crate) fn draw(&mut self, area: Area, scene: &mut Scene, app: &mut RootState) {
         let cache_key = if let Some(ref image_id) = self.image_id {
             use std::collections::hash_map::DefaultHasher;
             use std::hash::{Hash, Hasher};
@@ -125,7 +125,7 @@ impl Image {
                 .insert(cache_key, (image_scene, width, height));
         }
 
-        let AppState { image_scenes, .. } = app;
+        let RootState { image_scenes, .. } = app;
 
         if let Some((image_scene, width, height)) = image_scenes.get(&cache_key) {
             let width = *width as f64;

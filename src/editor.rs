@@ -1,3 +1,4 @@
+use crate::{Key, Modifiers, NamedKey};
 use core::default::Default;
 use parley::{GenericFamily, StyleProperty, editing::SplitString};
 use std::time::{Duration, Instant};
@@ -5,12 +6,9 @@ use vello_svg::vello::{
     kurbo::Point,
     peniko::{Brush, color::palette},
 };
-use winit::{event::Modifiers, keyboard::NamedKey};
 
 pub(crate) use parley::editing::Generation;
 use parley::{FontContext, LayoutContext, PlainEditor, PlainEditorDriver};
-
-use crate::Key;
 
 #[derive(Clone)]
 pub(crate) struct Editor {
@@ -110,17 +108,16 @@ impl Editor {
     ) {
         self.modifiers = modifiers;
         #[allow(unused)]
-        let (shift, action_mod, alt) = self
-            .modifiers
-            .map(|mods| {
+        let (shift, action_mod, alt) = modifiers
+            .map(|modifiers| {
                 (
-                    mods.state().shift_key(),
+                    modifiers.shift,
                     if cfg!(target_os = "macos") {
-                        mods.state().super_key()
+                        modifiers.super_key
                     } else {
-                        mods.state().control_key()
+                        modifiers.control
                     },
-                    mods.state().alt_key(),
+                    modifiers.alt,
                 )
             })
             .unwrap_or_default();
