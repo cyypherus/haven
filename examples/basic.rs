@@ -12,8 +12,8 @@ struct State {
 
 fn main() {
     WinitApp::new(State::default())
-        .root(
-            Root::new("main", |state: &State, app: &mut RootState| {
+        .pane(
+            PaneConfig::new("main", |state: &State, app: &mut PaneState| {
                 column_spaced(
                     10.,
                     vec![
@@ -25,7 +25,7 @@ fn main() {
                         .font_weight(FontWeight::BOLD)
                         .font_size(30)
                         .wrap()
-                        .build(app.ctx()),
+                        .build(app),
                         rich_text(
                             id!(),
                             [
@@ -41,35 +41,49 @@ fn main() {
                         )
                         .wrap()
                         .align(parley::Alignment::Start)
-                        .build(app.ctx()),
-                        scope!(state, State, { style_dropdown, text } => DDTextState,
-                            |sub_state| row_spaced(10., dropdown_and_text(sub_state, app))
-                        ),
+                        .build(app),
+                        empty(),
                         stack(vec![
-                            rect(id!()).fill(DEFAULT_DARK_GRAY).corner_rounding(8.).build(app.ctx()),
-                            draw(|area, ctx: &mut AppCtx| {
+                            rect(id!())
+                                .fill(DEFAULT_DARK_GRAY)
+                                .corner_rounding(8.)
+                                .build(app),
+                            draw(|area, ctx: &mut PaneState| {
                                 path(id!(), |area| chart_fill(area, CHART_DATA))
                                     .fill(
                                         Gradient::new_linear(
                                             (0., area.y as f64),
                                             (0., area.y as f64 + area.height as f64),
                                         )
-                                        .with_stops([DEFAULT_PURP.with_alpha(0.4), DEFAULT_PURP.with_alpha(0.0)])
+                                        .with_stops([
+                                            DEFAULT_PURP.with_alpha(0.4),
+                                            DEFAULT_PURP.with_alpha(0.0),
+                                        ]),
                                     )
                                     .build(ctx)
                                     .draw(area, ctx)
                             }),
                             path(id!(), |area| chart_line(area, CHART_DATA))
-                                .stroke(DEFAULT_PURP, Stroke::new(2.0).with_caps(Cap::Round).with_join(Join::Round))
-                                .build(app.ctx()),
+                                .stroke(
+                                    DEFAULT_PURP,
+                                    Stroke::new(2.0)
+                                        .with_caps(Cap::Round)
+                                        .with_join(Join::Round),
+                                )
+                                .build(app),
                         ])
                         .height(120.),
                         row_spaced(
                             10.,
                             vec![
-                                toggle(id!(), binding!(state, State, toggle)).build(app.ctx()).height(25.).width(50.),
-                                slider(id!(), binding!(state, State, slider)).build(app.ctx()).height(25.),
-                            ]
+                                toggle(id!(), binding!(state, State, toggle))
+                                    .build(app)
+                                    .height(25.)
+                                    .width(50.),
+                                slider(id!(), binding!(state, State, slider))
+                                    .build(app)
+                                    .height(25.),
+                            ],
                         ),
                         button(id!(), binding!(state, State, button))
                             .text_label("Engage thrusters")
@@ -79,13 +93,16 @@ fn main() {
                             .surface(|_state, ctx| {
                                 rect(id!())
                                     .fill(
-                                        Gradient::new_linear((0., 0.), (200., 0.))
-                                            .with_stops([DEFAULT_PURP, Color::from_rgb8(200, 50, 180)])
+                                        Gradient::new_linear((0., 0.), (200., 0.)).with_stops([
+                                            DEFAULT_PURP,
+                                            Color::from_rgb8(200, 50, 180),
+                                        ]),
                                     )
                                     .corner_rounding(DEFAULT_CORNER_ROUNDING)
                                     .build(ctx)
                             })
-                            .build(app.ctx()).height(30.),
+                            .build(app)
+                            .height(30.),
                     ],
                 )
                 .pad(20.)
@@ -93,8 +110,8 @@ fn main() {
             })
             .inner_size(800, 600),
         )
-        .root(
-            Root::new("thrusters", thrusters_view)
+        .pane(
+            PaneConfig::new("thrusters", thrusters_view)
                 .open_at_start(false)
                 .title("Thrusters")
                 .inner_size(400, 300)
@@ -103,7 +120,10 @@ fn main() {
         .run();
 }
 
-fn thrusters_view<'a>(_state: &'a State, app: &mut AppState) -> Layout<'a, View<State>, AppCtx> {
+fn thrusters_view<'a>(
+    _state: &'a State,
+    app: &mut PaneState,
+) -> Layout<'a, View<State>, PaneState> {
     stack(vec![
         rect(id!())
             .fill(Color::from_rgb8(30, 30, 40).with_alpha(0.75))
@@ -112,17 +132,17 @@ fn thrusters_view<'a>(_state: &'a State, app: &mut AppState) -> Layout<'a, View<
                 Color::from_rgb8(120, 120, 160).with_alpha(0.5),
                 Stroke::new(1.),
             )
-            .build(app.ctx()),
+            .build(app),
         column_spaced(
             10.,
             vec![
                 text(id!(), "Thrusters Engaged")
                     .font_weight(FontWeight::BOLD)
                     .font_size(24)
-                    .build(app.ctx()),
+                    .build(app),
                 text(id!(), "All systems nominal. Quantum drive is spooling up.")
                     .wrap()
-                    .build(app.ctx()),
+                    .build(app),
             ],
         )
         .pad(20.),
@@ -131,70 +151,10 @@ fn thrusters_view<'a>(_state: &'a State, app: &mut AppState) -> Layout<'a, View<
 }
 
 fn dropdown_and_text(
-    state: Binding<State, DDTextState>,
-    app: &mut AppState,
-) -> Vec<Layout<'static, View<DDTextState>, AppCtx>> {
-    vec![
-        dropdown(
-            id!(),
-            binding!(state, DDTextState, dropdown),
-            [
-                Biome::Canopy,
-                Biome::Mycelial,
-                Biome::Algae,
-                Biome::Crystal,
-                Biome::Lagoon,
-            ],
-        )
-        .label(|selection, ctx| {
-            text(id!(), selection.label())
-                .font_weight(FontWeight::BOLD)
-                .build(ctx)
-        })
-        .option(|option, ctx| text(id!(), option.label()).build(ctx))
-        .build(app.ctx())
-        .width(180.)
-        .height(36.),
-        text_field(id!(), binding!(state, DDTextState, text))
-            .style(|style| match style {
-                Biome::Canopy => style
-                    .fill(Color::from_rgb8(210, 255, 210))
-                    .cursor(Color::from_rgb8(120, 230, 140))
-                    .highlight(Color::from_rgb8(40, 90, 50).with_alpha(0.6)),
-                Biome::Mycelial => style
-                    .fill(Color::from_rgb8(230, 210, 255))
-                    .cursor(DEFAULT_PURP)
-                    .highlight(Color::from_rgb8(70, 40, 100).with_alpha(0.6)),
-                Biome::Algae => style
-                    .fill(Color::from_rgb8(180, 245, 255))
-                    .cursor(Color::from_rgb8(60, 200, 220))
-                    .highlight(Color::from_rgb8(20, 90, 100).with_alpha(0.6)),
-                Biome::Crystal => style
-                    .fill(Color::from_rgb8(220, 220, 255))
-                    .cursor(Color::from_rgb8(120, 160, 255))
-                    .highlight(Color::from_rgb8(50, 60, 120).with_alpha(0.6)),
-                Biome::Lagoon => style
-                    .fill(Color::from_rgb8(210, 255, 245))
-                    .cursor(Color::from_rgb8(60, 220, 180))
-                    .highlight(Color::from_rgb8(20, 100, 80).with_alpha(0.6)),
-            })
-            .background(|style, ctx| {
-                let fill = match style {
-                    Biome::Canopy => Color::from_rgb8(20, 55, 30),
-                    Biome::Mycelial => Color::from_rgb8(40, 25, 55),
-                    Biome::Algae => Color::from_rgb8(15, 45, 55),
-                    Biome::Crystal => Color::from_rgb8(30, 30, 60),
-                    Biome::Lagoon => Color::from_rgb8(10, 55, 45),
-                };
-                rect(id!())
-                    .fill(fill)
-                    .corner_rounding(DEFAULT_CORNER_ROUNDING)
-                    .build(ctx)
-            })
-            .wrap()
-            .build(app.ctx())
-            .height(110.),
-    ]
+    _state: Binding<State, DDTextState>,
+    _app: &mut PaneState,
+) -> Vec<Layout<'static, View<DDTextState>, PaneState>> {
+    vec![empty()]
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -226,8 +186,7 @@ struct DDTextState {
 }
 
 const CHART_DATA: [f64; 16] = [
-    0.18, 0.22, 0.31, 0.28, 0.46, 0.41, 0.58, 0.52, 0.63, 0.71, 0.68, 0.79, 0.73, 0.88, 0.84,
-    0.93,
+    0.18, 0.22, 0.31, 0.28, 0.46, 0.41, 0.58, 0.52, 0.63, 0.71, 0.68, 0.79, 0.73, 0.88, 0.84, 0.93,
 ];
 
 fn chart_fill(area: Area, data: [f64; 16]) -> BezPath {
@@ -236,7 +195,10 @@ fn chart_fill(area: Area, data: [f64; 16]) -> BezPath {
         area.x as f64 + area.width as f64,
         area.y as f64 + area.height as f64,
     ));
-    path.line_to(Point::new(area.x as f64, area.y as f64 + area.height as f64));
+    path.line_to(Point::new(
+        area.x as f64,
+        area.y as f64 + area.height as f64,
+    ));
     path.close_path();
     path
 }

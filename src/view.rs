@@ -1,4 +1,4 @@
-use crate::app::{RootCtx, RootState, View};
+use crate::app::{PaneState, View};
 use crate::gestures::{ClickLocation, Interaction, InteractionType, ScrollDelta};
 use crate::image::Image;
 
@@ -70,15 +70,15 @@ macro_rules! binding {
 
 #[macro_export]
 macro_rules! scope {
-    ($state_var:ident, $Root:ty, { $($field:ident),+ $(,)? } => $Sub:ident, $layout:expr) => {{
+    ($state_var:ident, $Parent:ty, { $($field:ident),+ $(,)? } => $Sub:ident, $layout:expr) => {{
         let sub_state = $Sub {
             $( $field: $state_var.$field.clone(), )+
         };
         let binding = Binding::new(
-            |s: &$Root| $Sub {
+            |s: &$Parent| $Sub {
                 $( $field: s.$field.clone(), )+
             },
-            |s: &mut $Root, v: $Sub| {
+            |s: &mut $Parent, v: $Sub| {
                 $( s.$field = v.$field; )+
             },
         );
@@ -146,7 +146,7 @@ pub trait Compositing<'a, State> {
     fn opacity(self, alpha: f32) -> Self;
 }
 
-impl<'a, State: 'static> Compositing<'a, State> for Layout<'a, View<State>, RootCtx> {
+impl<'a, State: 'static> Compositing<'a, State> for Layout<'a, View<State>, PaneState> {
     fn clipped(self, path: impl Fn(Area) -> BezPath + 'static) -> Self {
         wrap_layer(self, path, peniko::BlendMode::default(), 1.0)
     }
@@ -164,11 +164,11 @@ impl<'a, State: 'static> Compositing<'a, State> for Layout<'a, View<State>, Root
 }
 
 fn wrap_layer<'a, State>(
-    content: Layout<'a, View<State>, RootCtx>,
+    content: Layout<'a, View<State>, PaneState>,
     path: impl Fn(Area) -> BezPath + 'static,
     blend: peniko::BlendMode,
     alpha: f32,
-) -> Layout<'a, View<State>, RootCtx> {
+) -> Layout<'a, View<State>, PaneState> {
     stack(vec![
         draw(move |area, _| {
             vec![View::PushLayer {
@@ -184,7 +184,7 @@ fn wrap_layer<'a, State>(
 
 pub struct Drawable<State> {
     pub(crate) view_type: DrawableType,
-    pub(crate) gesture_handlers: Vec<GestureHandler<State, RootState>>,
+    pub(crate) gesture_handlers: Vec<GestureHandler<State, PaneState>>,
 }
 
 pub enum DrawableType {
@@ -210,7 +210,7 @@ impl Clone for DrawableType {
 impl<State> Drawable<State> {
     pub fn on_click(
         mut self,
-        f: impl Fn(&mut State, &mut RootState, ClickState, ClickLocation) + 'static,
+        f: impl Fn(&mut State, &mut PaneState, ClickState, ClickLocation) + 'static,
     ) -> Self {
         self.gesture_handlers.push(GestureHandler {
             interaction_type: InteractionType {
@@ -228,7 +228,7 @@ impl<State> Drawable<State> {
     }
     pub fn on_click_outside(
         mut self,
-        f: impl Fn(&mut State, &mut RootState, ClickState, ClickLocation) + 'static,
+        f: impl Fn(&mut State, &mut PaneState, ClickState, ClickLocation) + 'static,
     ) -> Self {
         self.gesture_handlers.push(GestureHandler {
             interaction_type: InteractionType {
@@ -244,7 +244,7 @@ impl<State> Drawable<State> {
         });
         self
     }
-    pub fn on_drag(mut self, f: impl Fn(&mut State, &mut RootState, DragState) + 'static) -> Self {
+    pub fn on_drag(mut self, f: impl Fn(&mut State, &mut PaneState, DragState) + 'static) -> Self {
         self.gesture_handlers.push(GestureHandler {
             interaction_type: InteractionType {
                 drag: true,
@@ -259,7 +259,7 @@ impl<State> Drawable<State> {
         });
         self
     }
-    pub fn on_hover(mut self, f: impl Fn(&mut State, &mut RootState, bool) + 'static) -> Self {
+    pub fn on_hover(mut self, f: impl Fn(&mut State, &mut PaneState, bool) + 'static) -> Self {
         self.gesture_handlers.push(GestureHandler {
             interaction_type: InteractionType {
                 hover: true,
@@ -274,7 +274,7 @@ impl<State> Drawable<State> {
         });
         self
     }
-    pub fn on_key(mut self, f: impl Fn(&mut State, &mut RootState, Key) + 'static) -> Self {
+    pub fn on_key(mut self, f: impl Fn(&mut State, &mut PaneState, Key) + 'static) -> Self {
         self.gesture_handlers.push(GestureHandler {
             interaction_type: InteractionType {
                 key: true,
@@ -291,7 +291,7 @@ impl<State> Drawable<State> {
     }
     pub fn on_scroll(
         mut self,
-        f: impl Fn(&mut State, &mut RootState, ScrollDelta) + 'static,
+        f: impl Fn(&mut State, &mut PaneState, ScrollDelta) + 'static,
     ) -> Self {
         self.gesture_handlers.push(GestureHandler {
             interaction_type: InteractionType {
@@ -322,7 +322,7 @@ impl DrawableType {
 }
 
 impl<State: 'static> Drawable<State> {
-    pub fn finish<'a>(self, ctx: &mut RootCtx) -> Layout<'a, View<State>, RootCtx> {
+    pub fn finish<'a>(self, ctx: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
         let text_clone = if let DrawableType::Text(t) = &self.view_type {
             Some(t.clone())
         } else {
@@ -345,10 +345,10 @@ impl<State: 'static> Drawable<State> {
     }
 }
 
-pub fn scope<'a, Root: 'static, Sub: 'static>(
-    layout: Layout<'a, View<Sub>, RootCtx>,
-    binding: Binding<Root, Sub>,
-) -> Layout<'a, View<Root>, RootCtx> {
+pub fn scope<'a, Parent: 'static, Sub: 'static>(
+    layout: Layout<'a, View<Sub>, PaneState>,
+    binding: Binding<Parent, Sub>,
+) -> Layout<'a, View<Parent>, PaneState> {
     let binding = Rc::new(binding);
     layout.map(move |view| match view {
         View::Draw {
@@ -363,13 +363,15 @@ pub fn scope<'a, Root: 'static, Sub: 'static>(
                     let handler = gh.interaction_handler.map(|h| {
                         let binding = binding.clone();
                         Rc::new(
-                            move |root: &mut Root, app: &mut RootState, interaction: Interaction| {
-                                let mut sub = binding.get(root);
+                            move |parent: &mut Parent,
+                                  app: &mut PaneState,
+                                  interaction: Interaction| {
+                                let mut sub = binding.get(parent);
                                 h(&mut sub, app, interaction);
-                                binding.set(root, sub);
+                                binding.set(parent, sub);
                             },
                         )
-                            as Rc<dyn Fn(&mut Root, &mut RootState, Interaction)>
+                            as Rc<dyn Fn(&mut Parent, &mut PaneState, Interaction)>
                     });
                     GestureHandler {
                         interaction_type: gh.interaction_type,

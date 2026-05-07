@@ -6,15 +6,15 @@ struct State {
     texts: Vec<String>,
 }
 
-fn backing<State: 'static>(app: &mut AppState) -> Layout<'static, View<State>, AppCtx> {
+fn backing<State: 'static>(app: &mut PaneState) -> Layout<'static, View<State>, PaneState> {
     rect(id!())
         .corner_rounding(DEFAULT_CORNER_ROUNDING)
         .stroke(Color::from_rgb8(50, 50, 50), Stroke::new(2.))
         .fill(Color::from_rgb8(30, 30, 30))
-        .build(app.ctx())
+        .build(app)
 }
 
-fn text_cell<'a>(i: usize, s: &str, ctx: &mut AppCtx) -> Layout<'a, View<State>, AppCtx> {
+fn text_cell<'a>(i: usize, s: &str, ctx: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
     stack(vec![
         rect(id!(i as u64))
             .fill(Color::from_rgb8(40, 40, 40))
@@ -37,8 +37,8 @@ fn text_cell<'a>(i: usize, s: &str, ctx: &mut AppCtx) -> Layout<'a, View<State>,
 
 fn main() {
     WinitApp::new(State { texts: texts() })
-        .root(
-            Root::new("main", |state: &State, app: &mut RootState| {
+        .pane(
+            PaneConfig::new("main", |state: &State, app: &mut PaneState| {
                 let short = [state.texts[0].clone()];
                 let long = state.texts.clone();
 
@@ -46,7 +46,7 @@ fn main() {
                     id!(),
                     Some(backing(app)),
                     move |index, _id, ctx| short.get(index).map(|s| text_cell(index, s, ctx)),
-                    app.ctx(),
+                    app,
                 );
 
                 let long_scroller = scroller(
@@ -56,7 +56,7 @@ fn main() {
                         let long = long.clone();
                         move |index, _id, ctx| long.get(index).map(|s| text_cell(index, s, ctx))
                     },
-                    app.ctx(),
+                    app,
                 );
 
                 let unconstrained_scroller = scroller(
@@ -79,7 +79,7 @@ fn main() {
                             None
                         }
                     },
-                    app.ctx(),
+                    app,
                 );
 
                 row_spaced(

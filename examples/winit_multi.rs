@@ -13,24 +13,24 @@ struct State {
 
 fn main() {
     WinitApp::new(State::default())
-        .root(
-            Root::new("main", |state: &State, app: &mut RootState| {
+        .pane(
+            PaneConfig::new("main", |state: &State, app: &mut PaneState| {
                 column_spaced(
                     16.,
                     vec![
                         text(id!(), "Main root")
                             .font_size(30)
                             .font_weight(FontWeight::BOLD)
-                            .build(app.ctx()),
+                            .build(app),
                         text(id!(), format!("Main clicks: {}", state.main_count))
                             .font_size(18)
-                            .build(app.ctx()),
+                            .build(app),
                         button(id!(), binding!(state, State, main_pulse))
                             .text_label("Increment main")
                             .on_click(|state, _| {
                                 state.main_count += 1;
                             })
-                            .build(app.ctx())
+                            .build(app)
                             .height(44.)
                             .width(180.),
                         button(id!(), binding!(state, State, main_open))
@@ -38,7 +38,7 @@ fn main() {
                             .on_click(|_, app| {
                                 app.open("tools");
                             })
-                            .build(app.ctx())
+                            .build(app)
                             .height(44.)
                             .width(180.),
                     ],
@@ -48,24 +48,24 @@ fn main() {
             .title("Haven main")
             .inner_size(420, 300),
         )
-        .root(
-            Root::new("tools", |state: &State, app: &mut RootState| {
+        .pane(
+            PaneConfig::new("tools", |state: &State, app: &mut PaneState| {
                 column_spaced(
                     16.,
                     vec![
                         text(id!(), "Tools root")
                             .font_size(30)
                             .font_weight(FontWeight::BOLD)
-                            .build(app.ctx()),
+                            .build(app),
                         text(id!(), format!("Tools clicks: {}", state.tools_count))
                             .font_size(18)
-                            .build(app.ctx()),
+                            .build(app),
                         button(id!(), binding!(state, State, tools_pulse))
                             .text_label("Increment tools")
                             .on_click(|state, _| {
                                 state.tools_count += 1;
                             })
-                            .build(app.ctx())
+                            .build(app)
                             .height(44.)
                             .width(180.),
                         button(id!(), binding!(state, State, tools_close))
@@ -73,7 +73,7 @@ fn main() {
                             .on_click(|_, app| {
                                 app.close();
                             })
-                            .build(app.ctx())
+                            .build(app)
                             .height(44.)
                             .width(180.),
                     ],

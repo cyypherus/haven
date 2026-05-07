@@ -1,5 +1,5 @@
 use crate::DEFAULT_CORNER_ROUNDING;
-use crate::app::{RootCtx, View};
+use crate::app::{PaneState, View};
 use crate::background_style::BrushSource;
 use crate::shape::{PathData, rect_path};
 use crate::view::{Drawable, DrawableType};
@@ -66,7 +66,10 @@ impl Rect {
             gesture_handlers: Vec::new(),
         }
     }
-    pub fn build<State: 'static>(self, ctx: &mut RootCtx) -> Layout<'static, View<State>, RootCtx> {
+    pub fn build<State: 'static>(
+        self,
+        ctx: &mut PaneState,
+    ) -> Layout<'static, View<State>, PaneState> {
         self.view().finish(ctx)
     }
 }

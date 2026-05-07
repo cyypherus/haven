@@ -1,4 +1,4 @@
-use crate::app::{RootCtx, RootState, EditState, View};
+use crate::app::{EditState, PaneState, View};
 use crate::background_style::BrushSource;
 use crate::shape::{PathData, rect_path};
 use crate::view::DrawableType;
@@ -57,7 +57,7 @@ pub fn text_field<'a, State>(
 }
 
 type BgViewFn<'a, State> =
-    Rc<dyn Fn(&TextState, Area, &mut RootCtx) -> Layout<'a, View<State>, RootCtx> + 'a>;
+    Rc<dyn Fn(&TextState, Area, &mut PaneState) -> Layout<'a, View<State>, PaneState> + 'a>;
 
 pub struct TextField<'a, State> {
     pub(crate) id: u64,
@@ -77,7 +77,7 @@ pub struct TextField<'a, State> {
     pub(crate) enter_end_editing: bool,
     pub(crate) cursor_fill: BrushSource<TextState>,
     pub(crate) highlight_fill: BrushSource<TextState>,
-    on_edit: Option<Rc<dyn Fn(&mut State, &mut RootState, EditInteraction)>>,
+    on_edit: Option<Rc<dyn Fn(&mut State, &mut PaneState, EditInteraction)>>,
 }
 
 impl<State> Debug for TextField<'_, State> {
@@ -136,7 +136,7 @@ impl<'a, State> TextField<'a, State> {
     }
     pub fn on_edit(
         mut self,
-        on_edit: impl Fn(&mut State, &mut RootState, EditInteraction) + 'static,
+        on_edit: impl Fn(&mut State, &mut PaneState, EditInteraction) + 'static,
     ) -> Self {
         self.on_edit = Some(Rc::new(on_edit));
         self
@@ -163,7 +163,7 @@ impl<'a, State> TextField<'a, State> {
     }
     pub fn background(
         mut self,
-        f: impl Fn(&TextState, Area, &mut RootCtx) -> Layout<'a, View<State>, RootCtx> + 'a,
+        f: impl Fn(&TextState, Area, &mut PaneState) -> Layout<'a, View<State>, PaneState> + 'a,
     ) -> Self {
         self.background = Some(Rc::new(f));
         self
@@ -187,7 +187,7 @@ impl<'a, State> TextField<'a, State> {
 }
 
 impl<'a, State> TextField<'a, State> {
-    pub fn build(self, ctx: &mut RootCtx) -> Layout<'a, View<State>, RootCtx>
+    pub fn build(self, ctx: &mut PaneState) -> Layout<'a, View<State>, PaneState>
     where
         State: 'static,
     {
@@ -371,14 +371,10 @@ impl<'a, State> TextField<'a, State> {
                                 }
                                 return;
                             };
-                            if let RootState {
-                                app_context:
-                                    RootCtx {
-                                        editor: Some(EditState { editor, id, .. }),
-                                        layout_cx,
-                                        font_cx,
-                                        ..
-                                    },
+                            if let PaneState {
+                                editor: Some(EditState { editor, id, .. }),
+                                layout_cx,
+                                font_cx,
                                 modifiers,
                                 ..
                             } = app
@@ -386,14 +382,11 @@ impl<'a, State> TextField<'a, State> {
                             {
                                 editor.handle_key(key.clone(), layout_cx, font_cx, *modifiers);
                             }
-                            let edit_text = app
-                                .app_context
-                                .editor
-                                .as_ref()
-                                .map(|e| e.editor.text().to_string());
+                            let edit_text =
+                                app.editor.as_ref().map(|e| e.editor.text().to_string());
 
                             if let Some(edit_text) = edit_text
-                                && app.app_context.editor.as_ref().map(|e| e.id) == Some(root_id)
+                                && app.editor.as_ref().map(|e| e.id) == Some(root_id)
                             {
                                 if let Some(ref on_edit) = on_edit {
                                     on_edit(state, app, EditInteraction::Update(edit_text.clone()));
@@ -408,12 +401,8 @@ impl<'a, State> TextField<'a, State> {
                         let binding = binding.clone();
                         let on_edit = on_edit.clone();
                         move |state: &mut State, app, _, _| {
-                            if let RootState {
-                                app_context:
-                                    RootCtx {
-                                        editor: Some(EditState { id, .. }),
-                                        ..
-                                    },
+                            if let PaneState {
+                                editor: Some(EditState { id, .. }),
                                 ..
                             } = app
                                 && *id == root_id
@@ -431,14 +420,10 @@ impl<'a, State> TextField<'a, State> {
                         let font_family = font_family.clone();
                         move |state: &mut State, app, _, _| {
                             let editing = binding.get(state).editing;
-                            if !editing && app.app_context.editor.is_none() {
+                            if !editing && app.editor.is_none() {
                                 binding.update(state, |s| s.editing = true);
-                                let editor_area = app
-                                    .app_context
-                                    .editor_areas
-                                    .get(&root_id)
-                                    .copied()
-                                    .unwrap_or(Area {
+                                let editor_area =
+                                    app.editor_areas.get(&root_id).copied().unwrap_or(Area {
                                         x: 0.,
                                         y: 0.,
                                         width: 0.,
@@ -472,9 +457,9 @@ impl<'a, State> TextField<'a, State> {
         let background_fn = self.background;
         let ts = self.state.clone();
         let bg = if let Some(f) = background_fn {
-            draw(move |area, ctx: &mut RootCtx| f(&ts, area, ctx).draw(area, ctx))
+            draw(move |area, ctx: &mut PaneState| f(&ts, area, ctx).draw(area, ctx))
         } else if editable {
-            draw(move |area, ctx: &mut RootCtx| {
+            draw(move |area, ctx: &mut PaneState| {
                 rect(crate::id!(id))
                     .fill(Color::from_rgb8(50, 50, 50))
                     .stroke(

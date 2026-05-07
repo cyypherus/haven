@@ -31,7 +31,7 @@ impl State {
         }
     }
 
-    fn load_image(&mut self, app: &mut AppState) {
+    fn load_image(&mut self, app: &mut PaneState) {
         let input = self.input.trim().to_string();
         if input.is_empty() {
             return;
@@ -69,7 +69,10 @@ impl State {
                             *state = DownloadState::Error(format!(
                                 "HTTP {}: {}",
                                 response.status().as_u16(),
-                                response.status().canonical_reason().unwrap_or("Unknown error")
+                                response
+                                    .status()
+                                    .canonical_reason()
+                                    .unwrap_or("Unknown error")
                             ));
                         }
                     }
@@ -113,8 +116,8 @@ impl State {
 
 fn main() {
     WinitApp::new(State::new())
-        .root(
-            Root::new("main", |state: &State, app: &mut RootState| {
+        .pane(
+            PaneConfig::new("main", |state: &State, app: &mut PaneState| {
                 let download_state = state.download_state.blocking_lock().clone();
                 let download_state_for_button = download_state.clone();
 
@@ -124,7 +127,7 @@ fn main() {
                         text(id!(), "Image Loader")
                             .font_size(32)
                             .font_weight(FontWeight::BOLD)
-                            .build(app.ctx())
+                            .build(app)
                             .pad(10.),
                         row_spaced(
                             10.,
@@ -139,13 +142,13 @@ fn main() {
                                 })
                                 .font_size(16)
                                 .view()
-                                .finish(app.ctx())
+                                .finish(app)
                                 .pad(10.)
                                 .width_range(..200.),
                                 button(id!(), binding!(state, State, paste_button))
                                     .label(|_state, ctx| text(id!(), "Paste").build(ctx))
                                     .on_click(|s, _| s.paste_from_clipboard())
-                                    .build(app.ctx())
+                                    .build(app)
                                     .height(40.)
                                     .width(80.),
                             ],
@@ -170,28 +173,28 @@ fn main() {
                                 }
                                 s.load_image(app);
                             })
-                            .build(app.ctx())
+                            .build(app)
                             .height(50.)
                             .width(200.),
                         match download_state {
                             DownloadState::Idle => {
                                 text(id!(), "Paste a URL or file path, then click Load")
                                     .font_size(14)
-                                    .build(app.ctx())
+                                    .build(app)
                             }
-                            DownloadState::Downloading => text(id!(), "Loading image...")
-                                .font_size(14)
-                                .build(app.ctx()),
+                            DownloadState::Downloading => {
+                                text(id!(), "Loading image...").font_size(14).build(app)
+                            }
                             DownloadState::Success(ref image_id, ref bytes) => column_spaced(
                                 10.,
                                 vec![
                                     text(id!(), format!("Loaded {} bytes", bytes.len()))
                                         .font_size(14)
-                                        .build(app.ctx()),
+                                        .build(app),
                                     image_from_bytes(id!(), bytes.clone())
                                         .image_id(image_id)
                                         .view()
-                                        .finish(app.ctx())
+                                        .finish(app)
                                         .height_range(100.0..)
                                         .width_range(100.0..),
                                 ],
@@ -200,7 +203,7 @@ fn main() {
                                 text(id!(), format!("Error: {error}"))
                                     .font_size(14)
                                     .fill(Color::from_rgb8(255, 0, 0))
-                                    .build(app.ctx())
+                                    .build(app)
                             }
                         },
                     ],

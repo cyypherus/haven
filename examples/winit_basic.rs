@@ -1,5 +1,5 @@
-use haven::*;
 use haven::winit::WinitApp;
+use haven::*;
 
 #[derive(Debug, Clone, Default)]
 struct State {
@@ -8,11 +8,11 @@ struct State {
 
 fn main() {
     WinitApp::new(State::default())
-        .root(
-            Root::new("main", |state: &State, app: &mut RootState| {
+        .pane(
+            PaneConfig::new("main", |state: &State, app: &mut PaneState| {
                 button(id!(), binding!(state, State, button))
                     .text_label("Hello from Haven")
-                    .build(app.ctx())
+                    .build(app)
                     .height(50.)
                     .width(200.)
             })

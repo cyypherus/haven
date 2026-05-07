@@ -1,4 +1,4 @@
-use crate::{Key, Modifiers, NamedKey, Redraw, Root, RootEffect, RootRuntime, ScrollDelta};
+use crate::{Key, Modifiers, NamedKey, Pane, PaneConfig, PaneEffect, Redraw, ScrollDelta};
 use std::collections::HashMap;
 use std::sync::Arc;
 use vello_svg::vello::util::{RenderContext, RenderSurface};
@@ -73,9 +73,9 @@ enum WinitEvent {
 
 pub struct WinitApp<State> {
     state: Option<State>,
-    roots: HashMap<&'static str, Root<State>>,
+    panes: HashMap<&'static str, PaneConfig<State>>,
     windows: HashMap<WindowId, WinitSurface<State>>,
-    root_windows: HashMap<&'static str, WindowId>,
+    pane_windows: HashMap<&'static str, WindowId>,
     render_context: RenderContext,
     renderers: Vec<Option<Renderer>>,
     proxy: Option<EventLoopProxy<WinitEvent>>,
@@ -84,24 +84,24 @@ pub struct WinitApp<State> {
 struct WinitSurface<State> {
     surface: RenderSurface<'static>,
     window: Arc<WinitWindow>,
-    root: RootRuntime<State>,
+    pane: Pane<State>,
 }
 
 impl<State: Clone + 'static> WinitApp<State> {
     pub fn new(state: State) -> Self {
         Self {
             state: Some(state),
-            roots: HashMap::new(),
+            panes: HashMap::new(),
             windows: HashMap::new(),
-            root_windows: HashMap::new(),
+            pane_windows: HashMap::new(),
             render_context: RenderContext::new(),
             renderers: Vec::new(),
             proxy: None,
         }
     }
 
-    pub fn root(mut self, root: Root<State>) -> Self {
-        self.roots.insert(root.name(), root);
+    pub fn pane(mut self, pane: PaneConfig<State>) -> Self {
+        self.panes.insert(pane.name(), pane);
         self
     }
 
@@ -114,14 +114,14 @@ impl<State: Clone + 'static> WinitApp<State> {
     }
 
     fn create_window(&mut self, event_loop: &ActiveEventLoop, name: &'static str) {
-        if let Some(window_id) = self.root_windows.get(name).copied()
+        if let Some(window_id) = self.pane_windows.get(name).copied()
             && let Some(surface) = self.windows.get(&window_id)
         {
             surface.window.focus_window();
             return;
         }
 
-        let Some(config) = self.roots.get(name).cloned() else {
+        let Some(config) = self.panes.get(name).cloned() else {
             return;
         };
 
@@ -210,18 +210,30 @@ impl<State: Clone + 'static> WinitApp<State> {
             .as_ref()
             .expect("state must exist while creating windows")
             .clone();
-        let root_name = config.name();
-        let root = config.build(state, redraw);
-        self.root_windows.insert(root_name, window_id);
-        self.windows.insert(window_id, WinitSurface { surface, window, root });
+        let pane_name = config.name();
+        let pane = config.build(state, redraw);
+        self.pane_windows.insert(pane_name, window_id);
+        self.windows.insert(
+            window_id,
+            WinitSurface {
+                surface,
+                window,
+                pane,
+            },
+        );
     }
 
-    fn apply_effects(&mut self, event_loop: &ActiveEventLoop, window_id: WindowId, effects: Vec<RootEffect>) {
+    fn apply_effects(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        window_id: WindowId,
+        effects: Vec<PaneEffect>,
+    ) {
         for effect in effects {
             match effect {
-                RootEffect::Open(name) => self.create_window(event_loop, name),
-                RootEffect::Close => self.close_window(event_loop, window_id),
-                RootEffect::Redraw => {
+                PaneEffect::Open(name) => self.create_window(event_loop, name),
+                PaneEffect::Close => self.close_window(event_loop, window_id),
+                PaneEffect::Redraw => {
                     if let Some(surface) = self.windows.get(&window_id) {
                         surface.window.request_redraw();
                     }
@@ -232,16 +244,16 @@ impl<State: Clone + 'static> WinitApp<State> {
 
     fn close_window(&mut self, event_loop: &ActiveEventLoop, window_id: WindowId) {
         if let Some(surface) = self.windows.remove(&window_id) {
-            let name = surface.root.name();
-            surface.root.close();
-            self.root_windows.remove(name);
+            let name = surface.pane.name();
+            surface.pane.close();
+            self.pane_windows.remove(name);
         }
         if self.windows.is_empty() {
             event_loop.exit();
         }
     }
 
-    fn redraw(&mut self, window_id: WindowId) -> Vec<RootEffect> {
+    fn redraw(&mut self, window_id: WindowId) -> Vec<PaneEffect> {
         let Some(surface) = self.windows.get_mut(&window_id) else {
             return Vec::new();
         };
@@ -255,12 +267,12 @@ impl<State: Clone + 'static> WinitApp<State> {
         }
 
         let effects = surface
-            .root
+            .pane
             .redraw(width, height, surface.window.scale_factor());
 
         let device_handle = &self.render_context.devices[surface.surface.dev_id];
         let render_params = vello_svg::vello::RenderParams {
-            base_color: surface.root.base_color(),
+            base_color: surface.pane.base_color(),
             width,
             height,
             antialiasing_method: vello_svg::vello::AaConfig::Msaa8,
@@ -274,7 +286,7 @@ impl<State: Clone + 'static> WinitApp<State> {
             .render_to_texture(
                 &device_handle.device,
                 &device_handle.queue,
-                surface.root.scene(),
+                surface.pane.scene(),
                 &surface.surface.target_view,
                 &render_params,
             )
@@ -302,19 +314,19 @@ impl<State: Clone + 'static> WinitApp<State> {
         );
         device_handle.queue.submit([encoder.finish()]);
         surface_texture.present();
-        surface.root.reset_scene();
+        surface.pane.reset_scene();
         effects
     }
 }
 
 impl<State: Clone + 'static> ApplicationHandler<WinitEvent> for WinitApp<State> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        let roots: Vec<_> = self
-            .roots
+        let panes: Vec<_> = self
+            .panes
             .iter()
-            .filter_map(|(name, root)| root.open_at_start_value().then_some(*name))
+            .filter_map(|(name, pane)| pane.open_at_start_value().then_some(*name))
             .collect();
-        for name in roots {
+        for name in panes {
             self.create_window(event_loop, name);
         }
     }
@@ -346,13 +358,17 @@ impl<State: Clone + 'static> ApplicationHandler<WinitEvent> for WinitApp<State> 
                 };
                 self.windows
                     .get_mut(&window_id)
-                    .map(|surface| surface.root.key_pressed(key))
+                    .map(|surface| surface.pane.key_pressed(key))
                     .unwrap_or_default()
             }
             winit::event::WindowEvent::CursorMoved { position, .. } => self
                 .windows
                 .get_mut(&window_id)
-                .map(|surface| surface.root.move_to(vello_svg::vello::kurbo::Point::new(position.x, position.y)))
+                .map(|surface| {
+                    surface
+                        .pane
+                        .move_to(vello_svg::vello::kurbo::Point::new(position.x, position.y))
+                })
                 .unwrap_or_default(),
             winit::event::WindowEvent::MouseInput {
                 state,
@@ -362,8 +378,8 @@ impl<State: Clone + 'static> ApplicationHandler<WinitEvent> for WinitApp<State> 
                 .windows
                 .get_mut(&window_id)
                 .map(|surface| match state {
-                    winit::event::ElementState::Pressed => surface.root.press_current(),
-                    winit::event::ElementState::Released => surface.root.release_current(),
+                    winit::event::ElementState::Pressed => surface.pane.press_current(),
+                    winit::event::ElementState::Released => surface.pane.release_current(),
                 })
                 .unwrap_or_default(),
             winit::event::WindowEvent::MouseInput { .. } => Vec::new(),
@@ -371,12 +387,12 @@ impl<State: Clone + 'static> ApplicationHandler<WinitEvent> for WinitApp<State> 
             winit::event::WindowEvent::CursorLeft { .. } => self
                 .windows
                 .get_mut(&window_id)
-                .map(|surface| surface.root.exit())
+                .map(|surface| surface.pane.exit())
                 .unwrap_or_default(),
             winit::event::WindowEvent::MouseWheel { delta, .. } => self
                 .windows
                 .get_mut(&window_id)
-                .map(|surface| surface.root.scroll(scroll_delta(delta)))
+                .map(|surface| surface.pane.scroll(scroll_delta(delta)))
                 .unwrap_or_default(),
             winit::event::WindowEvent::Resized(_) => Vec::new(),
             winit::event::WindowEvent::HoveredFile(_) => Vec::new(),
@@ -400,12 +416,12 @@ impl<State: Clone + 'static> ApplicationHandler<WinitEvent> for WinitApp<State> 
             winit::event::WindowEvent::ScaleFactorChanged { scale_factor, .. } => self
                 .windows
                 .get_mut(&window_id)
-                .map(|surface| surface.root.scale_factor_changed(scale_factor))
+                .map(|surface| surface.pane.scale_factor_changed(scale_factor))
                 .unwrap_or_default(),
             winit::event::WindowEvent::ModifiersChanged(modifiers) => self
                 .windows
                 .get_mut(&window_id)
-                .map(|surface| surface.root.modifiers_changed(self::modifiers(modifiers)))
+                .map(|surface| surface.pane.modifiers_changed(self::modifiers(modifiers)))
                 .unwrap_or_default(),
             winit::event::WindowEvent::AxisMotion { .. }
             | winit::event::WindowEvent::ThemeChanged(_)
@@ -433,4 +449,3 @@ fn scroll_delta(delta: MouseScrollDelta) -> ScrollDelta {
         },
     }
 }
-

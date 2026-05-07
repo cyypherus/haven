@@ -1,4 +1,4 @@
-use crate::app::{RootCtx, RootState, View};
+use crate::app::{PaneState, View};
 
 use crate::DEFAULT_CORNER_ROUNDING;
 use crate::view::{Drawable, DrawableType};
@@ -87,13 +87,16 @@ impl Image {
         }
     }
 
-    pub fn finish<State: 'static>(self, ctx: &mut RootCtx) -> Layout<'static, View<State>, RootCtx> {
+    pub fn finish<State: 'static>(
+        self,
+        ctx: &mut PaneState,
+    ) -> Layout<'static, View<State>, PaneState> {
         self.view().finish(ctx)
     }
 }
 
 impl Image {
-    pub(crate) fn draw(&mut self, area: Area, scene: &mut Scene, app: &mut RootState) {
+    pub(crate) fn draw(&mut self, area: Area, scene: &mut Scene, app: &mut PaneState) {
         let cache_key = if let Some(ref image_id) = self.image_id {
             use std::collections::hash_map::DefaultHasher;
             use std::hash::{Hash, Hasher};
@@ -125,15 +128,15 @@ impl Image {
                 .insert(cache_key, (image_scene, width, height));
         }
 
-        let RootState { image_scenes, .. } = app;
+        let PaneState { image_scenes, .. } = app;
 
         if let Some((image_scene, width, height)) = image_scenes.get(&cache_key) {
             let width = *width as f64;
             let height = *height as f64;
-            let area_x = area.x as f64 * app.app_context.scale_factor;
-            let area_y = area.y as f64 * app.app_context.scale_factor;
-            let area_width = area.width as f64 * app.app_context.scale_factor;
-            let area_height = area.height as f64 * app.app_context.scale_factor;
+            let area_x = area.x as f64 * app.scale_factor;
+            let area_y = area.y as f64 * app.scale_factor;
+            let area_width = area.width as f64 * app.scale_factor;
+            let area_height = area.height as f64 * app.scale_factor;
             let mut scale = 1.;
 
             let transform = if self.unlocked_aspect_ratio {

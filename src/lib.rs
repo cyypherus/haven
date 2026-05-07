@@ -22,11 +22,8 @@ mod toggle;
 mod view;
 pub mod winit;
 
-pub use app::{Callback, Redraw, RedrawTrigger, Root, RootCtx, RootEffect, RootState, View};
-pub(crate) use app::RootRuntime;
-pub type AppCtx = RootCtx;
-pub type AppState = RootState;
-pub type AppEffect = RootEffect;
+pub(crate) use app::Pane;
+pub use app::{Callback, PaneConfig, PaneEffect, PaneState, Redraw, RedrawTrigger, View};
 pub use backer::{Area, Layout, nodes::*};
 pub use background_style::BrushSource;
 pub use button::*;

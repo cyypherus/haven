@@ -1,7 +1,7 @@
 use crate::DEFAULT_FG;
 use crate::{
     Binding, ClickState, DEFAULT_CORNER_ROUNDING, DEFAULT_FONT_SIZE, DEFAULT_PURP, adjust_brush,
-    app::{RootCtx, RootState, View},
+    app::{PaneState, View},
     rect,
 };
 use backer::{Layout, nodes::stack};
@@ -16,14 +16,14 @@ pub struct ButtonState {
 }
 
 type ViewFn<'a, State> =
-    Rc<dyn Fn(ButtonState, &mut RootCtx) -> Layout<'a, View<State>, RootCtx> + 'a>;
+    Rc<dyn Fn(ButtonState, &mut PaneState) -> Layout<'a, View<State>, PaneState> + 'a>;
 
 pub struct Button<'a, State> {
     id: u64,
     surface: Option<ViewFn<'a, State>>,
     label: Option<ViewFn<'a, State>>,
     text_label: Option<String>,
-    on_click: Option<Rc<dyn Fn(&mut State, &mut RootState)>>,
+    on_click: Option<Rc<dyn Fn(&mut State, &mut PaneState)>>,
     state: ButtonState,
     binding: Binding<State, ButtonState>,
 }
@@ -46,14 +46,14 @@ pub fn button<'a, State>(
 impl<'a, State> Button<'a, State> {
     pub fn surface(
         mut self,
-        f: impl Fn(ButtonState, &mut RootCtx) -> Layout<'a, View<State>, RootCtx> + 'a,
+        f: impl Fn(ButtonState, &mut PaneState) -> Layout<'a, View<State>, PaneState> + 'a,
     ) -> Self {
         self.surface = Some(Rc::new(f));
         self
     }
     pub fn label(
         mut self,
-        f: impl Fn(ButtonState, &mut RootCtx) -> Layout<'a, View<State>, RootCtx> + 'a,
+        f: impl Fn(ButtonState, &mut PaneState) -> Layout<'a, View<State>, PaneState> + 'a,
     ) -> Self {
         self.label = Some(Rc::new(f));
         self
@@ -62,11 +62,11 @@ impl<'a, State> Button<'a, State> {
         self.text_label = Some(text_label.as_ref().to_string());
         self
     }
-    pub fn on_click(mut self, on_click: impl Fn(&mut State, &mut RootState) + 'static) -> Self {
+    pub fn on_click(mut self, on_click: impl Fn(&mut State, &mut PaneState) + 'static) -> Self {
         self.on_click = Some(Rc::new(on_click));
         self
     }
-    pub fn build(self, ctx: &mut RootCtx) -> Layout<'a, View<State>, RootCtx>
+    pub fn build(self, ctx: &mut PaneState) -> Layout<'a, View<State>, PaneState>
     where
         State: 'static,
     {
@@ -111,12 +111,13 @@ impl<'a, State> Button<'a, State> {
                 .view()
                 .on_hover({
                     let binding = self.binding.clone();
-                    move |state, _app: &mut RootState, h| binding.update(state, |s| s.hovered = h)
+                    move |state, _app: &mut PaneState, h| binding.update(state, |s| s.hovered = h)
                 })
                 .on_click({
                     let binding = self.binding.clone();
                     let on_click = self.on_click.clone();
-                    move |state: &mut State, app: &mut RootState, click_state, _| match click_state {
+                    move |state: &mut State, app: &mut PaneState, click_state, _| match click_state
+                    {
                         ClickState::Started => binding.update(state, |s| s.depressed = true),
                         ClickState::Cancelled => binding.update(state, |s| s.depressed = false),
                         ClickState::Completed => {

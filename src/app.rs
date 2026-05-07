@@ -21,15 +21,15 @@ use std::time::Duration;
 use tokio::runtime::Runtime;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
+use vello_svg::vello::Scene;
 use vello_svg::vello::kurbo::{Affine, BezPath};
 use vello_svg::vello::peniko::{self, Brush, Color, Fill};
-use vello_svg::vello::Scene;
 
 type FontEntry = (Arc<Vec<u8>>, Option<String>);
 
-type ViewFn<State> = for<'a> fn(&'a State, &mut RootState) -> Layout<'a, View<State>, RootCtx>;
+type ViewFn<State> = for<'a> fn(&'a State, &mut PaneState) -> Layout<'a, View<State>, PaneState>;
 
-pub struct Root<State> {
+pub struct PaneConfig<State> {
     name: &'static str,
     view: ViewFn<State>,
     inner_size: Option<(u32, u32)>,
@@ -39,13 +39,13 @@ pub struct Root<State> {
     background: Option<Color>,
     decorations: Option<bool>,
     open_at_start: bool,
-    on_frame: fn(&mut State, &mut RootState) -> (),
-    on_start: fn(&mut State, &mut RootState) -> (),
-    on_exit: fn(&mut State, &mut RootState) -> (),
+    on_frame: fn(&mut State, &mut PaneState) -> (),
+    on_start: fn(&mut State, &mut PaneState) -> (),
+    on_exit: fn(&mut State, &mut PaneState) -> (),
     custom_fonts: Vec<FontEntry>,
 }
 
-impl<State> Clone for Root<State> {
+impl<State> Clone for PaneConfig<State> {
     fn clone(&self) -> Self {
         Self {
             name: self.name,
@@ -65,17 +65,23 @@ impl<State> Clone for Root<State> {
     }
 }
 
-pub(crate) struct RootRuntime<State> {
-    surface: RootSurface<State>,
-    runtime: RootState,
+pub(crate) struct Pane<State> {
+    name: &'static str,
+    base_color: Color,
+    view: ViewFn<State>,
+    scene: Scene,
+    gesture_handlers: Vec<(u64, Area, GestureHandler<State, PaneState>)>,
+    cursor_position: Option<Point>,
+    gesture_state: GestureState,
+    pane_state: PaneState,
     state: State,
-    on_frame: fn(&mut State, &mut RootState) -> (),
-    on_start: fn(&mut State, &mut RootState) -> (),
-    on_exit: fn(&mut State, &mut RootState) -> (),
+    on_frame: fn(&mut State, &mut PaneState) -> (),
+    on_start: fn(&mut State, &mut PaneState) -> (),
+    on_exit: fn(&mut State, &mut PaneState) -> (),
     started: bool,
 }
 
-impl<State> Root<State> {
+impl<State> PaneConfig<State> {
     pub fn new(name: &'static str, view: ViewFn<State>) -> Self {
         Self {
             name,
@@ -135,17 +141,17 @@ impl<State> Root<State> {
         self
     }
 
-    pub fn on_frame(mut self, on_frame: fn(&mut State, &mut RootState) -> ()) -> Self {
+    pub fn on_frame(mut self, on_frame: fn(&mut State, &mut PaneState) -> ()) -> Self {
         self.on_frame = on_frame;
         self
     }
 
-    pub fn on_start(mut self, on_start: fn(&mut State, &mut RootState) -> ()) -> Self {
+    pub fn on_start(mut self, on_start: fn(&mut State, &mut PaneState) -> ()) -> Self {
         self.on_start = on_start;
         self
     }
 
-    pub fn on_exit(mut self, on_exit: fn(&mut State, &mut RootState) -> ()) -> Self {
+    pub fn on_exit(mut self, on_exit: fn(&mut State, &mut PaneState) -> ()) -> Self {
         self.on_exit = on_exit;
         self
     }
@@ -173,11 +179,11 @@ impl<State> Root<State> {
         self.background
     }
 
-    pub(crate) fn build(self, state: State, redraw: Redraw) -> RootRuntime<State>
+    pub(crate) fn build(self, state: State, redraw: Redraw) -> Pane<State>
     where
         State: 'static,
     {
-        RootRuntime::new(state, self, redraw)
+        Pane::new(state, self, redraw)
     }
 
     pub fn decorations_value(&self) -> Option<bool> {
@@ -187,16 +193,6 @@ impl<State> Root<State> {
     pub fn open_at_start_value(&self) -> bool {
         self.open_at_start
     }
-}
-
-pub struct RootSurface<State> {
-    pub(crate) name: &'static str,
-    pub(crate) base_color: Color,
-    pub(crate) view: ViewFn<State>,
-    pub(crate) scene: Scene,
-    pub(crate) gesture_handlers: Vec<(u64, Area, GestureHandler<State, RootState>)>,
-    pub(crate) cursor_position: Option<Point>,
-    pub(crate) gesture_state: GestureState,
 }
 
 pub(crate) type LayoutCache = HashMap<
@@ -213,7 +209,14 @@ pub(crate) type LayoutCache = HashMap<
     )>,
 >;
 
-pub struct RootCtx {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PaneEffect {
+    Open(&'static str),
+    Close,
+    Redraw,
+}
+
+pub struct PaneState {
     pub(crate) text_layout: TextLayout,
     pub(crate) font_cx: FontContext,
     pub(crate) layout_cx: LayoutContext<Brush>,
@@ -222,33 +225,21 @@ pub struct RootCtx {
     pub(crate) editor_areas: HashMap<u64, Area>,
     pub(crate) scrollers: HashMap<u64, crate::scroller::ScrollerState>,
     pub(crate) needs_redraw: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RootEffect {
-    Open(&'static str),
-    Close,
-    Redraw,
-}
-
-pub struct RootState {
-    pub(crate) runtime: Runtime,
+    pub(crate) task_runtime: Runtime,
     pub(crate) cancellation_token: CancellationToken,
     pub(crate) task_tracker: TaskTracker,
-    pub(crate) app_context: RootCtx,
-    pub(crate) layout_cache: LayoutCache,
     pub(crate) svg_scenes: HashMap<String, (Scene, f32, f32)>,
     pub(crate) image_scenes: HashMap<u64, (Scene, f32, f32)>,
     pub(crate) modifiers: Option<Modifiers>,
     pub(crate) redraw: Redraw,
-    pub(crate) effects: Vec<RootEffect>,
+    pub(crate) effects: Vec<PaneEffect>,
     pub(crate) cursor_position: Option<Point>,
 }
 
 pub enum View<State> {
     Draw {
         view: Box<DrawableType>,
-        gesture_handlers: Vec<GestureHandler<State, RootState>>,
+        gesture_handlers: Vec<GestureHandler<State, PaneState>>,
         area: Area,
     },
     PushLayer {
@@ -281,22 +272,18 @@ impl Clone for EditState {
     }
 }
 
-impl RootState {
+impl PaneState {
     pub fn open(&mut self, config: &'static str) {
-        self.effects.push(RootEffect::Open(config));
+        self.effects.push(PaneEffect::Open(config));
     }
 
     pub fn close(&mut self) {
-        self.effects.push(RootEffect::Close);
-    }
-
-    pub fn ctx(&mut self) -> &mut RootCtx {
-        &mut self.app_context
+        self.effects.push(PaneEffect::Close);
     }
 
     pub fn end_editing(&mut self) {
-        if self.app_context.editor.is_some() {
-            self.app_context.editor = None;
+        if self.editor.is_some() {
+            self.editor = None;
         }
     }
 
@@ -315,10 +302,10 @@ impl RootState {
         highlight_fill: Brush,
         wrap: bool,
     ) {
-        if self.app_context.editor.is_some() {
+        if self.editor.is_some() {
             return;
         }
-        let Some(area) = self.app_context.editor_areas.get(&id) else {
+        let Some(area) = self.editor_areas.get(&id) else {
             return;
         };
         let mut editor = PlainEditor::new(font_size);
@@ -353,11 +340,11 @@ impl RootState {
         if let Some(pos) = self.cursor_position {
             editor.mouse_moved(
                 Point::new(pos.x - area.x as f64, pos.y - area.y as f64),
-                &mut self.app_context.layout_cx,
-                &mut self.app_context.font_cx,
+                &mut self.layout_cx,
+                &mut self.font_cx,
             );
         }
-        self.app_context.editor = Some(EditState {
+        self.editor = Some(EditState {
             id,
             editor,
             editing: true,
@@ -367,7 +354,7 @@ impl RootState {
     }
 
     pub fn spawn(&self, task: impl std::future::Future<Output = ()> + Send + 'static) {
-        self.task_tracker.spawn_on(task, self.runtime.handle());
+        self.task_tracker.spawn_on(task, self.task_runtime.handle());
     }
 
     pub fn redraw_trigger(&self) -> RedrawTrigger {
@@ -375,10 +362,9 @@ impl RootState {
     }
 
     pub fn redraw(&mut self) {
-        self.effects.push(RootEffect::Redraw);
+        self.effects.push(PaneEffect::Redraw);
         self.redraw.request();
     }
-
 }
 
 pub struct Redraw {
@@ -450,8 +436,8 @@ impl RedrawTrigger {
     }
 }
 
-impl<State: 'static> RootRuntime<State> {
-    fn new(state: State, config: Root<State>, redraw: Redraw) -> Self {
+impl<State: 'static> Pane<State> {
+    fn new(state: State, config: PaneConfig<State>, redraw: Redraw) -> Self {
         let mut font_cx = FontContext::new();
 
         font_cx
@@ -468,7 +454,7 @@ impl<State: 'static> RootRuntime<State> {
             );
         }
 
-        let runtime = Runtime::new().expect("Failed to create runtime");
+        let task_runtime = Runtime::new().expect("Failed to create task runtime");
         let layout_cache = HashMap::new();
         let layout_cx = LayoutContext::new();
         let font_cx_inner = FontContext::new();
@@ -479,30 +465,25 @@ impl<State: 'static> RootRuntime<State> {
         };
 
         Self {
-            surface: RootSurface {
-                scene: Scene::new(),
-                name: config.name,
-                base_color,
-                view: config.view,
-                gesture_handlers: Vec::new(),
-                cursor_position: None,
-                gesture_state: GestureState::None,
-            },
-            runtime: RootState {
-                runtime,
+            scene: Scene::new(),
+            name: config.name,
+            base_color,
+            view: config.view,
+            gesture_handlers: Vec::new(),
+            cursor_position: None,
+            gesture_state: GestureState::None,
+            pane_state: PaneState {
+                task_runtime,
                 cancellation_token: CancellationToken::new(),
                 task_tracker: TaskTracker::new(),
-                app_context: RootCtx {
-                    text_layout: TextLayout::new(layout_cache, font_cx_inner, layout_cx),
-                    font_cx: FontContext::new(),
-                    layout_cx: LayoutContext::new(),
-                    scale_factor: 1.,
-                    editor: None,
-                    editor_areas: HashMap::new(),
-                    scrollers: HashMap::new(),
-                    needs_redraw: false,
-                },
-                layout_cache: HashMap::new(),
+                text_layout: TextLayout::new(layout_cache, font_cx_inner, layout_cx),
+                font_cx: FontContext::new(),
+                layout_cx: LayoutContext::new(),
+                scale_factor: 1.,
+                editor: None,
+                editor_areas: HashMap::new(),
+                scrollers: HashMap::new(),
+                needs_redraw: false,
                 image_scenes: HashMap::new(),
                 svg_scenes: HashMap::new(),
                 modifiers: None,
@@ -519,74 +500,73 @@ impl<State: 'static> RootRuntime<State> {
     }
 
     pub(crate) fn name(&self) -> &'static str {
-        self.surface.name
+        self.name
     }
 
     pub(crate) fn base_color(&self) -> Color {
-        self.surface.base_color
+        self.base_color
     }
 
     pub(crate) fn scene(&self) -> &Scene {
-        &self.surface.scene
+        &self.scene
     }
 
     pub(crate) fn reset_scene(&mut self) {
-        self.surface.scene.reset();
+        self.scene.reset();
     }
 
     pub(crate) fn close(mut self) {
-        (self.on_exit)(&mut self.state, &mut self.runtime);
-        self.runtime.cancellation_token.cancel();
-        self.runtime.task_tracker.close();
-        self.runtime.runtime.block_on(async {
-            tokio::time::timeout(Duration::from_secs(1), self.runtime.task_tracker.wait())
+        (self.on_exit)(&mut self.state, &mut self.pane_state);
+        self.pane_state.cancellation_token.cancel();
+        self.pane_state.task_tracker.close();
+        self.pane_state.task_runtime.block_on(async {
+            tokio::time::timeout(Duration::from_secs(1), self.pane_state.task_tracker.wait())
                 .await
                 .ok();
         });
     }
 
-    pub(crate) fn redraw(&mut self, width: u32, height: u32, scale_factor: f64) -> Vec<RootEffect> {
+    pub(crate) fn redraw(&mut self, width: u32, height: u32, scale_factor: f64) -> Vec<PaneEffect> {
         if !self.started {
             self.started = true;
-            (self.on_start)(&mut self.state, &mut self.runtime);
+            (self.on_start)(&mut self.state, &mut self.pane_state);
         }
 
-        self.surface.gesture_handlers.clear();
-        self.runtime.app_context.scale_factor = scale_factor;
+        self.gesture_handlers.clear();
+        self.pane_state.scale_factor = scale_factor;
 
-        let view = self.surface.view;
+        let view = self.view;
         let draw_items = {
-            let mut layout = view(&self.state, &mut self.runtime);
+            let mut layout = view(&self.state, &mut self.pane_state);
             layout.draw(
                 Area {
                     x: 0.,
                     y: 0.,
-                    width: ((width as f64) / self.runtime.app_context.scale_factor) as f32,
-                    height: ((height as f64) / self.runtime.app_context.scale_factor) as f32,
+                    width: ((width as f64) / self.pane_state.scale_factor) as f32,
+                    height: ((height as f64) / self.pane_state.scale_factor) as f32,
                 },
-                &mut self.runtime.app_context,
+                &mut self.pane_state,
             )
         };
 
-        let continue_animating = std::mem::take(&mut self.runtime.app_context.needs_redraw);
+        let continue_animating = std::mem::take(&mut self.pane_state.needs_redraw);
 
-        let ws = &mut self.surface;
         for item in draw_items {
             match item {
                 View::PushLayer { path, blend, alpha } => {
-                    ws.scene.push_layer(
+                    self.scene.push_layer(
                         Fill::NonZero,
                         blend,
                         alpha,
-                        Affine::scale(self.runtime.app_context.scale_factor),
+                        Affine::scale(self.pane_state.scale_factor),
                         &path,
                     );
                 }
                 View::PopLayer => {
-                    ws.scene.pop_layer();
+                    self.scene.pop_layer();
                 }
                 View::EditorArea(id, area) => {
-                    self.runtime.app_context.editor_areas.insert(id, area);
+                    self.pane_state.editor_areas.insert(id, area);
                 }
                 View::Draw {
                     mut view,
@@ -596,7 +576,7 @@ impl<State: 'static> RootRuntime<State> {
                     let id = view.id();
                     let draw_area = area;
 
-                    ws.gesture_handlers.extend(
+                    self.gesture_handlers.extend(
                         gesture_handlers
                             .into_iter()
                             .map(|handler| (id, draw_area, handler)),
@@ -604,22 +584,20 @@ impl<State: 'static> RootRuntime<State> {
 
                     match &mut *view {
                         DrawableType::Text(v) => {
-                            v.draw(draw_area, area, &mut ws.scene, &mut self.runtime)
+                            v.draw(draw_area, area, &mut self.scene, &mut self.pane_state)
                         }
                         DrawableType::Layout(boxed) => {
                             let (layout, transform) = boxed.as_mut();
-                            draw_layout(*transform, layout, &mut ws.scene)
+                            draw_layout(*transform, layout, &mut self.scene)
                         }
-                        DrawableType::Path(v) => v.draw(
-                            &mut ws.scene,
-                            draw_area,
-                            self.runtime.app_context.scale_factor,
-                        ),
+                        DrawableType::Path(v) => {
+                            v.draw(&mut self.scene, draw_area, self.pane_state.scale_factor)
+                        }
                         DrawableType::Svg(v) => {
-                            v.draw(draw_area, &mut ws.scene, &mut self.runtime)
+                            v.draw(draw_area, &mut self.scene, &mut self.pane_state)
                         }
                         DrawableType::Image(v) => {
-                            v.draw(draw_area, &mut ws.scene, &mut self.runtime)
+                            v.draw(draw_area, &mut self.scene, &mut self.pane_state)
                         }
                     }
                 }
@@ -627,24 +605,24 @@ impl<State: 'static> RootRuntime<State> {
             }
         }
 
-        (self.on_frame)(&mut self.state, &mut self.runtime);
+        (self.on_frame)(&mut self.state, &mut self.pane_state);
 
         if continue_animating {
-            self.runtime.redraw.request();
+            self.pane_state.redraw.request();
         }
         self.take_effects()
     }
 }
-impl<State: 'static> RootRuntime<State> {
-    fn gesture_handlers(&self) -> Vec<(u64, Area, GestureHandler<State, RootState>)> {
-        self.surface.gesture_handlers.clone()
+impl<State: 'static> Pane<State> {
+    fn gesture_handlers(&self) -> Vec<(u64, Area, GestureHandler<State, PaneState>)> {
+        self.gesture_handlers.clone()
     }
 
-    fn take_effects(&mut self) -> Vec<RootEffect> {
-        std::mem::take(&mut self.runtime.effects)
+    fn take_effects(&mut self) -> Vec<PaneEffect> {
+        std::mem::take(&mut self.pane_state.effects)
     }
 
-    pub(crate) fn key_pressed(&mut self, key: Key) -> Vec<RootEffect> {
+    pub(crate) fn key_pressed(&mut self, key: Key) -> Vec<PaneEffect> {
         let mut needs_redraw = false;
         for (_id, _area, handler) in self.gesture_handlers() {
             if let Some(ref interaction_handler) = handler.interaction_handler
@@ -653,31 +631,31 @@ impl<State: 'static> RootRuntime<State> {
                 needs_redraw = true;
                 interaction_handler(
                     &mut self.state,
-                    &mut self.runtime,
+                    &mut self.pane_state,
                     Interaction::Key(key.clone()),
                 );
             }
         }
         if needs_redraw {
-            self.runtime.redraw.request();
+            self.pane_state.redraw.request();
         }
         self.take_effects()
     }
 
-    pub(crate) fn modifiers_changed(&mut self, modifiers: Modifiers) -> Vec<RootEffect> {
-        self.runtime.modifiers = Some(modifiers);
+    pub(crate) fn modifiers_changed(&mut self, modifiers: Modifiers) -> Vec<PaneEffect> {
+        self.pane_state.modifiers = Some(modifiers);
         self.take_effects()
     }
 
-    pub(crate) fn scale_factor_changed(&mut self, scale_factor: f64) -> Vec<RootEffect> {
-        self.runtime.app_context.scale_factor = scale_factor;
-        self.runtime.layout_cache.clear();
-        self.runtime.redraw.request();
+    pub(crate) fn scale_factor_changed(&mut self, scale_factor: f64) -> Vec<PaneEffect> {
+        self.pane_state.scale_factor = scale_factor;
+        self.pane_state.text_layout.layout_cache.clear();
+        self.pane_state.redraw.request();
         self.take_effects()
     }
 
-    pub(crate) fn exit(&mut self) -> Vec<RootEffect> {
-        self.surface.cursor_position = None;
+    pub(crate) fn exit(&mut self) -> Vec<PaneEffect> {
+        self.cursor_position = None;
         let mut needs_redraw = false;
         for (_, _, gh) in self.gesture_handlers() {
             if gh.interaction_type.hover
@@ -686,50 +664,48 @@ impl<State: 'static> RootRuntime<State> {
                 needs_redraw = true;
                 on_hover(
                     &mut self.state,
-                    &mut self.runtime,
+                    &mut self.pane_state,
                     Interaction::Hover(false),
                 );
             }
         }
         if needs_redraw {
-            self.runtime.redraw.request();
+            self.pane_state.redraw.request();
         }
         self.take_effects()
     }
 
-    pub(crate) fn move_to(&mut self, pos: Point) -> Vec<RootEffect> {
+    pub(crate) fn move_to(&mut self, pos: Point) -> Vec<PaneEffect> {
         let pos = Point::new(
-            pos.x / self.runtime.app_context.scale_factor,
-            pos.y / self.runtime.app_context.scale_factor,
+            pos.x / self.pane_state.scale_factor,
+            pos.y / self.pane_state.scale_factor,
         );
         let mut needs_redraw = false;
-        self.surface.cursor_position = Some(pos);
-        self.runtime.cursor_position = Some(pos);
-        if let Some(EditState { id, editor, .. }) = self.runtime.app_context.editor.as_mut()
-            && let Some(area) = self.runtime.app_context.editor_areas.get(id).copied()
+        self.cursor_position = Some(pos);
+        self.pane_state.cursor_position = Some(pos);
+        if let Some(EditState { id, editor, .. }) = self.pane_state.editor.as_mut()
+            && let Some(area) = self.pane_state.editor_areas.get(id).copied()
         {
             needs_redraw = true;
             editor.mouse_moved(
                 Point::new(pos.x - area.x as f64, pos.y - area.y as f64),
-                &mut self.runtime.app_context.layout_cx,
-                &mut self.runtime.app_context.font_cx,
+                &mut self.pane_state.layout_cx,
+                &mut self.pane_state.font_cx,
             );
         }
-        self.gesture_handlers()
-            .iter()
-            .for_each(|(_, area, gh)| {
-                if gh.interaction_type.hover
-                    && let Some(ref on_hover) = gh.interaction_handler
-                {
-                    needs_redraw = true;
-                    (on_hover)(
-                        &mut self.state,
-                        &mut self.runtime,
-                        Interaction::Hover(area_contains(area, pos)),
-                    );
-                }
-            });
-        let gesture_state = self.surface.gesture_state;
+        self.gesture_handlers().iter().for_each(|(_, area, gh)| {
+            if gh.interaction_type.hover
+                && let Some(ref on_hover) = gh.interaction_handler
+            {
+                needs_redraw = true;
+                (on_hover)(
+                    &mut self.state,
+                    &mut self.pane_state,
+                    Interaction::Hover(area_contains(area, pos)),
+                );
+            }
+        });
+        let gesture_state = self.gesture_state;
         if let GestureState::Dragging {
             start,
             last_position,
@@ -749,7 +725,7 @@ impl<State: 'static> RootRuntime<State> {
                     if let Some(handler) = &gh.interaction_handler {
                         (handler)(
                             &mut self.state,
-                            &mut self.runtime,
+                            &mut self.pane_state,
                             Interaction::Drag(DragState::Updated {
                                 start: Point {
                                     x: start.x - area.x as f64,
@@ -767,20 +743,20 @@ impl<State: 'static> RootRuntime<State> {
                         );
                     }
                 });
-            self.surface.gesture_state = GestureState::Dragging {
-                    start,
-                    last_position: pos,
-                    capturer,
-                };
+            self.gesture_state = GestureState::Dragging {
+                start,
+                last_position: pos,
+                capturer,
+            };
         }
         if needs_redraw {
-            self.runtime.redraw.request();
+            self.pane_state.redraw.request();
         }
         self.take_effects()
     }
-    pub(crate) fn press_current(&mut self) -> Vec<RootEffect> {
+    pub(crate) fn press_current(&mut self) -> Vec<PaneEffect> {
         let mut needs_redraw = false;
-        let cursor_position = self.surface.cursor_position;
+        let cursor_position = self.cursor_position;
         if let Some(point) = cursor_position {
             let handlers = self.gesture_handlers();
             let winner = handlers
@@ -812,7 +788,7 @@ impl<State: 'static> RootRuntime<State> {
                 {
                     on_click_outside(
                         &mut self.state,
-                        &mut self.runtime,
+                        &mut self.pane_state,
                         Interaction::ClickOutside(
                             ClickState::Started,
                             ClickLocation::new(point, *area),
@@ -827,7 +803,7 @@ impl<State: 'static> RootRuntime<State> {
                 {
                     on_click(
                         &mut self.state,
-                        &mut self.runtime,
+                        &mut self.pane_state,
                         Interaction::Click(ClickState::Started, ClickLocation::new(point, *area)),
                     );
                 } else if handler.interaction_type.drag
@@ -835,7 +811,7 @@ impl<State: 'static> RootRuntime<State> {
                 {
                     on_drag(
                         &mut self.state,
-                        &mut self.runtime,
+                        &mut self.pane_state,
                         Interaction::Drag(DragState::Began {
                             start: Point {
                                 x: point.x - area.x as f64,
@@ -845,32 +821,29 @@ impl<State: 'static> RootRuntime<State> {
                         }),
                     );
                 }
-                self.surface.gesture_state = GestureState::Dragging {
-                        start: point,
-                        last_position: point,
-                        capturer: *capturer,
-                    };
+                self.gesture_state = GestureState::Dragging {
+                    start: point,
+                    last_position: point,
+                    capturer: *capturer,
+                };
             }
-            if let Some(EditState { editor, .. }) = self.runtime.app_context.editor.as_mut() {
-                editor.mouse_pressed(
-                    &mut self.runtime.app_context.layout_cx,
-                    &mut self.runtime.app_context.font_cx,
-                );
+            if let Some(EditState { editor, .. }) = self.pane_state.editor.as_mut() {
+                editor.mouse_pressed(&mut self.pane_state.layout_cx, &mut self.pane_state.font_cx);
             }
         }
 
         if needs_redraw {
-            self.runtime.redraw.request();
+            self.pane_state.redraw.request();
         }
         self.take_effects()
     }
-    pub(crate) fn release_current(&mut self) -> Vec<RootEffect> {
+    pub(crate) fn release_current(&mut self) -> Vec<PaneEffect> {
         let mut needs_redraw = false;
-        let cursor_position = self.surface.cursor_position;
-        let gesture_state = self.surface.gesture_state;
+        let cursor_position = self.cursor_position;
+        let gesture_state = self.gesture_state;
         if let Some(current) = cursor_position {
-            if let Some(EditState { id, editor, .. }) = self.runtime.app_context.editor.as_mut()
-                && let Some(area) = self.runtime.app_context.editor_areas.get(id)
+            if let Some(EditState { id, editor, .. }) = self.pane_state.editor.as_mut()
+                && let Some(area) = self.pane_state.editor_areas.get(id)
             {
                 editor.mouse_released();
                 needs_redraw = true;
@@ -881,7 +854,7 @@ impl<State: 'static> RootRuntime<State> {
                             _ => false,
                         })
                 {
-                    self.runtime.end_editing();
+                    self.pane_state.end_editing();
                 }
             }
             if let GestureState::Dragging {
@@ -906,7 +879,7 @@ impl<State: 'static> RootRuntime<State> {
                             if area_contains(area, current) {
                                 on_click(
                                     &mut self.state,
-                                    &mut self.runtime,
+                                    &mut self.pane_state,
                                     Interaction::Click(
                                         ClickState::Completed,
                                         ClickLocation::new(current, *area),
@@ -915,7 +888,7 @@ impl<State: 'static> RootRuntime<State> {
                             } else {
                                 on_click(
                                     &mut self.state,
-                                    &mut self.runtime,
+                                    &mut self.pane_state,
                                     Interaction::Click(
                                         ClickState::Cancelled,
                                         ClickLocation::new(current, *area),
@@ -929,7 +902,7 @@ impl<State: 'static> RootRuntime<State> {
                             needs_redraw = true;
                             on_drag(
                                 &mut self.state,
-                                &mut self.runtime,
+                                &mut self.pane_state,
                                 Interaction::Drag(DragState::Completed {
                                     start: Point {
                                         x: start.x - area.x as f64,
@@ -963,7 +936,7 @@ impl<State: 'static> RootRuntime<State> {
                     needs_redraw = true;
                     handler(
                         &mut self.state,
-                        &mut self.runtime,
+                        &mut self.pane_state,
                         Interaction::ClickOutside(
                             ClickState::Completed,
                             ClickLocation::new(current, *area),
@@ -972,17 +945,16 @@ impl<State: 'static> RootRuntime<State> {
                 }
             }
         }
-        self.surface.gesture_state = GestureState::None;
+        self.gesture_state = GestureState::None;
         if needs_redraw {
-            self.runtime.redraw.request();
+            self.pane_state.redraw.request();
         }
         self.take_effects()
-
     }
 
-    pub(crate) fn scroll(&mut self, delta: ScrollDelta) -> Vec<RootEffect> {
+    pub(crate) fn scroll(&mut self, delta: ScrollDelta) -> Vec<PaneEffect> {
         let mut needs_redraw = false;
-        let cursor_position = self.surface.cursor_position;
+        let cursor_position = self.cursor_position;
         if let Some(current) = cursor_position
             && let Some((_, _, handler)) =
                 self.gesture_handlers()
@@ -996,12 +968,12 @@ impl<State: 'static> RootRuntime<State> {
             needs_redraw = true;
             on_scroll(
                 &mut self.state,
-                &mut self.runtime,
+                &mut self.pane_state,
                 Interaction::Scroll(delta),
             );
         }
         if needs_redraw {
-            self.runtime.redraw.request();
+            self.pane_state.redraw.request();
         }
         self.take_effects()
     }

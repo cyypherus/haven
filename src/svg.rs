@@ -1,4 +1,4 @@
-use crate::app::{RootCtx, RootState, View};
+use crate::app::{PaneState, View};
 
 use crate::view::{Drawable, DrawableType};
 
@@ -39,13 +39,16 @@ impl Svg {
             gesture_handlers: Vec::new(),
         }
     }
-    pub fn finish<State: 'static>(self, ctx: &mut RootCtx) -> Layout<'static, View<State>, RootCtx> {
+    pub fn finish<State: 'static>(
+        self,
+        ctx: &mut PaneState,
+    ) -> Layout<'static, View<State>, PaneState> {
         self.view().finish(ctx)
     }
 }
 
 impl Svg {
-    pub(crate) fn draw(&mut self, area: Area, scene: &mut Scene, app: &mut RootState) {
+    pub(crate) fn draw(&mut self, area: Area, scene: &mut Scene, app: &mut PaneState) {
         if !app.svg_scenes.contains_key(&self.content) {
             match vello_svg::usvg::Tree::from_data(
                 self.content.as_bytes(),
@@ -66,14 +69,14 @@ impl Svg {
                 }
             }
         }
-        let RootState { svg_scenes, .. } = app;
+        let PaneState { svg_scenes, .. } = app;
         if let Some((svg_scene, width, height)) = svg_scenes.get(&self.content) {
             let width = *width as f64;
             let height = *height as f64;
-            let area_x = area.x as f64 * app.app_context.scale_factor;
-            let area_y = area.y as f64 * app.app_context.scale_factor;
-            let area_width = area.width as f64 * app.app_context.scale_factor;
-            let area_height = area.height as f64 * app.app_context.scale_factor;
+            let area_x = area.x as f64 * app.scale_factor;
+            let area_y = area.y as f64 * app.scale_factor;
+            let area_width = area.width as f64 * app.scale_factor;
+            let area_height = area.height as f64 * app.scale_factor;
             if self.fill.is_some() {
                 scene.push_layer(
                     Fill::NonZero,
