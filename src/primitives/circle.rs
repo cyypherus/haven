@@ -1,6 +1,6 @@
 use crate::app::{PaneState, View};
-use crate::background_style::BrushSource;
-use crate::shape::{PathData, circle_path};
+use crate::brush_source::BrushSource;
+use crate::primitives::shape::{PathData, circle_path};
 use crate::view::{Drawable, DrawableType};
 
 use backer::Layout;

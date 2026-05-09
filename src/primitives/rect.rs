@@ -1,7 +1,7 @@
 use crate::DEFAULT_CORNER_ROUNDING;
 use crate::app::{PaneState, View};
-use crate::background_style::BrushSource;
-use crate::shape::{PathData, rect_path};
+use crate::brush_source::BrushSource;
+use crate::primitives::shape::{PathData, rect_path};
 use crate::view::{Drawable, DrawableType};
 use backer::Layout;
 use vello_svg::vello::kurbo::Stroke;

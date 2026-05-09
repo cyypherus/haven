@@ -378,8 +378,8 @@ impl<State: Clone + 'static> ApplicationHandler<WinitEvent> for WinitApp<State> 
                 .windows
                 .get_mut(&window_id)
                 .map(|surface| match state {
-                    winit::event::ElementState::Pressed => surface.pane.press_current(),
-                    winit::event::ElementState::Released => surface.pane.release_current(),
+                    winit::event::ElementState::Pressed => surface.pane.press(),
+                    winit::event::ElementState::Released => surface.pane.release(),
                 })
                 .unwrap_or_default(),
             winit::event::WindowEvent::MouseInput { .. } => Vec::new(),
@@ -401,10 +401,8 @@ impl<State: Clone + 'static> ApplicationHandler<WinitEvent> for WinitApp<State> 
             winit::event::WindowEvent::Touch(_) => Vec::new(),
             winit::event::WindowEvent::TouchpadPressure { .. } => Vec::new(),
             winit::event::WindowEvent::Focused(focused) => {
-                if focused {
-                    if let Some(surface) = self.windows.get(&window_id) {
-                        surface.window.request_redraw();
-                    }
+                if focused && let Some(surface) = self.windows.get(&window_id) {
+                    surface.window.request_redraw();
                 }
                 Vec::new()
             }
@@ -439,10 +437,7 @@ impl<State: Clone + 'static> ApplicationHandler<WinitEvent> for WinitApp<State> 
 
 fn scroll_delta(delta: MouseScrollDelta) -> ScrollDelta {
     match delta {
-        MouseScrollDelta::LineDelta(x, y) => ScrollDelta {
-            x: x * 10.,
-            y: y * 10.,
-        },
+        MouseScrollDelta::LineDelta(x, y) => ScrollDelta { x, y },
         MouseScrollDelta::PixelDelta(physical_position) => ScrollDelta {
             x: physical_position.x as f32,
             y: physical_position.y as f32,

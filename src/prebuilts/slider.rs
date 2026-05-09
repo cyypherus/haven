@@ -1,6 +1,6 @@
+use crate::utils::adjust_brush;
 use crate::{
     Binding, DEFAULT_DARK_GRAY, DEFAULT_FG, DEFAULT_GRAY, DEFAULT_PURP, DragState, TRANSPARENT,
-    adjust_brush,
     app::{PaneState, View},
     circle, id, rect,
 };

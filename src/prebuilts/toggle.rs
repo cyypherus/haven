@@ -1,5 +1,6 @@
 use crate::app::{PaneState, View};
-use crate::{Binding, ClickState, adjust_brush, id, rect};
+use crate::utils::adjust_brush;
+use crate::{Binding, ClickState, id, rect};
 use crate::{DEFAULT_FG, DEFAULT_GRAY, DEFAULT_LIGHT_GRAY, TRANSPARENT, circle};
 use backer::{
     Area, Layout,

@@ -1,6 +1,7 @@
+use crate::utils::adjust_brush;
 use crate::DEFAULT_FG;
 use crate::{
-    Binding, ClickState, DEFAULT_CORNER_ROUNDING, DEFAULT_FONT_SIZE, DEFAULT_PURP, adjust_brush,
+    Binding, ClickState, DEFAULT_CORNER_ROUNDING, DEFAULT_FONT_SIZE, DEFAULT_PURP,
     app::{PaneState, View},
     rect,
 };

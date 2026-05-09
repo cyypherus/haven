@@ -2,11 +2,11 @@ use crate::draw_layout::draw_layout;
 use crate::gestures::{ClickLocation, Interaction, ScrollDelta};
 
 use crate::editor::Editor;
-use crate::text::TextLayout;
+use crate::primitives::TextLayout;
+use crate::utils::area_contains;
 use crate::view::DrawableType;
 use crate::{
     ClickState, DragState, GestureHandler, GestureState, Key, Modifiers, Point, RUBIK_FONT,
-    area_contains,
 };
 use backer::{Area, Layout};
 use parley::fontique::Blob;
@@ -223,7 +223,7 @@ pub struct PaneState {
     pub(crate) scale_factor: f64,
     pub(crate) editor: Option<EditState>,
     pub(crate) editor_areas: HashMap<u64, Area>,
-    pub(crate) scrollers: HashMap<u64, crate::scroller::ScrollerState>,
+    pub(crate) scrollers: HashMap<u64, crate::prebuilts::ScrollerState>,
     pub(crate) needs_redraw: bool,
     pub(crate) task_runtime: Runtime,
     pub(crate) cancellation_token: CancellationToken,
@@ -394,30 +394,6 @@ impl Clone for Redraw {
 impl std::fmt::Debug for Redraw {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Redraw").finish()
-    }
-}
-
-pub struct Callback<T> {
-    sender: Arc<dyn Fn(T) + Send + Sync>,
-}
-
-impl<T> Clone for Callback<T> {
-    fn clone(&self) -> Self {
-        Self {
-            sender: self.sender.clone(),
-        }
-    }
-}
-
-impl<T> Callback<T> {
-    pub fn new(sender: impl Fn(T) + Send + Sync + 'static) -> Self {
-        Self {
-            sender: Arc::new(sender),
-        }
-    }
-
-    pub fn send(&self, value: T) {
-        (self.sender)(value);
     }
 }
 
@@ -754,7 +730,7 @@ impl<State: 'static> Pane<State> {
         }
         self.take_effects()
     }
-    pub(crate) fn press_current(&mut self) -> Vec<PaneEffect> {
+    pub(crate) fn press(&mut self) -> Vec<PaneEffect> {
         let mut needs_redraw = false;
         let cursor_position = self.cursor_position;
         if let Some(point) = cursor_position {
@@ -837,7 +813,7 @@ impl<State: 'static> Pane<State> {
         }
         self.take_effects()
     }
-    pub(crate) fn release_current(&mut self) -> Vec<PaneEffect> {
+    pub(crate) fn release(&mut self) -> Vec<PaneEffect> {
         let mut needs_redraw = false;
         let cursor_position = self.cursor_position;
         let gesture_state = self.gesture_state;

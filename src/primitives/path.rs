@@ -1,8 +1,8 @@
 use std::rc::Rc;
 
 use crate::app::{PaneState, View};
-use crate::background_style::BrushSource;
-use crate::shape::PathData;
+use crate::brush_source::BrushSource;
+use crate::primitives::shape::PathData;
 use crate::view::{Drawable, DrawableType};
 use backer::{Area, Layout};
 use vello_svg::vello::kurbo::{BezPath, Stroke};

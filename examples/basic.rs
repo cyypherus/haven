@@ -7,7 +7,7 @@ struct State {
     toggle: ToggleState,
     slider: SliderState,
     button: ButtonState,
-    style_dropdown: DropdownState<Biome>,
+    dropdown: DropdownState<Biome>,
 }
 
 fn main() {
@@ -42,6 +42,25 @@ fn main() {
                         .wrap()
                         .align(parley::Alignment::Start)
                         .build(app),
+                        {
+                            let sub = DDTextState {
+                                dropdown: state.dropdown.clone(),
+                                text: state.text.clone(),
+                            };
+                            scope(dropdown_and_text(sub, app), {
+                                Binding::new(
+                                    |state: &State| DDTextState {
+                                        dropdown: state.dropdown.clone(),
+                                        text: state.text.clone(),
+                                    },
+                                    |state: &mut State, sub: DDTextState| {
+                                        state.dropdown = sub.dropdown;
+                                        state.text = sub.text;
+                                    },
+                                )
+                            })
+                            .height(40.)
+                        },
                         empty(),
                         stack(vec![
                             rect(id!())
@@ -150,11 +169,41 @@ fn thrusters_view<'a>(
     .pad(20.)
 }
 
-fn dropdown_and_text(
-    _state: Binding<State, DDTextState>,
-    _app: &mut PaneState,
-) -> Vec<Layout<'static, View<DDTextState>, PaneState>> {
-    vec![empty()]
+fn dropdown_and_text<'a>(
+    state: DDTextState,
+    app: &mut PaneState,
+) -> Layout<'a, View<DDTextState>, PaneState> {
+    row_spaced(
+        10.,
+        vec![
+            dropdown(
+                id!(),
+                binding!(state, DDTextState, dropdown),
+                vec![
+                    Biome::Canopy,
+                    Biome::Mycelial,
+                    Biome::Algae,
+                    Biome::Crystal,
+                    Biome::Lagoon,
+                ],
+                |ctx, app| {
+                    text(id!(ctx.index as u64), ctx.value.label())
+                        .align(Alignment::Start)
+                        .fill(if ctx.selected || ctx.hovered {
+                            DEFAULT_FG
+                        } else {
+                            DEFAULT_FG.with_alpha(0.75)
+                        })
+                        .build(app)
+                        .pad(10.)
+                },
+            )
+            .build(app),
+            text_field(id!(), binding!(state, DDTextState, text))
+                .align(Alignment::Start)
+                .build(app),
+        ],
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

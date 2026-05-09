@@ -1,48 +1,33 @@
 #![allow(clippy::type_complexity, clippy::too_many_arguments)]
 
 mod app;
-mod background_style;
-mod button;
-mod circle;
+mod brush_source;
 mod draw_layout;
-mod dropdown;
 mod editor;
 mod gestures;
-mod image;
 mod models;
-mod path;
-mod rect;
-mod scroller;
-mod shape;
-mod slider;
-mod svg;
-mod text;
-mod text_field;
-mod toggle;
+mod prebuilts;
+mod primitives;
+mod utils;
 mod view;
-pub mod winit;
+pub mod platform;
+
+pub use platform::winit;
 
 pub(crate) use app::Pane;
-pub use app::{Callback, PaneConfig, PaneEffect, PaneState, Redraw, RedrawTrigger, View};
+pub use app::{PaneConfig, PaneEffect, PaneState, Redraw, RedrawTrigger, View};
 pub use backer::{Area, Layout, nodes::*};
-pub use background_style::BrushSource;
-pub use button::*;
+pub use brush_source::BrushSource;
 pub use bytemuck;
-pub use circle::circle;
-pub use dropdown::*;
 pub use gestures::{
     ClickState, DragState, EditInteraction, GestureHandler, GestureState, ScrollDelta,
 };
-pub use image::{ImageSource, image, image_from_bytes, image_from_path};
 pub use parley::{Alignment, FontWeight, StyleProperty};
-pub use path::path;
-pub use rect::rect;
-pub use scroller::*;
-pub use slider::*;
-pub use svg::svg;
-pub use text::*;
-pub use text_field::*;
-pub use toggle::*;
+pub use prebuilts::*;
+pub use primitives::{
+    ImageSource, Span, Text, circle, image, image_from_bytes, image_from_path, path, rect,
+    rich_text, span, svg, text,
+};
 use vello_svg::vello::peniko::color::AlphaColor;
 use vello_svg::vello::peniko::color::Srgb;
 pub use view::{BlendMode, Compositing, const_hash, rect_path, rounded_rect_path, scope};
@@ -53,20 +38,6 @@ pub use vello_svg::vello::peniko::{Brush, Gradient};
 pub use models::*;
 
 pub type Color = AlphaColor<Srgb>;
-
-pub(crate) fn adjust_brush(brush: &Brush, depressed: bool, hovered: bool) -> Brush {
-    match brush {
-        Brush::Solid(color) => {
-            let adjusted = match (depressed, hovered) {
-                (true, _) => color.map_lightness(|l| l - 0.1),
-                (false, true) => color.map_lightness(|l| l + 0.1),
-                (false, false) => *color,
-            };
-            Brush::Solid(adjusted)
-        }
-        other => other.clone(),
-    }
-}
 
 const RUBIK_FONT: &[u8] = include_bytes!("../assets/Rubik-VariableFont_wght.ttf");
 const DEFAULT_FONT_FAMILY: &str = "Rubik";

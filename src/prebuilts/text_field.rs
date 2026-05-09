@@ -1,11 +1,13 @@
 use crate::app::{EditState, PaneState, View};
-use crate::background_style::BrushSource;
-use crate::shape::{PathData, rect_path};
+use crate::brush_source::BrushSource;
+use crate::primitives::{
+    Text,
+    shape::{PathData, rect_path},
+};
 use crate::view::DrawableType;
 use crate::{
     Binding, DEFAULT_CORNER_ROUNDING, DEFAULT_FG_COLOR, DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE,
-    DEFAULT_PADDING, DEFAULT_PURP, DEFAULT_STROKE_WIDTH, EditInteraction, Key, NamedKey, Text,
-    rect,
+    DEFAULT_PADDING, DEFAULT_PURP, DEFAULT_STROKE_WIDTH, EditInteraction, Key, NamedKey, rect,
 };
 use backer::{Area, Layout, nodes::*};
 use parley::{Alignment, FontWeight};

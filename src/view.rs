@@ -1,10 +1,6 @@
 use crate::app::{PaneState, View};
 use crate::gestures::{ClickLocation, Interaction, InteractionType, ScrollDelta};
-use crate::image::Image;
-
-use crate::shape::PathData;
-use crate::svg::Svg;
-use crate::text::Text;
+use crate::primitives::{Image, PathData, Svg, Text};
 use crate::{Binding, ClickState, DragState, GestureHandler, Key};
 use backer::{Area, Layout, nodes::*};
 use parley::Layout as TextLayout;
@@ -82,7 +78,7 @@ macro_rules! scope {
                 $( s.$field = v.$field; )+
             },
         );
-        $crate::scope($layout(&sub_state), binding)
+        $crate::scope($layout(sub_state), binding)
     }};
 }
 

@@ -1,15 +1,18 @@
 use crate::app::{PaneState, View};
-use crate::{Binding, ClickState, DEFAULT_CORNER_ROUNDING, rect};
+use crate::utils::adjust_brush;
+use crate::{Binding, ClickState, DEFAULT_CORNER_ROUNDING, DEFAULT_GRAY, rect};
 use crate::{Color, TRANSPARENT};
 use backer::{Align, Layout, nodes::*};
 use std::rc::Rc;
 use vello_svg::vello::kurbo::Stroke;
+use vello_svg::vello::peniko::Brush;
 
 #[derive(Debug, Clone)]
 pub struct DropdownState<T> {
     pub selected: T,
     pub hovered: Option<usize>,
     pub expanded: bool,
+    pub depressed: bool,
 }
 
 impl<T: Default> Default for DropdownState<T> {
@@ -18,6 +21,7 @@ impl<T: Default> Default for DropdownState<T> {
             selected: T::default(),
             hovered: None,
             expanded: false,
+            depressed: false,
         }
     }
 }
@@ -88,6 +92,8 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
             .position(|o| *o == self.state.selected)
             .unwrap_or(0);
         let hovered = self.state.hovered;
+        let depressed = self.state.depressed;
+        let root_hovered = hovered == Some(selected_index) && !expanded;
         let id = self.id;
         let binding = self.binding.clone();
         let on_select = self.on_select.clone();
@@ -109,8 +115,23 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
                 expanded,
             };
             let content = (view_fn)(item_ctx, ctx);
+            let hovered = hovered == Some(index);
+            let depressed = depressed && hovered;
+            let background = if expanded {
+                rect(crate::id!(index as u64 ^ id, 1u64))
+                    .fill(adjust_brush(
+                        &Brush::Solid(DEFAULT_GRAY),
+                        depressed,
+                        hovered,
+                    ))
+                    .corner_rounding(DEFAULT_CORNER_ROUNDING)
+                    .build(ctx)
+            } else {
+                empty()
+            };
 
             stack(vec![
+                background,
                 {
                     let option = option.clone();
                     rect(crate::id!(index as u64, id))
@@ -119,21 +140,32 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
                         .on_click({
                             let binding = row_binding.clone();
                             let on_select = on_select.clone();
-                            move |state: &mut State, app, click, _pos| {
-                                let ClickState::Completed = click else { return };
-                                if expanded {
-                                    if let Some(ref on_select) = on_select {
-                                        on_select(state, app, &option);
-                                    }
-                                    binding.update(state, {
-                                        let option = option.clone();
-                                        move |s| {
-                                            s.selected = option.clone();
-                                            s.expanded = false;
+                            move |state: &mut State, app, click, _pos| match click {
+                                ClickState::Started => {
+                                    binding.update(state, |s| s.depressed = true)
+                                }
+                                ClickState::Cancelled => {
+                                    binding.update(state, |s| s.depressed = false)
+                                }
+                                ClickState::Completed => {
+                                    if expanded {
+                                        if let Some(ref on_select) = on_select {
+                                            on_select(state, app, &option);
                                         }
-                                    });
-                                } else {
-                                    binding.update(state, |s| s.expanded = true);
+                                        binding.update(state, {
+                                            let option = option.clone();
+                                            move |s| {
+                                                s.selected = option.clone();
+                                                s.expanded = false;
+                                                s.depressed = false;
+                                            }
+                                        });
+                                    } else {
+                                        binding.update(state, |s| {
+                                            s.expanded = true;
+                                            s.depressed = false;
+                                        });
+                                    }
                                 }
                             }
                         })
@@ -141,8 +173,10 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
                             let binding = row_binding.clone();
                             move |state: &mut State, _app, hovered| {
                                 binding.update(state, move |s| {
-                                    if expanded && hovered {
+                                    if hovered {
                                         s.hovered = Some(index)
+                                    } else if s.hovered == Some(index) {
+                                        s.hovered = None
                                     }
                                 });
                             }
@@ -160,7 +194,11 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
                 f(&dd_state, ctx)
             } else {
                 rect(crate::id!(id))
-                    .fill(Color::from_rgb8(50, 50, 50))
+                    .fill(adjust_brush(
+                        &Brush::Solid(DEFAULT_GRAY),
+                        depressed && !expanded,
+                        root_hovered,
+                    ))
                     .stroke(Color::from_rgb8(60, 60, 60), Stroke::new(1.))
                     .corner_rounding(DEFAULT_CORNER_ROUNDING)
                     .build(ctx)
@@ -183,7 +221,10 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
                 let binding = binding.clone();
                 move |state: &mut State, _app, click, _pos| {
                     let ClickState::Completed = click else { return };
-                    binding.update(state, |s| s.expanded = false);
+                    binding.update(state, |s| {
+                        s.expanded = false;
+                        s.depressed = false;
+                    });
                 }
             })
             .on_hover({

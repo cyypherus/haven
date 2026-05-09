@@ -1,20 +1,6 @@
 use std::{fmt::Debug, rc::Rc};
-use vello_svg::vello::kurbo::Point;
 
-pub use backer::{Align, Area};
-
-pub(crate) fn area_contains(area: &Area, point: Point) -> bool {
-    let x = point.x;
-    let y = point.y;
-    if x > area.x as f64
-        && y > area.y as f64
-        && y < area.y as f64 + area.height as f64
-        && x < area.x as f64 + area.width as f64
-    {
-        return true;
-    }
-    false
-}
+pub use backer::Align;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Key {

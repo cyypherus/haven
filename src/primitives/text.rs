@@ -1,5 +1,5 @@
 use crate::app::{LayoutCache, PaneState, View};
-use crate::background_style::BrushSource;
+use crate::brush_source::BrushSource;
 use crate::draw_layout::draw_layout;
 use crate::view::{Drawable, DrawableType};
 use crate::{DEFAULT_FG_COLOR, DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE};

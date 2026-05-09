@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use crate::background_style::BrushSource;
+use crate::brush_source::BrushSource;
 use backer::Area;
 use vello_svg::vello::Scene;
 use vello_svg::vello::kurbo::{Affine, BezPath, Point, RoundedRect, Shape as _, Stroke};
