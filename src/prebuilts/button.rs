@@ -1,5 +1,5 @@
-use crate::utils::adjust_brush;
 use crate::DEFAULT_FG;
+use crate::utils::adjust_brush;
 use crate::{
     Binding, ClickState, DEFAULT_CORNER_ROUNDING, DEFAULT_FONT_SIZE, DEFAULT_PURP,
     app::{PaneState, View},
@@ -31,7 +31,7 @@ pub struct Button<'a, State> {
 
 pub fn button<'a, State>(
     id: u64,
-    state: (ButtonState, Binding<State, ButtonState>),
+    state: (&ButtonState, Binding<State, ButtonState>),
 ) -> Button<'a, State> {
     Button {
         id,
@@ -39,7 +39,7 @@ pub fn button<'a, State>(
         label: None,
         text_label: None,
         on_click: None,
-        state: state.0,
+        state: *state.0,
         binding: state.1,
     }
 }

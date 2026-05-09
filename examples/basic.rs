@@ -3,11 +3,10 @@ use haven::*;
 
 #[derive(Debug, Clone, Default)]
 struct State {
-    text: TextState,
+    dd_text: DDTextState,
     toggle: ToggleState,
     slider: SliderState,
     button: ButtonState,
-    dropdown: DropdownState<Biome>,
 }
 
 fn main() {
@@ -43,22 +42,13 @@ fn main() {
                         .align(parley::Alignment::Start)
                         .build(app),
                         {
-                            let sub = DDTextState {
-                                dropdown: state.dropdown.clone(),
-                                text: state.text.clone(),
-                            };
-                            scope(dropdown_and_text(sub, app), {
+                            scope(
+                                dropdown_and_text(&state.dd_text, app),
                                 Binding::new(
-                                    |state: &State| DDTextState {
-                                        dropdown: state.dropdown.clone(),
-                                        text: state.text.clone(),
-                                    },
-                                    |state: &mut State, sub: DDTextState| {
-                                        state.dropdown = sub.dropdown;
-                                        state.text = sub.text;
-                                    },
-                                )
-                            })
+                                    |state: &State| &state.dd_text,
+                                    |state: &mut State| &mut state.dd_text,
+                                ),
+                            )
                             .height(40.)
                         },
                         empty(),
@@ -170,7 +160,7 @@ fn thrusters_view<'a>(
 }
 
 fn dropdown_and_text<'a>(
-    state: DDTextState,
+    state: &'a DDTextState,
     app: &mut PaneState,
 ) -> Layout<'a, View<DDTextState>, PaneState> {
     row_spaced(

@@ -6,11 +6,11 @@ mod draw_layout;
 mod editor;
 mod gestures;
 mod models;
+pub mod platform;
 mod prebuilts;
 mod primitives;
 mod utils;
 mod view;
-pub mod platform;
 
 pub use platform::winit;
 
@@ -30,7 +30,10 @@ pub use primitives::{
 };
 use vello_svg::vello::peniko::color::AlphaColor;
 use vello_svg::vello::peniko::color::Srgb;
-pub use view::{BlendMode, Compositing, const_hash, rect_path, rounded_rect_path, scope};
+pub use view::{
+    BlendMode, Compositing, const_hash, optional_scope, project_scope, rect_path,
+    rounded_rect_path, scope,
+};
 
 pub use vello_svg::vello::kurbo::{BezPath, Cap, Join, Point, Stroke};
 pub use vello_svg::vello::peniko::{Brush, Gradient};

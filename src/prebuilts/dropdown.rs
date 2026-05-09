@@ -36,7 +36,7 @@ pub struct DropdownItemCtx<'a, T> {
 
 pub struct DropDown<'a, State, T> {
     id: u64,
-    state: DropdownState<T>,
+    state: &'a DropdownState<T>,
     binding: Binding<State, DropdownState<T>>,
     options: Vec<T>,
     view_fn:
@@ -49,7 +49,7 @@ pub struct DropDown<'a, State, T> {
 
 pub fn dropdown<'a, State, T: Clone + PartialEq + 'static>(
     id: u64,
-    state: (DropdownState<T>, Binding<State, DropdownState<T>>),
+    state: (&'a DropdownState<T>, Binding<State, DropdownState<T>>),
     options: Vec<T>,
     view_fn: impl Fn(DropdownItemCtx<T>, &mut PaneState) -> Layout<'a, View<State>, PaneState> + 'a,
 ) -> DropDown<'a, State, T> {
@@ -98,7 +98,7 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
         let binding = self.binding.clone();
         let on_select = self.on_select.clone();
         let background_fn = self.background;
-        let dd_state = self.state.clone();
+        let dd_state = self.state;
         let options = self.options.clone();
         let view_fn = self.view_fn.clone();
         let row_binding = binding.clone();
@@ -131,7 +131,7 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
             };
 
             stack(vec![
-                background,
+                background.inert(),
                 {
                     let option = option.clone();
                     rect(crate::id!(index as u64, id))
@@ -191,7 +191,7 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
 
         let surface = |ctx: &mut PaneState| -> Layout<'a, View<State>, PaneState> {
             if let Some(ref f) = background_fn {
-                f(&dd_state, ctx)
+                f(dd_state, ctx)
             } else {
                 rect(crate::id!(id))
                     .fill(adjust_brush(

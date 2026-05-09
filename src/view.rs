@@ -1,7 +1,7 @@
 use crate::app::{PaneState, View};
 use crate::gestures::{ClickLocation, Interaction, InteractionType, ScrollDelta};
 use crate::primitives::{Image, PathData, Svg, Text};
-use crate::{Binding, ClickState, DragState, GestureHandler, Key};
+use crate::{Binding, ClickState, DragState, GestureHandler, Key, OptionalBinding};
 use backer::{Area, Layout, nodes::*};
 use parley::Layout as TextLayout;
 use std::rc::Rc;
@@ -55,30 +55,19 @@ macro_rules! id {
 macro_rules! binding {
     ($state_var:ident, $State:ty, $field:ident) => {
         (
-            $state_var.$field.clone(),
-            Binding::new(
-                |s: &$State| s.$field.clone(),
-                |s: &mut $State, value| s.$field = value,
-            ),
+            &$state_var.$field,
+            Binding::new(|s: &$State| &s.$field, |s: &mut $State| &mut s.$field),
         )
     };
 }
 
 #[macro_export]
 macro_rules! scope {
-    ($state_var:ident, $Parent:ty, { $($field:ident),+ $(,)? } => $Sub:ident, $layout:expr) => {{
-        let sub_state = $Sub {
-            $( $field: $state_var.$field.clone(), )+
-        };
-        let binding = Binding::new(
-            |s: &$Parent| $Sub {
-                $( $field: s.$field.clone(), )+
-            },
-            |s: &mut $Parent, v: $Sub| {
-                $( s.$field = v.$field; )+
-            },
-        );
-        $crate::scope($layout(sub_state), binding)
+    ($state_var:ident, $Parent:ty, $field:ident, $layout:expr) => {{
+        $crate::scope(
+            $layout($state_var.$field.clone()),
+            Binding::new(|s: &$Parent| &s.$field, |s: &mut $Parent| &mut s.$field),
+        )
     }};
 }
 
@@ -346,6 +335,46 @@ pub fn scope<'a, Parent: 'static, Sub: 'static>(
     binding: Binding<Parent, Sub>,
 ) -> Layout<'a, View<Parent>, PaneState> {
     let binding = Rc::new(binding);
+    map_scope(layout, move |parent, app, interaction, h| {
+        h(binding.get_mut(parent), app, interaction);
+    })
+}
+
+pub fn optional_scope<'a, Parent: 'static, Sub: 'static>(
+    layout: Layout<'a, View<Sub>, PaneState>,
+    binding: OptionalBinding<Parent, Sub>,
+) -> Layout<'a, View<Parent>, PaneState> {
+    let binding = Rc::new(binding);
+    map_scope(layout, move |parent, app, interaction, h| {
+        if let Some(sub) = binding.get_mut(parent) {
+            h(sub, app, interaction);
+        }
+    })
+}
+
+pub fn project_scope<'a, Parent: 'static, Sub: 'static>(
+    layout: Layout<'a, View<Sub>, PaneState>,
+    get: impl Fn(&Parent) -> Option<Sub> + Clone + 'static,
+    set: impl Fn(&mut Parent, Sub) + Clone + 'static,
+) -> Layout<'a, View<Parent>, PaneState> {
+    map_scope(layout, move |parent, app, interaction, h| {
+        if let Some(mut sub) = get(parent) {
+            h(&mut sub, app, interaction);
+            set(parent, sub);
+        }
+    })
+}
+
+fn map_scope<'a, Parent: 'static, Sub: 'static>(
+    layout: Layout<'a, View<Sub>, PaneState>,
+    f: impl Fn(
+        &mut Parent,
+        &mut PaneState,
+        Interaction,
+        &Rc<dyn Fn(&mut Sub, &mut PaneState, Interaction)>,
+    ) + Clone
+    + 'static,
+) -> Layout<'a, View<Parent>, PaneState> {
     layout.map(move |view| match view {
         View::Draw {
             view,
@@ -357,14 +386,12 @@ pub fn scope<'a, Parent: 'static, Sub: 'static>(
                 .into_iter()
                 .map(|gh| {
                     let handler = gh.interaction_handler.map(|h| {
-                        let binding = binding.clone();
+                        let f = f.clone();
                         Rc::new(
                             move |parent: &mut Parent,
                                   app: &mut PaneState,
                                   interaction: Interaction| {
-                                let mut sub = binding.get(parent);
-                                h(&mut sub, app, interaction);
-                                binding.set(parent, sub);
+                                f(parent, app, interaction, &h);
                             },
                         )
                             as Rc<dyn Fn(&mut Parent, &mut PaneState, Interaction)>

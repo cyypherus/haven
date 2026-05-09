@@ -28,6 +28,10 @@ path = "examples/winit_basic.rs"
 name = "winit_multi"
 path = "examples/winit_multi.rs"
 
+[[example]]
+name = "productivity"
+path = "examples/productivity.rs"
+
 [dependencies]
 backer = { git = "https://github.com/cyypherus/backer", branch = "experiment" }
 # backer = { path = "../backer" }

@@ -38,37 +38,88 @@ impl Key {
     }
 }
 
-type Getter<State, T> = Rc<dyn Fn(&State) -> T>;
-type Setter<State, T> = Rc<dyn Fn(&mut State, T)>;
+type Getter<State, T> = Rc<dyn for<'a> Fn(&'a State) -> &'a T>;
+type GetterMut<State, T> = Rc<dyn for<'a> Fn(&'a mut State) -> &'a mut T>;
+type OptionalGetter<State, T> = Rc<dyn for<'a> Fn(&'a State) -> Option<&'a T>>;
+type OptionalGetterMut<State, T> = Rc<dyn for<'a> Fn(&'a mut State) -> Option<&'a mut T>>;
+
+enum BindingStorage<State, T> {
+    Lens {
+        get: Getter<State, T>,
+        get_mut: GetterMut<State, T>,
+    },
+    Constant(Rc<T>),
+}
 
 pub struct Binding<State, T> {
-    pub get: Getter<State, T>,
-    pub set: Setter<State, T>,
+    storage: BindingStorage<State, T>,
+}
+
+pub struct OptionalBinding<State, T> {
+    get: OptionalGetter<State, T>,
+    get_mut: OptionalGetterMut<State, T>,
+}
+
+impl<State, T> OptionalBinding<State, T> {
+    pub fn new(
+        get: impl for<'a> Fn(&'a State) -> Option<&'a T> + 'static,
+        get_mut: impl for<'a> Fn(&'a mut State) -> Option<&'a mut T> + 'static,
+    ) -> Self {
+        Self {
+            get: Rc::new(get),
+            get_mut: Rc::new(get_mut),
+        }
+    }
+
+    pub fn get<'a>(&'a self, state: &'a State) -> Option<&'a T> {
+        (self.get)(state)
+    }
+
+    pub fn get_mut<'a>(&'a self, state: &'a mut State) -> Option<&'a mut T> {
+        (self.get_mut)(state)
+    }
+}
+
+impl<State, T> Clone for OptionalBinding<State, T> {
+    fn clone(&self) -> Self {
+        Self {
+            get: self.get.clone(),
+            get_mut: self.get_mut.clone(),
+        }
+    }
+}
+
+impl<State, T> Debug for OptionalBinding<State, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OptionalBinding").finish_non_exhaustive()
+    }
 }
 
 impl<State, T> Debug for Binding<State, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Binding")
-            .field("get", &"<function>")
-            .field("set", &"<function>")
-            .finish()
+        f.debug_struct("Binding").finish_non_exhaustive()
     }
 }
 
 impl<State, T> Binding<State, T> {
-    pub fn new(get: impl Fn(&State) -> T + 'static, set: impl Fn(&mut State, T) + 'static) -> Self {
+    pub fn new(
+        get: impl for<'a> Fn(&'a State) -> &'a T + 'static,
+        get_mut: impl for<'a> Fn(&'a mut State) -> &'a mut T + 'static,
+    ) -> Self {
         Self {
-            get: Rc::new(get),
-            set: Rc::new(set),
+            storage: BindingStorage::Lens {
+                get: Rc::new(get),
+                get_mut: Rc::new(get_mut),
+            },
         }
     }
+
     pub fn constant(value: T) -> Self
     where
-        T: Clone + 'static,
+        T: 'static,
     {
         Self {
-            get: Rc::new(move |_| value.clone()),
-            set: Rc::new(move |_, _| {}),
+            storage: BindingStorage::Constant(Rc::new(value)),
         }
     }
 }
@@ -76,22 +127,41 @@ impl<State, T> Binding<State, T> {
 impl<State, T> Clone for Binding<State, T> {
     fn clone(&self) -> Self {
         Self {
-            get: self.get.clone(),
-            set: self.set.clone(),
+            storage: match &self.storage {
+                BindingStorage::Lens { get, get_mut } => BindingStorage::Lens {
+                    get: get.clone(),
+                    get_mut: get_mut.clone(),
+                },
+                BindingStorage::Constant(value) => BindingStorage::Constant(value.clone()),
+            },
         }
     }
 }
 
 impl<State, T> Binding<State, T> {
-    pub fn get(&self, state: &State) -> T {
-        (self.get)(state)
+    pub fn get<'a>(&'a self, state: &'a State) -> &'a T {
+        match &self.storage {
+            BindingStorage::Lens { get, .. } => get(state),
+            BindingStorage::Constant(value) => value.as_ref(),
+        }
     }
+
+    pub fn get_mut<'a>(&'a self, state: &'a mut State) -> &'a mut T {
+        match &self.storage {
+            BindingStorage::Lens { get_mut, .. } => get_mut(state),
+            BindingStorage::Constant(_) => panic!("constant binding cannot be mutably borrowed"),
+        }
+    }
+
     pub fn set(&self, state: &mut State, value: T) {
-        (self.set)(state, value)
+        if let BindingStorage::Lens { get_mut, .. } = &self.storage {
+            *get_mut(state) = value;
+        }
     }
-    pub fn update(&self, state: &mut State, f: impl Fn(&mut T)) {
-        let mut temp = (self.get)(state);
-        f(&mut temp);
-        (self.set)(state, temp)
+
+    pub fn update(&self, state: &mut State, f: impl FnOnce(&mut T)) {
+        if let BindingStorage::Lens { get_mut, .. } = &self.storage {
+            f(get_mut(state));
+        }
     }
 }

@@ -316,6 +316,7 @@ pub fn scroller<'a, State: 'static>(
                 .expand_y()
                 .blend(BlendMode::Screen),
             ])
+            .align(Align::TopLeading)
             .expand_y()
             .draw(area, ctx)
         })

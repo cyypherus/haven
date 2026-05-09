@@ -36,11 +36,11 @@ pub struct Slider<'a, State> {
 
 pub fn slider<'a, State>(
     id: u64,
-    state: (SliderState, Binding<State, SliderState>),
+    state: (&SliderState, Binding<State, SliderState>),
 ) -> Slider<'a, State> {
     Slider {
         id,
-        state: state.0,
+        state: *state.0,
         binding: state.1,
         min: 0.0,
         max: 1.0,

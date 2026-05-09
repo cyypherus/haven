@@ -48,12 +48,12 @@ pub struct Toggle<'a, State> {
 
 pub fn toggle<'a, State>(
     id: u64,
-    state: (ToggleState, Binding<State, ToggleState>),
+    state: (&ToggleState, Binding<State, ToggleState>),
 ) -> Toggle<'a, State> {
     Toggle {
         id,
         on_toggle: None,
-        state: state.0,
+        state: *state.0,
         binding: state.1,
         knob: None,
         track: None,

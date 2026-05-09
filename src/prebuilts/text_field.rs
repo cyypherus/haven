@@ -34,7 +34,7 @@ impl TextState {
 
 pub fn text_field<'a, State>(
     id: u64,
-    state: (TextState, Binding<State, TextState>),
+    state: (&'a TextState, Binding<State, TextState>),
 ) -> TextField<'a, State> {
     TextField {
         id,
@@ -50,8 +50,10 @@ pub fn text_field<'a, State>(
         background: None,
         padding: DEFAULT_PADDING,
         wrap: false,
-        cursor_fill: BrushSource::Static(Brush::Solid(DEFAULT_PURP)),
+        cursor_fill: BrushSource::Static(Brush::Solid(DEFAULT_FG_COLOR)),
         highlight_fill: BrushSource::Static(Brush::Solid(DEFAULT_PURP)),
+        hint_text: None,
+        hint_fill: BrushSource::Static(Brush::Solid(DEFAULT_FG_COLOR.with_alpha(0.55))),
         on_edit: None,
         esc_end_editing: false,
         enter_end_editing: false,
@@ -63,7 +65,7 @@ type BgViewFn<'a, State> =
 
 pub struct TextField<'a, State> {
     pub(crate) id: u64,
-    pub(crate) state: TextState,
+    pub(crate) state: &'a TextState,
     pub(crate) binding: Binding<State, TextState>,
     pub(crate) text_fill: BrushSource<TextState>,
     pub(crate) font_size: u32,
@@ -79,6 +81,8 @@ pub struct TextField<'a, State> {
     pub(crate) enter_end_editing: bool,
     pub(crate) cursor_fill: BrushSource<TextState>,
     pub(crate) highlight_fill: BrushSource<TextState>,
+    pub(crate) hint_text: Option<String>,
+    pub(crate) hint_fill: BrushSource<TextState>,
     on_edit: Option<Rc<dyn Fn(&mut State, &mut PaneState, EditInteraction)>>,
 }
 
@@ -97,33 +101,10 @@ impl<State> Debug for TextField<'_, State> {
             .field("wrap", &self.wrap)
             .field("cursor_fill", &self.cursor_fill)
             .field("highlight_fill", &self.highlight_fill)
+            .field("hint_text", &self.hint_text)
+            .field("hint_fill", &self.hint_fill)
             .field("on_edit", &self.on_edit.is_some())
             .finish()
-    }
-}
-
-impl<State> Clone for TextField<'_, State> {
-    fn clone(&self) -> Self {
-        Self {
-            id: self.id,
-            state: self.state.clone(),
-            binding: self.binding.clone(),
-            text_fill: self.text_fill.clone(),
-            font_size: self.font_size,
-            font_weight: self.font_weight,
-            font_family: self.font_family.clone(),
-            alignment: self.alignment,
-            editable: self.editable,
-            line_height: self.line_height,
-            background: self.background.clone(),
-            padding: self.padding,
-            wrap: self.wrap,
-            cursor_fill: self.cursor_fill.clone(),
-            highlight_fill: self.highlight_fill.clone(),
-            on_edit: self.on_edit.clone(),
-            esc_end_editing: false,
-            enter_end_editing: false,
-        }
     }
 }
 
@@ -134,6 +115,14 @@ impl<'a, State> TextField<'a, State> {
     }
     pub fn highlight_fill(mut self, fill: impl Into<BrushSource<TextState>>) -> Self {
         self.highlight_fill = fill.into();
+        self
+    }
+    pub fn hint_text(mut self, text: impl AsRef<str>) -> Self {
+        self.hint_text = Some(text.as_ref().to_string());
+        self
+    }
+    pub fn hint_fill(mut self, fill: impl Into<BrushSource<TextState>>) -> Self {
+        self.hint_fill = fill.into();
         self
     }
     pub fn on_edit(
@@ -199,8 +188,10 @@ impl<'a, State> TextField<'a, State> {
         let font_size = self.font_size;
         let font_weight = self.font_weight;
         let font_family = self.font_family.clone();
-        let text_state = self.state.clone();
+        let text_state = (*self.state).clone();
         let fill = self.text_fill.clone();
+        let hint_text = self.hint_text.clone();
+        let hint_fill = self.hint_fill.clone();
         let cursor_fill = self.cursor_fill.clone();
         let highlight_fill = self.highlight_fill.clone();
         let alignment = self.alignment;
@@ -326,13 +317,20 @@ impl<'a, State> TextField<'a, State> {
             .height(height);
             if wrap { stack } else { stack.width(width) }
         } else {
+            let show_hint = self.state.text.trim().is_empty() && hint_text.is_some();
             Text {
                 id: text_id,
-                string: self.state.text.clone(),
+                string: if show_hint {
+                    hint_text.unwrap()
+                } else {
+                    self.state.text.clone()
+                },
                 font_size,
                 font_weight,
                 font_family: font_family.clone(),
-                fill: if self.state.editing {
+                fill: if show_hint {
+                    hint_fill.resolve_to_stateless(&text_state)
+                } else if self.state.editing {
                     BrushSource::Static(Brush::Solid(TRANSPARENT))
                 } else {
                     fill.resolve_to_stateless(&text_state)
@@ -436,7 +434,7 @@ impl<'a, State> TextField<'a, State> {
                                 app.begin_editing(
                                     root_id,
                                     text,
-                                    self.text_fill.resolve(editor_area, &ts),
+                                    self.text_fill.resolve(editor_area, ts),
                                     font_family
                                         .clone()
                                         .unwrap_or(DEFAULT_FONT_FAMILY.to_string()),
@@ -445,8 +443,8 @@ impl<'a, State> TextField<'a, State> {
                                     self.font_size as f32,
                                     parley::OverflowWrap::Anywhere,
                                     self.alignment,
-                                    self.cursor_fill.resolve(editor_area, &ts),
-                                    self.highlight_fill.resolve(editor_area, &ts),
+                                    self.cursor_fill.resolve(editor_area, ts),
+                                    self.highlight_fill.resolve(editor_area, ts),
                                     self.wrap,
                                 );
                             }
@@ -457,7 +455,7 @@ impl<'a, State> TextField<'a, State> {
         }
         .inert();
         let background_fn = self.background;
-        let ts = self.state.clone();
+        let ts = (*self.state).clone();
         let bg = if let Some(f) = background_fn {
             draw(move |area, ctx: &mut PaneState| f(&ts, area, ctx).draw(area, ctx))
         } else if editable {
