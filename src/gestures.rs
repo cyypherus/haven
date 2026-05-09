@@ -68,6 +68,7 @@ impl ClickLocation {
     }
 }
 
+#[derive(Clone)]
 pub(crate) enum Interaction {
     Click(ClickState, ClickLocation),
     ClickOutside(ClickState, ClickLocation),
@@ -99,12 +100,12 @@ pub struct ScrollDelta {
     pub y: f32,
 }
 pub(crate) type InteractionHandler<T, U> = Rc<dyn Fn(&mut T, &mut U, Interaction)>;
-pub struct GestureHandler<T, U> {
+pub struct GestureHandler<T: ?Sized, U> {
     pub(crate) interaction_type: InteractionType,
     pub(crate) interaction_handler: Option<InteractionHandler<T, U>>,
 }
 
-impl<T, U> Debug for GestureHandler<T, U> {
+impl<T: ?Sized, U> Debug for GestureHandler<T, U> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("GestureHandler")
             .field("interaction_type", &self.interaction_type)
@@ -112,7 +113,7 @@ impl<T, U> Debug for GestureHandler<T, U> {
     }
 }
 
-impl<T, U> Default for GestureHandler<T, U> {
+impl<T: ?Sized, U> Default for GestureHandler<T, U> {
     fn default() -> Self {
         GestureHandler {
             interaction_type: InteractionType::default(),
@@ -121,7 +122,7 @@ impl<T, U> Default for GestureHandler<T, U> {
     }
 }
 
-impl<T, U> Clone for GestureHandler<T, U> {
+impl<T: ?Sized, U> Clone for GestureHandler<T, U> {
     fn clone(&self) -> Self {
         Self {
             interaction_type: self.interaction_type,

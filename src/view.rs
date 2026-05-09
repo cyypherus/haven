@@ -1,7 +1,7 @@
 use crate::app::{PaneState, View};
 use crate::gestures::{ClickLocation, Interaction, InteractionType, ScrollDelta};
 use crate::primitives::{Image, PathData, Svg, Text};
-use crate::{Binding, ClickState, DragState, GestureHandler, Key, OptionalBinding};
+use crate::{Binding, ClickState, DragState, GestureHandler, Key, OwnedBinding};
 use backer::{Area, Layout, nodes::*};
 use parley::Layout as TextLayout;
 use std::rc::Rc;
@@ -340,28 +340,12 @@ pub fn scope<'a, Parent: 'static, Sub: 'static>(
     })
 }
 
-pub fn optional_scope<'a, Parent: 'static, Sub: 'static>(
+pub fn owned_scope<'a, Parent: 'static, Sub: 'static>(
     layout: Layout<'a, View<Sub>, PaneState>,
-    binding: OptionalBinding<Parent, Sub>,
-) -> Layout<'a, View<Parent>, PaneState> {
-    let binding = Rc::new(binding);
-    map_scope(layout, move |parent, app, interaction, h| {
-        if let Some(sub) = binding.get_mut(parent) {
-            h(sub, app, interaction);
-        }
-    })
-}
-
-pub fn project_scope<'a, Parent: 'static, Sub: 'static>(
-    layout: Layout<'a, View<Sub>, PaneState>,
-    get: impl Fn(&Parent) -> Option<Sub> + Clone + 'static,
-    set: impl Fn(&mut Parent, Sub) + Clone + 'static,
+    binding: OwnedBinding<Parent, Sub>,
 ) -> Layout<'a, View<Parent>, PaneState> {
     map_scope(layout, move |parent, app, interaction, h| {
-        if let Some(mut sub) = get(parent) {
-            h(&mut sub, app, interaction);
-            set(parent, sub);
-        }
+        binding.update(parent, |sub| h(sub, app, interaction));
     })
 }
 

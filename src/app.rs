@@ -236,7 +236,7 @@ pub struct PaneState {
     pub(crate) cursor_position: Option<Point>,
 }
 
-pub enum View<State> {
+pub enum View<State: ?Sized> {
     Draw {
         view: Box<DrawableType>,
         gesture_handlers: Vec<GestureHandler<State, PaneState>>,

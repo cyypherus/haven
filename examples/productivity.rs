@@ -110,10 +110,43 @@ impl Default for PanelState {
 }
 
 #[derive(Debug, Clone)]
+struct PanelActionsState {
+    panel: Option<PanelState>,
+    tasks: Vec<Task>,
+    selected_task: Option<usize>,
+    row_buttons: Vec<ButtonState>,
+    cancel_button: ButtonState,
+    save_button: ButtonState,
+}
+
+#[derive(Debug, Clone)]
 struct Task {
     title: String,
     project: Project,
     priority: Priority,
+}
+
+fn panel_actions_scope() -> OwnedBinding<State, PanelActionsState> {
+    OwnedBinding::new(
+        |state: &State| {
+            state.panel.as_ref().map(|panel| PanelActionsState {
+                panel: Some(panel.clone()),
+                tasks: state.tasks.clone(),
+                selected_task: state.selected_task,
+                row_buttons: state.row_buttons.clone(),
+                cancel_button: state.panel_cancel_button,
+                save_button: state.panel_save_button,
+            })
+        },
+        |state, actions| {
+            state.panel = actions.panel;
+            state.tasks = actions.tasks;
+            state.selected_task = actions.selected_task;
+            state.row_buttons = actions.row_buttons;
+            state.panel_cancel_button = actions.cancel_button;
+            state.panel_save_button = actions.save_button;
+        },
+    )
 }
 
 impl Task {
@@ -413,48 +446,26 @@ fn panel_slot<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<Stat
                         .font_weight(FontWeight::BOLD)
                         .align(Alignment::Start)
                         .build(app),
-                    optional_scope(
+                    owned_scope(
                         panel_form(panel, app),
-                        OptionalBinding::new(
-                            |state: &State| state.panel.as_ref(),
-                            |state: &mut State| state.panel.as_mut(),
+                        OwnedBinding::new(
+                            |state: &State| state.panel.clone(),
+                            |state, panel| state.panel = Some(panel),
                         ),
                     ),
-                    row_spaced(
-                        10.,
-                        vec![
-                            button(id!(), binding!(state, State, panel_cancel_button))
-                                .text_label("Cancel")
-                                .on_click(|state, _| state.panel = None)
-                                .build(app)
-                                .expand_x()
-                                .height(38.),
-                            button(id!(), binding!(state, State, panel_save_button))
-                                .text_label("Plant")
-                                .on_click(|state, _| {
-                                    let task = state.panel.as_ref().and_then(|panel| {
-                                        let title = panel.draft.text.trim();
-                                        if title.is_empty() {
-                                            None
-                                        } else {
-                                            Some(Task::new(
-                                                title,
-                                                panel.project.selected,
-                                                panel.priority.selected,
-                                            ))
-                                        }
-                                    });
-                                    if let Some(task) = task {
-                                        state.tasks.insert(0, task);
-                                        state.row_buttons.insert(0, ButtonState::default());
-                                        state.panel = None;
-                                        state.selected_task = None;
-                                    }
-                                })
-                                .build(app)
-                                .expand_x()
-                                .height(38.),
-                        ],
+                    owned_scope(
+                        panel_actions(
+                            PanelActionsState {
+                                panel: Some(panel.clone()),
+                                tasks: state.tasks.clone(),
+                                selected_task: state.selected_task,
+                                row_buttons: state.row_buttons.clone(),
+                                cancel_button: state.panel_cancel_button,
+                                save_button: state.panel_save_button,
+                            },
+                            app,
+                        ),
+                        panel_actions_scope(),
                     ),
                 ],
             )
@@ -529,6 +540,42 @@ fn selected_task_panel<'a>(
         .pad(16.)
         .align(Align::Top),
     ])
+}
+
+fn panel_actions<'a>(
+    state: PanelActionsState,
+    app: &mut PaneState,
+) -> Layout<'a, View<PanelActionsState>, PaneState> {
+    row_spaced(
+        10.,
+        vec![
+            button(id!(), binding!(state, PanelActionsState, cancel_button))
+                .text_label("Cancel")
+                .on_click(|state, _| state.panel = None)
+                .build(app)
+                .expand_x()
+                .height(38.),
+            button(id!(), binding!(state, PanelActionsState, save_button))
+                .text_label("Plant")
+                .on_click(|state, _| {
+                    let Some(panel) = &state.panel else { return };
+                    let title = panel.draft.text.trim();
+                    if title.is_empty() {
+                        return;
+                    }
+                    state.tasks.insert(
+                        0,
+                        Task::new(title, panel.project.selected, panel.priority.selected),
+                    );
+                    state.row_buttons.insert(0, ButtonState::default());
+                    state.selected_task = None;
+                    state.panel = None;
+                })
+                .build(app)
+                .expand_x()
+                .height(38.),
+        ],
+    )
 }
 
 fn panel_form<'a>(

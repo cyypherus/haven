@@ -40,8 +40,8 @@ impl Key {
 
 type Getter<State, T> = Rc<dyn for<'a> Fn(&'a State) -> &'a T>;
 type GetterMut<State, T> = Rc<dyn for<'a> Fn(&'a mut State) -> &'a mut T>;
-type OptionalGetter<State, T> = Rc<dyn for<'a> Fn(&'a State) -> Option<&'a T>>;
-type OptionalGetterMut<State, T> = Rc<dyn for<'a> Fn(&'a mut State) -> Option<&'a mut T>>;
+type OwnedGetter<State, T> = Rc<dyn Fn(&State) -> Option<T>>;
+type OwnedSetter<State, T> = Rc<dyn Fn(&mut State, T)>;
 
 enum BindingStorage<State, T> {
     Lens {
@@ -55,43 +55,50 @@ pub struct Binding<State, T> {
     storage: BindingStorage<State, T>,
 }
 
-pub struct OptionalBinding<State, T> {
-    get: OptionalGetter<State, T>,
-    get_mut: OptionalGetterMut<State, T>,
+pub struct OwnedBinding<State, T> {
+    get: OwnedGetter<State, T>,
+    set: OwnedSetter<State, T>,
 }
 
-impl<State, T> OptionalBinding<State, T> {
+impl<State, T> OwnedBinding<State, T> {
     pub fn new(
-        get: impl for<'a> Fn(&'a State) -> Option<&'a T> + 'static,
-        get_mut: impl for<'a> Fn(&'a mut State) -> Option<&'a mut T> + 'static,
+        get: impl Fn(&State) -> Option<T> + 'static,
+        set: impl Fn(&mut State, T) + 'static,
     ) -> Self {
         Self {
             get: Rc::new(get),
-            get_mut: Rc::new(get_mut),
+            set: Rc::new(set),
         }
     }
 
-    pub fn get<'a>(&'a self, state: &'a State) -> Option<&'a T> {
+    pub fn get(&self, state: &State) -> Option<T> {
         (self.get)(state)
     }
 
-    pub fn get_mut<'a>(&'a self, state: &'a mut State) -> Option<&'a mut T> {
-        (self.get_mut)(state)
+    pub fn set(&self, state: &mut State, value: T) {
+        (self.set)(state, value);
     }
-}
 
-impl<State, T> Clone for OptionalBinding<State, T> {
-    fn clone(&self) -> Self {
-        Self {
-            get: self.get.clone(),
-            get_mut: self.get_mut.clone(),
+    pub fn update(&self, state: &mut State, f: impl FnOnce(&mut T)) {
+        if let Some(mut value) = self.get(state) {
+            f(&mut value);
+            self.set(state, value);
         }
     }
 }
 
-impl<State, T> Debug for OptionalBinding<State, T> {
+impl<State, T> Clone for OwnedBinding<State, T> {
+    fn clone(&self) -> Self {
+        Self {
+            get: self.get.clone(),
+            set: self.set.clone(),
+        }
+    }
+}
+
+impl<State, T> Debug for OwnedBinding<State, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("OptionalBinding").finish_non_exhaustive()
+        f.debug_struct("OwnedBinding").finish_non_exhaustive()
     }
 }
 

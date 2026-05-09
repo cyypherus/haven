@@ -31,8 +31,7 @@ pub use primitives::{
 use vello_svg::vello::peniko::color::AlphaColor;
 use vello_svg::vello::peniko::color::Srgb;
 pub use view::{
-    BlendMode, Compositing, const_hash, optional_scope, project_scope, rect_path,
-    rounded_rect_path, scope,
+    BlendMode, Compositing, const_hash, owned_scope, rect_path, rounded_rect_path, scope,
 };
 
 pub use vello_svg::vello::kurbo::{BezPath, Cap, Join, Point, Stroke};
