@@ -266,22 +266,22 @@ fn header<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, 
                 .build(app),
             ])
             .expand_x(),
-            button(id!(), binding!(state, State, compose_button))
-                .text_label(if state.panel.is_some() {
-                    "Composing"
-                } else {
-                    "New work item"
-                })
-                .on_click(|state, _| {
-                    if state.panel.is_none() {
-                        state.panel = Some(PanelState::default());
-                    } else {
-                        state.panel = None;
-                    }
-                    state.selected_task = None;
-                })
-                .build(app)
-                .height(38.),
+            if state.panel.is_none() {
+                button(id!(), binding!(state, State, compose_button))
+                    .text_label("New task")
+                    .on_click(|state, _| {
+                        if state.panel.is_none() {
+                            state.panel = Some(PanelState::default());
+                        } else {
+                            state.panel = None;
+                        }
+                        state.selected_task = None;
+                    })
+                    .build(app)
+                    .height(38.)
+            } else {
+                empty()
+            },
         ],
     )
 }
@@ -393,7 +393,7 @@ fn task_row<'a>(
     })
     .build(app)
     .align(Align::Leading)
-    .pad_y(4.)
+    .pad(4.)
 }
 
 fn priority_pill<'a, State: 'static>(
@@ -441,7 +441,7 @@ fn panel_slot<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<Stat
             column_spaced(
                 12.,
                 vec![
-                    text(id!(), "Plant a task")
+                    text(id!(), "Create a task")
                         .font_size(20)
                         .font_weight(FontWeight::BOLD)
                         .align(Alignment::Start)
@@ -591,25 +591,34 @@ fn panel_form<'a>(
                 .enter_end_editing()
                 .build(app)
                 .expand_x(),
-            dropdown(
-                id!(),
-                binding!(state, PanelState, project),
+            row_spaced(
+                12.,
                 vec![
-                    Project::Canopy,
-                    Project::Garden,
-                    Project::Commons,
-                    Project::People,
+                    dropdown(
+                        id!(),
+                        binding!(state, PanelState, project),
+                        vec![
+                            Project::Canopy,
+                            Project::Garden,
+                            Project::Commons,
+                            Project::People,
+                        ],
+                        |ctx, app| {
+                            dropdown_label(ctx.value.label(), ctx.selected, ctx.hovered, app)
+                        },
+                    )
+                    .build(app),
+                    dropdown(
+                        id!(),
+                        binding!(state, PanelState, priority),
+                        vec![Priority::Low, Priority::Medium, Priority::High],
+                        |ctx, app| {
+                            dropdown_label(ctx.value.label(), ctx.selected, ctx.hovered, app)
+                        },
+                    )
+                    .build(app),
                 ],
-                |ctx, app| dropdown_label(ctx.value.label(), ctx.selected, ctx.hovered, app),
-            )
-            .build(app),
-            dropdown(
-                id!(),
-                binding!(state, PanelState, priority),
-                vec![Priority::Low, Priority::Medium, Priority::High],
-                |ctx, app| dropdown_label(ctx.value.label(), ctx.selected, ctx.hovered, app),
-            )
-            .build(app),
+            ),
         ],
     )
 }
