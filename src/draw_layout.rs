@@ -1,9 +1,7 @@
+use kurbo::{Affine, Line, Stroke};
 use parley::{Layout, PositionedLayoutItem};
-use vello_svg::vello::{
-    Scene,
-    kurbo::{Affine, Line, Stroke},
-    peniko::{Brush, Fill},
-};
+use peniko::{Brush, Fill};
+use vello_svg::vello::Scene;
 
 pub(crate) fn draw_layout(transform: Affine, layout: &Layout<Brush>, scene: &mut Scene) {
     for line in layout.lines() {

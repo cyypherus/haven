@@ -1,11 +1,9 @@
 use crate::{Key, Modifiers, NamedKey};
 use core::default::Default;
+use kurbo::Point;
 use parley::{GenericFamily, StyleProperty, editing::SplitString};
+use peniko::{Brush, color::palette};
 use std::time::{Duration, Instant};
-use vello_svg::vello::{
-    kurbo::Point,
-    peniko::{Brush, color::palette},
-};
 
 pub(crate) use parley::editing::Generation;
 use parley::{FontContext, LayoutContext, PlainEditor, PlainEditorDriver};

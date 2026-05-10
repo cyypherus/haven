@@ -7,7 +7,7 @@ use backer::{
     nodes::{draw, stack},
 };
 use std::rc::Rc;
-use vello_svg::vello::peniko::Brush;
+use peniko::Brush;
 
 #[derive(Default, Debug, Clone, Copy)]
 pub struct ToggleState {

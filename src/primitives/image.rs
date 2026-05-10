@@ -3,12 +3,8 @@ use crate::app::{PaneState, View};
 use crate::DEFAULT_CORNER_ROUNDING;
 use crate::view::{Drawable, DrawableType};
 
-use backer::{Area, Layout};
-use image::{DynamicImage, ImageBuffer, Rgba};
+use backer::Layout;
 use std::sync::Arc;
-use vello_svg::vello::kurbo::{Affine, Point, RoundedRect, Size, Vec2};
-use vello_svg::vello::peniko::{Fill, Mix};
-use vello_svg::vello::{Scene, peniko};
 
 #[derive(Debug, Clone)]
 pub struct Image {
@@ -96,8 +92,8 @@ impl Image {
 }
 
 impl Image {
-    pub(crate) fn draw(&mut self, area: Area, scene: &mut Scene, app: &mut PaneState) {
-        let cache_key = if let Some(ref image_id) = self.image_id {
+    pub(crate) fn cache_key(&self) -> u64 {
+        if let Some(ref image_id) = self.image_id {
             use std::collections::hash_map::DefaultHasher;
             use std::hash::{Hash, Hasher};
             let mut hasher = DefaultHasher::new();
@@ -106,113 +102,6 @@ impl Image {
             hasher.finish()
         } else {
             self.id
-        };
-
-        if !app.image_scenes.contains_key(&cache_key) {
-            let peniko_image = match self.load_image() {
-                Ok(img) => img,
-                Err(err) => {
-                    eprintln!("Loading image failed: {err}");
-                    app.image_scenes.insert(cache_key, (Scene::new(), 0., 0.));
-                    return;
-                }
-            };
-
-            let width = peniko_image.width as f32;
-            let height = peniko_image.height as f32;
-
-            let mut image_scene = Scene::new();
-            image_scene.draw_image(&peniko_image, Affine::IDENTITY);
-
-            app.image_scenes
-                .insert(cache_key, (image_scene, width, height));
         }
-
-        let PaneState { image_scenes, .. } = app;
-
-        if let Some((image_scene, width, height)) = image_scenes.get(&cache_key) {
-            let width = *width as f64;
-            let height = *height as f64;
-            let area_x = area.x as f64 * app.scale_factor;
-            let area_y = area.y as f64 * app.scale_factor;
-            let area_width = area.width as f64 * app.scale_factor;
-            let area_height = area.height as f64 * app.scale_factor;
-            let mut scale = 1.;
-
-            let transform = if self.unlocked_aspect_ratio {
-                Affine::IDENTITY
-                    .then_scale_non_uniform(area_width / width, area_height / height)
-                    .then_translate(Vec2::new(area_x, area_y))
-            } else {
-                scale = (area_width / width).min(area_height / height);
-                let dx = area_x + (area_width - width * scale) / 2.0;
-                let dy = area_y + (area_height - height * scale) / 2.0;
-                Affine::IDENTITY
-                    .then_scale(scale)
-                    .then_translate(Vec2::new(dx, dy))
-            };
-
-            scene.push_layer(
-                Fill::NonZero,
-                Mix::Normal,
-                1.,
-                transform,
-                &RoundedRect::from_origin_size(
-                    Point::ZERO,
-                    Size::new(width, height),
-                    self.corner_rounding as f64 / scale,
-                ),
-            );
-            scene.append(image_scene, Some(transform));
-            scene.pop_layer();
-        }
-    }
-
-    fn load_image(&self) -> Result<peniko::ImageData, Box<dyn std::error::Error>> {
-        #[derive(Debug)]
-        pub enum ImageError {
-            InvalidBuffer(String),
-        }
-
-        impl std::fmt::Display for ImageError {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                match self {
-                    ImageError::InvalidBuffer(msg) => write!(f, "Invalid image buffer: {}", msg),
-                }
-            }
-        }
-
-        impl std::error::Error for ImageError {}
-
-        let img = match &self.source {
-            ImageSource::Path(path) => image::load_from_memory(&std::fs::read(path)?)?,
-            ImageSource::Bytes(bytes) => image::load_from_memory(&bytes.as_ref().clone())?,
-            ImageSource::Buffer(width, height, container) => DynamicImage::ImageRgba8(
-                ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(
-                    *width,
-                    *height,
-                    container.as_ref().clone(),
-                )
-                .ok_or_else(|| {
-                    ImageError::InvalidBuffer(format!(
-                        "Buffer size mismatch for {}x{} image",
-                        width, height
-                    ))
-                })?,
-            ),
-        };
-
-        let rgba_img = img.to_rgba8();
-        let (width, height) = rgba_img.dimensions();
-
-        let blob = peniko::Blob::new(Arc::new(rgba_img.into_raw()));
-
-        Ok(peniko::ImageData {
-            data: blob,
-            format: peniko::ImageFormat::Rgba8,
-            alpha_type: peniko::ImageAlphaType::Alpha,
-            width,
-            height,
-        })
     }
 }

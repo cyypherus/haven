@@ -1,6 +1,6 @@
 use backer::Area;
 use std::{fmt::Debug, rc::Rc};
-use vello_svg::vello::peniko::{Brush, Gradient};
+use peniko::{Brush, Gradient};
 
 use crate::Color;
 

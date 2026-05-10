@@ -1,18 +1,17 @@
 use crate::app::{LayoutCache, PaneState, View};
 use crate::brush_source::BrushSource;
-use crate::draw_layout::draw_layout;
+use crate::render::{RenderItem, TextRenderLayout};
 use crate::view::{Drawable, DrawableType};
 use crate::{DEFAULT_FG_COLOR, DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE};
 use backer::{Area, Layout};
 use parley::{
-    Affinity, Alignment, AlignmentOptions, Cursor, FontContext, FontStack, FontWeight,
-    Layout as ParleyLayout, LayoutContext, LineHeight, StyleProperty, TextStyle,
+    Alignment, AlignmentOptions, FontContext, FontStack, FontWeight, Layout as ParleyLayout,
+    LayoutContext, LineHeight, StyleProperty, TextStyle,
 };
 use std::fmt::Debug;
 use std::ops::Range;
-use vello_svg::vello::Scene;
-use vello_svg::vello::kurbo::{Affine, Rect};
-use vello_svg::vello::peniko::{Brush, Fill};
+use kurbo::Affine;
+use peniko::Brush;
 
 pub fn text(id: u64, text: impl AsRef<str>) -> Text {
     Text {
@@ -310,50 +309,26 @@ impl TextLayout {
 }
 
 impl Text {
-    pub(crate) fn draw(
-        &mut self,
-        animated_area: Area,
+    pub(crate) fn render_layout(
+        &self,
+        scale_factor: f64,
         area: Area,
-        scene: &mut Scene,
         app: &mut PaneState,
-    ) {
+    ) -> TextRenderLayout {
         let fill = self.fill.resolve(area, &());
-
         let layout = app.text_layout.build_layout(self, &fill, area.width, true);
+        let transform = Affine::translate((area.x as f64, area.y as f64)).then_scale(scale_factor);
 
-        let transform = Affine::translate((animated_area.x as f64, animated_area.y as f64))
-            .then_scale(app.scale_factor);
-
-        for (range, brush) in &self.backgrounds {
-            draw_background(scene, transform, &layout, range.clone(), brush);
-        }
-
-        draw_layout(transform, &layout, scene);
-    }
-}
-
-fn draw_background(
-    scene: &mut Scene,
-    transform: Affine,
-    layout: &ParleyLayout<Brush>,
-    range: Range<usize>,
-    brush: &Brush,
-) {
-    if range.is_empty() {
-        return;
-    }
-    let anchor = Cursor::from_byte_index(layout, range.start, Affinity::Downstream);
-    let focus = Cursor::from_byte_index(layout, range.end, Affinity::Upstream);
-    let selection = parley::Selection::new(anchor, focus);
-    selection.geometry_with(layout, |bb, _line_idx| {
-        scene.fill(
-            Fill::NonZero,
+        TextRenderLayout {
             transform,
-            brush,
-            None,
-            &Rect::new(bb.x0, bb.y0, bb.x1, bb.y1),
-        );
-    });
+            layout,
+            backgrounds: self.backgrounds.clone(),
+        }
+    }
+
+    pub(crate) fn render_item(&self, scale_factor: f64, area: Area, app: &mut PaneState) -> RenderItem {
+        RenderItem::Text(self.render_layout(scale_factor, area, app))
+    }
 }
 
 impl Text {

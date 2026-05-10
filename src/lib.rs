@@ -2,17 +2,21 @@
 
 mod app;
 mod brush_source;
+#[cfg(feature = "vello")]
 mod draw_layout;
 mod editor;
 mod gestures;
 mod models;
-pub mod platform;
+pub mod platforms;
 mod prebuilts;
 mod primitives;
+pub mod render;
+pub mod renderers;
 mod utils;
 mod view;
 
-pub use platform::winit;
+#[cfg(feature = "winit")]
+pub use platforms::winit;
 
 pub(crate) use app::Pane;
 pub use app::{PaneConfig, PaneEffect, PaneState, Redraw, RedrawTrigger, View};
@@ -23,19 +27,19 @@ pub use gestures::{
     ClickState, DragState, EditInteraction, GestureHandler, GestureState, ScrollDelta,
 };
 pub use parley::{Alignment, FontWeight, StyleProperty};
+use peniko::color::AlphaColor;
+use peniko::color::Srgb;
 pub use prebuilts::*;
 pub use primitives::{
     ImageSource, Span, Text, circle, image, image_from_bytes, image_from_path, path, rect,
     rich_text, span, svg, text,
 };
-use vello_svg::vello::peniko::color::AlphaColor;
-use vello_svg::vello::peniko::color::Srgb;
 pub use view::{
     BlendMode, Compositing, const_hash, owned_scope, rect_path, rounded_rect_path, scope,
 };
 
-pub use vello_svg::vello::kurbo::{BezPath, Cap, Join, Point, Stroke};
-pub use vello_svg::vello::peniko::{Brush, Gradient};
+pub use kurbo::{BezPath, Cap, Join, Point, Stroke};
+pub use peniko::{Brush, Gradient};
 
 pub use models::*;
 

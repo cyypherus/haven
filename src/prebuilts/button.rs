@@ -7,8 +7,8 @@ use crate::{
 };
 use backer::{Layout, nodes::stack};
 use std::rc::Rc;
-use vello_svg::vello::peniko::Brush;
-use vello_svg::vello::peniko::color::palette::css::TRANSPARENT;
+use peniko::Brush;
+use peniko::color::palette::css::TRANSPARENT;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ButtonState {

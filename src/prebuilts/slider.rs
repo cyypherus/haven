@@ -9,7 +9,7 @@ use backer::{
     nodes::{draw, stack},
 };
 use std::rc::Rc;
-use vello_svg::vello::peniko::Brush;
+use peniko::Brush;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SliderState {

@@ -4,7 +4,7 @@ use crate::primitives::shape::{PathData, circle_path};
 use crate::view::{Drawable, DrawableType};
 
 use backer::Layout;
-use vello_svg::vello::kurbo::Stroke;
+use kurbo::Stroke;
 
 pub struct Circle {
     id: u64,

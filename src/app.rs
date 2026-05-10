@@ -1,4 +1,4 @@
-use crate::draw_layout::draw_layout;
+use crate::render::{Frame, RenderItem};
 use crate::gestures::{ClickLocation, Interaction, ScrollDelta};
 
 use crate::editor::Editor;
@@ -21,9 +21,7 @@ use std::time::Duration;
 use tokio::runtime::Runtime;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
-use vello_svg::vello::Scene;
-use vello_svg::vello::kurbo::{Affine, BezPath};
-use vello_svg::vello::peniko::{self, Brush, Color, Fill};
+use peniko::{self, Brush, Color};
 
 type FontEntry = (Arc<Vec<u8>>, Option<String>);
 
@@ -69,7 +67,6 @@ pub(crate) struct Pane<State> {
     name: &'static str,
     base_color: Color,
     view: ViewFn<State>,
-    scene: Scene,
     gesture_handlers: Vec<(u64, Area, GestureHandler<State, PaneState>)>,
     cursor_position: Option<Point>,
     gesture_state: GestureState,
@@ -228,8 +225,6 @@ pub struct PaneState {
     pub(crate) task_runtime: Runtime,
     pub(crate) cancellation_token: CancellationToken,
     pub(crate) task_tracker: TaskTracker,
-    pub(crate) svg_scenes: HashMap<String, (Scene, f32, f32)>,
-    pub(crate) image_scenes: HashMap<u64, (Scene, f32, f32)>,
     pub(crate) modifiers: Option<Modifiers>,
     pub(crate) redraw: Redraw,
     pub(crate) effects: Vec<PaneEffect>,
@@ -242,12 +237,6 @@ pub enum View<State: ?Sized> {
         gesture_handlers: Vec<GestureHandler<State, PaneState>>,
         area: Area,
     },
-    PushLayer {
-        path: BezPath,
-        blend: peniko::BlendMode,
-        alpha: f32,
-    },
-    PopLayer,
     EditorArea(u64, Area),
     Empty,
 }
@@ -441,7 +430,6 @@ impl<State: 'static> Pane<State> {
         };
 
         Self {
-            scene: Scene::new(),
             name: config.name,
             base_color,
             view: config.view,
@@ -460,8 +448,6 @@ impl<State: 'static> Pane<State> {
                 editor_areas: HashMap::new(),
                 scrollers: HashMap::new(),
                 needs_redraw: false,
-                image_scenes: HashMap::new(),
-                svg_scenes: HashMap::new(),
                 modifiers: None,
                 redraw,
                 effects: Vec::new(),
@@ -479,17 +465,7 @@ impl<State: 'static> Pane<State> {
         self.name
     }
 
-    pub(crate) fn base_color(&self) -> Color {
-        self.base_color
-    }
 
-    pub(crate) fn scene(&self) -> &Scene {
-        &self.scene
-    }
-
-    pub(crate) fn reset_scene(&mut self) {
-        self.scene.reset();
-    }
 
     pub(crate) fn close(mut self) {
         (self.on_exit)(&mut self.state, &mut self.pane_state);
@@ -502,7 +478,12 @@ impl<State: 'static> Pane<State> {
         });
     }
 
-    pub(crate) fn redraw(&mut self, width: u32, height: u32, scale_factor: f64) -> Vec<PaneEffect> {
+    pub(crate) fn redraw(
+        &mut self,
+        width: u32,
+        height: u32,
+        scale_factor: f64,
+    ) -> (Frame, Vec<PaneEffect>) {
         if !self.started {
             self.started = true;
             (self.on_start)(&mut self.state, &mut self.pane_state);
@@ -527,25 +508,15 @@ impl<State: 'static> Pane<State> {
 
         let continue_animating = std::mem::take(&mut self.pane_state.needs_redraw);
 
+        let mut items = Vec::new();
+
         for item in draw_items {
             match item {
-                View::PushLayer { path, blend, alpha } => {
-                    self.scene.push_layer(
-                        Fill::NonZero,
-                        blend,
-                        alpha,
-                        Affine::scale(self.pane_state.scale_factor),
-                        &path,
-                    );
-                }
-                View::PopLayer => {
-                    self.scene.pop_layer();
-                }
                 View::EditorArea(id, area) => {
                     self.pane_state.editor_areas.insert(id, area);
                 }
                 View::Draw {
-                    mut view,
+                    view,
                     gesture_handlers,
                     area,
                 } => {
@@ -558,35 +529,55 @@ impl<State: 'static> Pane<State> {
                             .map(|handler| (id, draw_area, handler)),
                     );
 
-                    match &mut *view {
-                        DrawableType::Text(v) => {
-                            v.draw(draw_area, area, &mut self.scene, &mut self.pane_state)
-                        }
+                    let render_item = match *view {
+                        DrawableType::Text(text) => text.render_item(
+                            self.pane_state.scale_factor,
+                            draw_area,
+                            &mut self.pane_state,
+                        ),
                         DrawableType::Layout(boxed) => {
-                            let (layout, transform) = boxed.as_mut();
-                            draw_layout(*transform, layout, &mut self.scene)
+                            let (layout, transform) = *boxed;
+                            RenderItem::Layout { layout, transform }
                         }
-                        DrawableType::Path(v) => {
-                            v.draw(&mut self.scene, draw_area, self.pane_state.scale_factor)
-                        }
-                        DrawableType::Svg(v) => {
-                            v.draw(draw_area, &mut self.scene, &mut self.pane_state)
-                        }
-                        DrawableType::Image(v) => {
-                            v.draw(draw_area, &mut self.scene, &mut self.pane_state)
-                        }
-                    }
+                        DrawableType::Path(path) => RenderItem::Path {
+                            path,
+                            area: draw_area,
+                        },
+                        DrawableType::Svg(svg) => RenderItem::Svg {
+                            svg,
+                            area: draw_area,
+                        },
+                        DrawableType::Image(image) => RenderItem::Image {
+                            image,
+                            area: draw_area,
+                        },
+                        DrawableType::PushLayer { path, blend, alpha } => RenderItem::PushLayer {
+                            path,
+                            blend,
+                            alpha,
+                        },
+                        DrawableType::PopLayer => RenderItem::PopLayer,
+                    };
+                    items.push(render_item);
                 }
                 View::Empty => (),
             }
         }
+
+        let frame = Frame {
+            base_color: self.base_color,
+            width,
+            height,
+            scale_factor: self.pane_state.scale_factor,
+            items,
+        };
 
         (self.on_frame)(&mut self.state, &mut self.pane_state);
 
         if continue_animating {
             self.pane_state.redraw.request();
         }
-        self.take_effects()
+        (frame, self.take_effects())
     }
 }
 impl<State: 'static> Pane<State> {

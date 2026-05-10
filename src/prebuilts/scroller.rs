@@ -10,7 +10,7 @@ use backer::{
 };
 use lilt::{Animated, Easing};
 use std::time::Instant;
-use vello_svg::vello::peniko::{Brush, Gradient};
+use peniko::{Brush, Gradient};
 
 #[derive(Debug, Clone)]
 pub(crate) struct ScrollerState {

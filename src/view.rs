@@ -5,8 +5,8 @@ use crate::{Binding, ClickState, DragState, GestureHandler, Key, OwnedBinding};
 use backer::{Area, Layout, nodes::*};
 use parley::Layout as TextLayout;
 use std::rc::Rc;
-use vello_svg::vello::kurbo::{Affine, BezPath};
-use vello_svg::vello::peniko::{self, Brush};
+use kurbo::{Affine, BezPath};
+use peniko::{self, Brush};
 
 // A simple const FNV-1a hash for our purposes
 const FNV_OFFSET: u64 = 1469598103934665603;
@@ -72,7 +72,7 @@ macro_rules! scope {
 }
 
 pub fn rect_path(area: Area) -> BezPath {
-    use vello_svg::vello::kurbo::{Rect, Shape};
+    use kurbo::{Rect, Shape};
     Rect::new(
         area.x as f64,
         area.y as f64,
@@ -83,7 +83,7 @@ pub fn rect_path(area: Area) -> BezPath {
 }
 
 pub fn rounded_rect_path(area: Area, radius: f32) -> BezPath {
-    use vello_svg::vello::kurbo::{Rect, RoundedRect, Shape};
+    use kurbo::{Rect, RoundedRect, Shape};
     RoundedRect::from_rect(
         Rect::new(
             area.x as f64,
@@ -106,7 +106,7 @@ pub enum BlendMode {
 
 impl BlendMode {
     fn to_peniko(self) -> peniko::BlendMode {
-        use vello_svg::vello::peniko::{Compose, Mix};
+        use peniko::{Compose, Mix};
         match self {
             BlendMode::Normal => peniko::BlendMode::default(),
             BlendMode::Additive => peniko::BlendMode {
@@ -156,14 +156,24 @@ fn wrap_layer<'a, State>(
 ) -> Layout<'a, View<State>, PaneState> {
     stack(vec![
         draw(move |area, _| {
-            vec![View::PushLayer {
-                path: path(area),
-                blend,
-                alpha,
+            vec![View::Draw {
+                view: Box::new(DrawableType::PushLayer {
+                    path: path(area),
+                    blend,
+                    alpha,
+                }),
+                gesture_handlers: Vec::new(),
+                area,
             }]
         }),
         content,
-        draw(|_, _| vec![View::PopLayer]),
+        draw(|area, _| {
+            vec![View::Draw {
+                view: Box::new(DrawableType::PopLayer),
+                gesture_handlers: Vec::new(),
+                area,
+            }]
+        }),
     ])
 }
 
@@ -178,6 +188,12 @@ pub enum DrawableType {
     Path(Box<PathData>),
     Svg(Svg),
     Image(Image),
+    PushLayer {
+        path: BezPath,
+        blend: peniko::BlendMode,
+        alpha: f32,
+    },
+    PopLayer,
 }
 
 impl Clone for DrawableType {
@@ -188,6 +204,12 @@ impl Clone for DrawableType {
             DrawableType::Path(path) => DrawableType::Path(path.clone()),
             DrawableType::Svg(svg) => DrawableType::Svg(svg.clone()),
             DrawableType::Image(image) => DrawableType::Image(image.clone()),
+            DrawableType::PushLayer { path, blend, alpha } => DrawableType::PushLayer {
+                path: path.clone(),
+                blend: *blend,
+                alpha: *alpha,
+            },
+            DrawableType::PopLayer => DrawableType::PopLayer,
         }
     }
 }
@@ -302,6 +324,7 @@ impl DrawableType {
             DrawableType::Path(view) => view.id,
             DrawableType::Svg(view) => view.id,
             DrawableType::Image(view) => view.id,
+            DrawableType::PushLayer { .. } | DrawableType::PopLayer => 0,
         }
     }
 }
@@ -388,8 +411,6 @@ fn map_scope<'a, Parent: 'static, Sub: 'static>(
                 .collect(),
             area,
         },
-        View::PushLayer { path, blend, alpha } => View::PushLayer { path, blend, alpha },
-        View::PopLayer => View::PopLayer,
         View::EditorArea(id, area) => View::EditorArea(id, area),
         View::Empty => View::Empty,
     })

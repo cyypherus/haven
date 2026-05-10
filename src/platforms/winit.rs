@@ -1,8 +1,8 @@
+use crate::render::Frame;
 use crate::{Key, Modifiers, NamedKey, Pane, PaneConfig, PaneEffect, Redraw, ScrollDelta};
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::sync::Arc;
-use vello_svg::vello::util::{RenderContext, RenderSurface};
-use vello_svg::vello::{Renderer, RendererOptions};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::MouseScrollDelta;
@@ -71,31 +71,69 @@ enum WinitEvent {
     Redraw(WindowId),
 }
 
-pub struct WinitApp<State> {
+pub trait WinitRenderer {
+    type Surface;
+    type Error;
+
+    fn create_surface(
+        &mut self,
+        window: Arc<WinitWindow>,
+        width: u32,
+        height: u32,
+        transparent: bool,
+    ) -> Result<Self::Surface, Self::Error>;
+
+    fn resize(
+        &mut self,
+        surface: &mut Self::Surface,
+        width: u32,
+        height: u32,
+    ) -> Result<(), Self::Error>;
+
+    fn render(
+        &mut self,
+        surface: &mut Self::Surface,
+        frame: &Frame,
+    ) -> Result<(), Self::Error>;
+}
+
+#[cfg(feature = "vello")]
+pub type WinitApp<State> = WinitAppWithRenderer<State, crate::renderers::vello::VelloRenderer>;
+
+pub struct WinitAppWithRenderer<State, R: WinitRenderer> {
     state: Option<State>,
     panes: HashMap<&'static str, PaneConfig<State>>,
-    windows: HashMap<WindowId, WinitSurface<State>>,
+    windows: HashMap<WindowId, WinitSurface<State, R::Surface>>,
     pane_windows: HashMap<&'static str, WindowId>,
-    render_context: RenderContext,
-    renderers: Vec<Option<Renderer>>,
+    renderer: R,
     proxy: Option<EventLoopProxy<WinitEvent>>,
 }
 
-struct WinitSurface<State> {
-    surface: RenderSurface<'static>,
+struct WinitSurface<State, Surface> {
+    surface: Surface,
     window: Arc<WinitWindow>,
     pane: Pane<State>,
 }
 
+#[cfg(feature = "vello")]
 impl<State: Clone + 'static> WinitApp<State> {
     pub fn new(state: State) -> Self {
+        Self::new_with_renderer(state, crate::renderers::vello::VelloRenderer::new())
+    }
+}
+
+impl<State: Clone + 'static, R> WinitAppWithRenderer<State, R>
+where
+    R: WinitRenderer,
+    R::Error: Debug,
+{
+    pub fn new_with_renderer(state: State, renderer: R) -> Self {
         Self {
             state: Some(state),
             panes: HashMap::new(),
             windows: HashMap::new(),
             pane_windows: HashMap::new(),
-            render_context: RenderContext::new(),
-            renderers: Vec::new(),
+            renderer,
             proxy: None,
         }
     }
@@ -162,38 +200,11 @@ impl<State: Clone + 'static> WinitApp<State> {
 
         let window = Arc::new(event_loop.create_window(attributes).unwrap());
         let size = window.inner_size();
-        let surface_future = self.render_context.create_surface(
-            window.clone(),
-            size.width,
-            size.height,
-            vello_svg::vello::wgpu::PresentMode::AutoNoVsync,
-        );
-        let mut surface = pollster::block_on(surface_future).expect("Error creating surface");
-
-        if transparent {
-            let device = &self.render_context.devices[surface.dev_id].device;
-            let capabilities = surface
-                .surface
-                .get_capabilities(self.render_context.devices[surface.dev_id].adapter());
-            if capabilities
-                .alpha_modes
-                .contains(&wgpu::CompositeAlphaMode::PostMultiplied)
-            {
-                surface.config.alpha_mode = wgpu::CompositeAlphaMode::PostMultiplied;
-            }
-            surface.surface.configure(device, &surface.config);
-        }
-
-        let dev_id = surface.dev_id;
-        self.renderers
-            .resize_with(self.render_context.devices.len(), || None);
-        self.renderers[dev_id].get_or_insert_with(|| {
-            Renderer::new(
-                &self.render_context.devices[dev_id].device,
-                RendererOptions::default(),
-            )
-            .expect("Failed to create renderer")
-        });
+        let window_id = window.id();
+        let surface = self
+            .renderer
+            .create_surface(window.clone(), size.width, size.height, transparent)
+            .expect("failed to create render surface");
 
         #[cfg(target_os = "windows")]
         window.set_visible(true);
@@ -201,7 +212,6 @@ impl<State: Clone + 'static> WinitApp<State> {
         let Some(proxy) = self.proxy.clone() else {
             return;
         };
-        let window_id = window.id();
         let redraw = Redraw::new(move || {
             let _ = proxy.send_event(WinitEvent::Redraw(window_id));
         });
@@ -213,14 +223,7 @@ impl<State: Clone + 'static> WinitApp<State> {
         let pane_name = config.name();
         let pane = config.build(state, redraw);
         self.pane_windows.insert(pane_name, window_id);
-        self.windows.insert(
-            window_id,
-            WinitSurface {
-                surface,
-                window,
-                pane,
-            },
-        );
+        self.windows.insert(window_id, WinitSurface { surface, window, pane });
     }
 
     fn apply_effects(
@@ -261,65 +264,27 @@ impl<State: Clone + 'static> WinitApp<State> {
         let size = surface.window.inner_size();
         let width = size.width;
         let height = size.height;
-        if surface.surface.config.width != width || surface.surface.config.height != height {
-            self.render_context
-                .resize_surface(&mut surface.surface, width, height);
-        }
+        self.renderer
+            .resize(&mut surface.surface, width, height)
+            .expect("failed to resize render surface");
 
-        let effects = surface
+        let (frame, effects) = surface
             .pane
             .redraw(width, height, surface.window.scale_factor());
 
-        let device_handle = &self.render_context.devices[surface.surface.dev_id];
-        let render_params = vello_svg::vello::RenderParams {
-            base_color: surface.pane.base_color(),
-            width,
-            height,
-            antialiasing_method: vello_svg::vello::AaConfig::Msaa8,
-        };
-
         surface.window.pre_present_notify();
-
-        self.renderers[surface.surface.dev_id]
-            .as_mut()
-            .unwrap()
-            .render_to_texture(
-                &device_handle.device,
-                &device_handle.queue,
-                surface.pane.scene(),
-                &surface.surface.target_view,
-                &render_params,
-            )
-            .expect("failed to render to texture");
-
-        let surface_texture = surface
-            .surface
-            .surface
-            .get_current_texture()
-            .expect("failed to get surface texture");
-
-        let mut encoder =
-            device_handle
-                .device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("Surface Blit"),
-                });
-        surface.surface.blitter.copy(
-            &device_handle.device,
-            &mut encoder,
-            &surface.surface.target_view,
-            &surface_texture
-                .texture
-                .create_view(&wgpu::TextureViewDescriptor::default()),
-        );
-        device_handle.queue.submit([encoder.finish()]);
-        surface_texture.present();
-        surface.pane.reset_scene();
+        self.renderer
+            .render(&mut surface.surface, &frame)
+            .expect("failed to render frame");
         effects
     }
 }
 
-impl<State: Clone + 'static> ApplicationHandler<WinitEvent> for WinitApp<State> {
+impl<State: Clone + 'static, R> ApplicationHandler<WinitEvent> for WinitAppWithRenderer<State, R>
+where
+    R: WinitRenderer,
+    R::Error: Debug,
+{
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let panes: Vec<_> = self
             .panes
@@ -367,7 +332,7 @@ impl<State: Clone + 'static> ApplicationHandler<WinitEvent> for WinitApp<State> 
                 .map(|surface| {
                     surface
                         .pane
-                        .move_to(vello_svg::vello::kurbo::Point::new(position.x, position.y))
+                        .move_to(kurbo::Point::new(position.x, position.y))
                 })
                 .unwrap_or_default(),
             winit::event::WindowEvent::MouseInput {

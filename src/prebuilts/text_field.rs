@@ -13,9 +13,9 @@ use backer::{Area, Layout, nodes::*};
 use parley::{Alignment, FontWeight};
 use std::fmt::Debug;
 use std::rc::Rc;
-use vello_svg::vello::kurbo::{Affine, Rect as KRect, Stroke};
-use vello_svg::vello::peniko::color::palette::css::TRANSPARENT;
-use vello_svg::vello::peniko::{Brush, Color};
+use kurbo::{Affine, Rect as KRect, Stroke};
+use peniko::color::palette::css::TRANSPARENT;
+use peniko::{Brush, Color};
 
 #[derive(Debug, Clone, Default)]
 pub struct TextState {
@@ -204,7 +204,7 @@ impl<'a, State> TextField<'a, State> {
         {
             let cursor_width = 2f64;
             let half_cursor_width = 1f64;
-            let selection_rects: Vec<vello_svg::vello::kurbo::Rect> = edit_state
+            let selection_rects: Vec<kurbo::Rect> = edit_state
                 .editor
                 .editor
                 .selection_geometry()
@@ -255,7 +255,7 @@ impl<'a, State> TextField<'a, State> {
             let mut cursor_drawables = Vec::new();
             if !has_selection
                 && let Some(cursor) = if is_empty {
-                    Some(vello_svg::vello::kurbo::Rect::new(
+                    Some(kurbo::Rect::new(
                         -half_cursor_width,
                         0.,
                         half_cursor_width,

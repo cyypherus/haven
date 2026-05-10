@@ -150,7 +150,7 @@ checksum = "ace50bade8e6234aa140d9a2f552bbee1db4d353f69b8217bc503490fc1a9f26"
 [[package]]
 name = "backer"
 version = "0.11.1"
-source = "git+https://github.com/cyypherus/backer?branch=experiment#1d6cbb2893c2565a0ca4826dbb553a7472e58ba9"
+source = "git+https://github.com/cyypherus/backer?branch=main#6b0eec51e422abd35e9aba2e1c0bcc59f92d0882"
 
 [[package]]
 name = "backtrace"
@@ -1047,8 +1047,10 @@ dependencies = [
  "bytemuck",
  "clipboard-rs",
  "image",
+ "kurbo",
  "lilt",
  "parley",
+ "peniko",
  "pollster",
  "reqwest",
  "serde",

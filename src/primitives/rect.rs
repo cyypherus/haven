@@ -4,9 +4,9 @@ use crate::brush_source::BrushSource;
 use crate::primitives::shape::{PathData, rect_path};
 use crate::view::{Drawable, DrawableType};
 use backer::Layout;
-use vello_svg::vello::kurbo::Stroke;
-use vello_svg::vello::peniko::Brush;
-use vello_svg::vello::peniko::color::palette::css::BLACK;
+use kurbo::Stroke;
+use peniko::Brush;
+use peniko::color::palette::css::BLACK;
 
 pub struct Rect {
     id: u64,

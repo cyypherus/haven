@@ -5,7 +5,7 @@ use crate::brush_source::BrushSource;
 use crate::primitives::shape::PathData;
 use crate::view::{Drawable, DrawableType};
 use backer::{Area, Layout};
-use vello_svg::vello::kurbo::{BezPath, Stroke};
+use kurbo::{BezPath, Stroke};
 
 pub struct Path {
     id: u64,
