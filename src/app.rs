@@ -63,15 +63,16 @@ impl<State> Clone for PaneConfig<State> {
     }
 }
 
-pub(crate) struct Pane<State> {
+pub struct Pane<State> {
     name: &'static str,
     base_color: Color,
     view: ViewFn<State>,
     gesture_handlers: Vec<(u64, Area, GestureHandler<State, PaneState>)>,
+    pub(crate) elements: HashMap<u64, Area>,
     cursor_position: Option<Point>,
     gesture_state: GestureState,
-    pane_state: PaneState,
-    state: State,
+    pub(crate) pane_state: PaneState,
+    pub(crate) state: State,
     on_frame: fn(&mut State, &mut PaneState) -> (),
     on_start: fn(&mut State, &mut PaneState) -> (),
     on_exit: fn(&mut State, &mut PaneState) -> (),
@@ -367,6 +368,7 @@ impl Redraw {
         }
     }
 
+
     fn request(&self) {
         (self.sender)();
     }
@@ -434,6 +436,7 @@ impl<State: 'static> Pane<State> {
             base_color,
             view: config.view,
             gesture_handlers: Vec::new(),
+            elements: HashMap::new(),
             cursor_position: None,
             gesture_state: GestureState::None,
             pane_state: PaneState {
@@ -467,6 +470,42 @@ impl<State: 'static> Pane<State> {
 
 
 
+    pub(crate) fn location(&self, id: u64) -> Point {
+        let area = *self
+            .elements
+            .get(&id)
+            .unwrap_or_else(|| panic!("expected item {id}"));
+        Point::new(
+            area.x as f64 + area.width as f64 * 0.5,
+            area.y as f64 + area.height as f64 * 0.5,
+        )
+    }
+
+    pub fn click(&mut self, id: u64) -> Vec<PaneEffect> {
+        let location = self.location(id);
+        let mut effects = self.move_to(location);
+        effects.extend(self.press());
+        effects.extend(self.release());
+        effects
+    }
+
+    pub fn drag(&mut self, id: u64, to: Point) -> Vec<PaneEffect> {
+        let location = self.location(id);
+        let mut effects = self.move_to(location);
+        effects.extend(self.press());
+        effects.extend(self.move_to(to));
+        effects.extend(self.release());
+        effects
+    }
+
+    pub fn scroll_at(&mut self, id: u64, delta: ScrollDelta) -> Vec<PaneEffect> {
+        let location = self.location(id);
+        let mut effects = self.move_to(location);
+        effects.extend(self.scroll(delta));
+        effects
+    }
+
+
     pub(crate) fn close(mut self) {
         (self.on_exit)(&mut self.state, &mut self.pane_state);
         self.pane_state.cancellation_token.cancel();
@@ -490,6 +529,7 @@ impl<State: 'static> Pane<State> {
         }
 
         self.gesture_handlers.clear();
+        self.elements.clear();
         self.pane_state.scale_factor = scale_factor;
 
         let view = self.view;
@@ -513,6 +553,7 @@ impl<State: 'static> Pane<State> {
         for item in draw_items {
             match item {
                 View::EditorArea(id, area) => {
+                    self.elements.insert(id, area);
                     self.pane_state.editor_areas.insert(id, area);
                 }
                 View::Draw {
@@ -522,12 +563,15 @@ impl<State: 'static> Pane<State> {
                 } => {
                     let id = view.id();
                     let draw_area = area;
+                    if let Some(id) = id {
+                        self.elements.insert(id, draw_area);
 
-                    self.gesture_handlers.extend(
-                        gesture_handlers
-                            .into_iter()
-                            .map(|handler| (id, draw_area, handler)),
-                    );
+                        self.gesture_handlers.extend(
+                            gesture_handlers
+                                .into_iter()
+                                .map(|handler| (id, draw_area, handler)),
+                        );
+                    }
 
                     let render_item = match *view {
                         DrawableType::Text(text) => text.render_item(
@@ -572,6 +616,10 @@ impl<State: 'static> Pane<State> {
             items,
         };
 
+        if self.update_hover() {
+            self.pane_state.redraw.request();
+        }
+
         (self.on_frame)(&mut self.state, &mut self.pane_state);
 
         if continue_animating {
@@ -585,11 +633,40 @@ impl<State: 'static> Pane<State> {
         self.gesture_handlers.clone()
     }
 
+    fn update_hover(&mut self) -> bool {
+        let Some(pos) = self.cursor_position else {
+            return false;
+        };
+        let mut needs_redraw = false;
+        for (_, area, gh) in self.gesture_handlers() {
+            if gh.interaction_type.hover
+                && let Some(ref on_hover) = gh.interaction_handler
+            {
+                needs_redraw = true;
+                (on_hover)(
+                    &mut self.state,
+                    &mut self.pane_state,
+                    Interaction::Hover(area_contains(&area, pos)),
+                );
+            }
+        }
+        needs_redraw
+    }
+
     fn take_effects(&mut self) -> Vec<PaneEffect> {
         std::mem::take(&mut self.pane_state.effects)
     }
 
     pub(crate) fn key_pressed(&mut self, key: Key) -> Vec<PaneEffect> {
+        self.key(key)
+    }
+
+    pub(crate) fn key_released(&mut self, _key: Key) -> Vec<PaneEffect> {
+        Vec::new()
+    }
+
+    pub fn key(&mut self, key: impl Into<Key>) -> Vec<PaneEffect> {
+        let key = key.into();
         let mut needs_redraw = false;
         for (_id, _area, handler) in self.gesture_handlers() {
             if let Some(ref interaction_handler) = handler.interaction_handler
@@ -660,18 +737,9 @@ impl<State: 'static> Pane<State> {
                 &mut self.pane_state.font_cx,
             );
         }
-        self.gesture_handlers().iter().for_each(|(_, area, gh)| {
-            if gh.interaction_type.hover
-                && let Some(ref on_hover) = gh.interaction_handler
-            {
-                needs_redraw = true;
-                (on_hover)(
-                    &mut self.state,
-                    &mut self.pane_state,
-                    Interaction::Hover(area_contains(area, pos)),
-                );
-            }
-        });
+        if self.update_hover() {
+            needs_redraw = true;
+        }
         let gesture_state = self.gesture_state;
         if let GestureState::Dragging {
             start,
@@ -724,13 +792,13 @@ impl<State: 'static> Pane<State> {
     pub(crate) fn press(&mut self) -> Vec<PaneEffect> {
         let mut needs_redraw = false;
         let cursor_position = self.cursor_position;
-        if let Some(point) = cursor_position {
+        if let Some(location) = cursor_position {
             let handlers = self.gesture_handlers();
             let winner = handlers
                 .iter()
                 .rev()
                 .find(|(_, area, handler)| {
-                    area_contains(area, point)
+                    area_contains(area, location)
                         && (handler.interaction_type.click || handler.interaction_type.drag)
                 })
                 .or(handlers.iter().rev().find(|(_, area, handler)| {
@@ -741,7 +809,7 @@ impl<State: 'static> Pane<State> {
                             width: area.width + 20.,
                             height: area.height + 20.,
                         },
-                        point,
+                        location,
                     ) && (handler.interaction_type.click || handler.interaction_type.drag)
                 }));
             let winner_id = winner.map(|(id, _, _)| *id);
@@ -758,7 +826,7 @@ impl<State: 'static> Pane<State> {
                         &mut self.pane_state,
                         Interaction::ClickOutside(
                             ClickState::Started,
-                            ClickLocation::new(point, *area),
+                            ClickLocation::new(location, *area),
                         ),
                     );
                 }
@@ -771,7 +839,7 @@ impl<State: 'static> Pane<State> {
                     on_click(
                         &mut self.state,
                         &mut self.pane_state,
-                        Interaction::Click(ClickState::Started, ClickLocation::new(point, *area)),
+                        Interaction::Click(ClickState::Started, ClickLocation::new(location, *area)),
                     );
                 } else if handler.interaction_type.drag
                     && let Some(ref on_drag) = handler.interaction_handler
@@ -781,16 +849,16 @@ impl<State: 'static> Pane<State> {
                         &mut self.pane_state,
                         Interaction::Drag(DragState::Began {
                             start: Point {
-                                x: point.x - area.x as f64,
-                                y: point.y - area.y as f64,
+                                x: location.x - area.x as f64,
+                                y: location.y - area.y as f64,
                             },
-                            start_global: point,
+                            start_global: location,
                         }),
                     );
                 }
                 self.gesture_state = GestureState::Dragging {
-                    start: point,
-                    last_position: point,
+                    start: location,
+                    last_position: location,
                     capturer: *capturer,
                 };
             }

@@ -107,7 +107,7 @@ impl<'a, State> Button<'a, State> {
         stack(vec![
             surface,
             label,
-            rect(crate::id!(id))
+            rect(id)
                 .fill(TRANSPARENT)
                 .view()
                 .on_hover({

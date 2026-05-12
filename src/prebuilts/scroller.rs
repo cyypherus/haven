@@ -14,7 +14,7 @@ use peniko::{Brush, Gradient};
 
 #[derive(Debug, Clone)]
 pub(crate) struct ScrollerState {
-    engine: ScrollEngine,
+    pub(crate) engine: ScrollEngine,
     dt: f32,
     area: Area,
     top_pulse: Animated<bool, Instant>,
@@ -135,10 +135,10 @@ struct Element {
 }
 
 #[derive(Debug, Clone, Default)]
-struct ScrollEngine {
+pub(crate) struct ScrollEngine {
     visible_window: Vec<Element>,
-    compensated: f32,
-    offset: f32,
+    pub(crate) compensated: f32,
+    pub(crate) offset: f32,
     available_height: f32,
 }
 
@@ -322,7 +322,7 @@ pub fn scroller<'a, State: 'static>(
         })
         .expand()
         .clipped(|a| rounded_rect_path(a, DEFAULT_CORNER_ROUNDING)),
-        rect(crate::id!(id))
+        rect(id)
             .corner_rounding(DEFAULT_CORNER_ROUNDING)
             .fill(TRANSPARENT)
             .view()

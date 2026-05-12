@@ -134,7 +134,7 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
                 background.inert(),
                 {
                     let option = option.clone();
-                    rect(crate::id!(index as u64, id))
+                    rect(id)
                         .fill(TRANSPARENT)
                         .view()
                         .on_click({

@@ -197,7 +197,7 @@ impl<'a, State> TextField<'a, State> {
         let alignment = self.alignment;
         let line_height = self.line_height;
         let wrap = self.wrap;
-        let root_id = crate::id!(id);
+        let root_id = id;
         let text_id = crate::id!(id);
         let text_content = if self.state.editing
             && let Some(ref mut edit_state) = ctx.editor

@@ -317,14 +317,14 @@ impl<State> Drawable<State> {
 }
 
 impl DrawableType {
-    pub(crate) fn id(&self) -> u64 {
+    pub(crate) fn id(&self) -> Option<u64> {
         match self {
-            DrawableType::Text(view) => view.id,
-            DrawableType::Layout(_) => 0,
-            DrawableType::Path(view) => view.id,
-            DrawableType::Svg(view) => view.id,
-            DrawableType::Image(view) => view.id,
-            DrawableType::PushLayer { .. } | DrawableType::PopLayer => 0,
+            DrawableType::Text(view) => Some(view.id),
+            DrawableType::Layout(_) => None,
+            DrawableType::Path(view) => Some(view.id),
+            DrawableType::Svg(view) => Some(view.id),
+            DrawableType::Image(view) => Some(view.id),
+            DrawableType::PushLayer { .. } | DrawableType::PopLayer => None,
         }
     }
 }

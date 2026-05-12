@@ -21,14 +21,6 @@ name = "image"
 path = "examples/image.rs"
 
 [[example]]
-name = "winit_basic"
-path = "examples/winit_basic.rs"
-
-[[example]]
-name = "winit_multi"
-path = "examples/winit_multi.rs"
-
-[[example]]
 name = "productivity"
 path = "examples/productivity.rs"
 

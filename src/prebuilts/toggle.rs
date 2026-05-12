@@ -134,7 +134,7 @@ impl<'a, State> Toggle<'a, State> {
             stack(vec![
                 track,
                 knob,
-                rect(crate::id!(id))
+                rect(id)
                     .fill(TRANSPARENT)
                     .view()
                     .on_hover({

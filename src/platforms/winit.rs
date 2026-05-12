@@ -315,15 +315,15 @@ where
         let effects = match event {
             winit::event::WindowEvent::Moved(_) => Vec::new(),
             winit::event::WindowEvent::KeyboardInput { event, .. } => {
-                if event.state != winit::event::ElementState::Pressed {
-                    return;
-                }
                 let Some(key) = key(event.logical_key) else {
                     return;
                 };
                 self.windows
                     .get_mut(&window_id)
-                    .map(|surface| surface.pane.key_pressed(key))
+                    .map(|surface| match event.state {
+                        winit::event::ElementState::Pressed => surface.pane.key_pressed(key),
+                        winit::event::ElementState::Released => surface.pane.key_released(key),
+                    })
                     .unwrap_or_default()
             }
             winit::event::WindowEvent::CursorMoved { position, .. } => self

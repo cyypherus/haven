@@ -164,7 +164,7 @@ impl<'a, State> Slider<'a, State> {
                     .height(if state.dragging { height * 1.1 } else { height })
                     .width(height)
                     .offset((-width * 0.5) + slider_width - (height * 0.5), 0.),
-                rect(id!(id))
+                rect(id)
                     .fill(TRANSPARENT)
                     .view()
                     .on_hover({
