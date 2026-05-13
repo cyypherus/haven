@@ -170,6 +170,327 @@ fn text_field_click_and_key_update_state() {
 }
 
 #[test]
+fn text_field_types_multiple_characters() {
+    #[derive(Default)]
+    struct State {
+        text: TextState,
+    }
+
+    const FIELD: u64 = 41;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        text_field(FIELD, binding!(state, State, text))
+            .build(app)
+            .width(140.)
+            .height(40.)
+    }
+
+    let mut pane = PaneBuilder::new("test", view).build(State::default());
+    pane.redraw(300, 200, 1.0);
+    pane.click(FIELD).expect("field present");
+    pane.redraw(300, 200, 1.0);
+
+    for ch in ["h", "e", "l", "l", "o"] {
+        pane.key_pressed(ch);
+        pane.redraw(300, 200, 1.0);
+    }
+
+    assert_eq!(pane.state.text.text, "hello");
+}
+
+#[test]
+fn text_field_backspace_removes_character() {
+    #[derive(Default)]
+    struct State {
+        text: TextState,
+    }
+
+    const FIELD: u64 = 42;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        text_field(FIELD, binding!(state, State, text))
+            .build(app)
+            .width(140.)
+            .height(40.)
+    }
+
+    let mut pane = PaneBuilder::new("test", view).build(State::default());
+    pane.redraw(300, 200, 1.0);
+    pane.click(FIELD).expect("field present");
+    pane.redraw(300, 200, 1.0);
+
+    for ch in ["a", "b", "c"] {
+        pane.key_pressed(ch);
+        pane.redraw(300, 200, 1.0);
+    }
+    assert_eq!(pane.state.text.text, "abc");
+
+    pane.key_pressed(NamedKey::Backspace);
+    assert_eq!(pane.state.text.text, "ab");
+
+    pane.key_pressed(NamedKey::Backspace);
+    pane.key_pressed(NamedKey::Backspace);
+    assert_eq!(pane.state.text.text, "");
+}
+
+#[test]
+fn text_field_arrow_then_insert_places_caret() {
+    #[derive(Default)]
+    struct State {
+        text: TextState,
+    }
+
+    const FIELD: u64 = 43;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        text_field(FIELD, binding!(state, State, text))
+            .build(app)
+            .width(140.)
+            .height(40.)
+    }
+
+    let mut pane = PaneBuilder::new("test", view).build(State::default());
+    pane.redraw(300, 200, 1.0);
+    pane.click(FIELD).expect("field present");
+    pane.redraw(300, 200, 1.0);
+
+    for ch in ["a", "c"] {
+        pane.key_pressed(ch);
+        pane.redraw(300, 200, 1.0);
+    }
+    pane.key_pressed(NamedKey::ArrowLeft);
+    pane.key_pressed("b");
+
+    assert_eq!(pane.state.text.text, "abc");
+}
+
+#[test]
+fn text_field_enter_ends_editing_when_configured() {
+    #[derive(Default)]
+    struct State {
+        text: TextState,
+        edits: Vec<EditInteraction>,
+    }
+
+    const FIELD: u64 = 44;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        text_field(FIELD, binding!(state, State, text))
+            .enter_end_editing()
+            .on_edit(|state, _, edit| state.edits.push(edit))
+            .build(app)
+            .width(140.)
+            .height(40.)
+    }
+
+    let mut pane = PaneBuilder::new("test", view).build(State::default());
+    pane.redraw(300, 200, 1.0);
+    pane.click(FIELD).expect("field present");
+    pane.redraw(300, 200, 1.0);
+    assert!(pane.state.text.editing);
+
+    pane.key_pressed(NamedKey::Enter);
+
+    assert!(!pane.state.text.editing);
+    assert!(matches!(
+        pane.state.edits.last(),
+        Some(EditInteraction::End)
+    ));
+}
+
+#[test]
+fn text_field_escape_ends_editing_when_configured() {
+    #[derive(Default)]
+    struct State {
+        text: TextState,
+    }
+
+    const FIELD: u64 = 45;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        text_field(FIELD, binding!(state, State, text))
+            .esc_end_editing()
+            .build(app)
+            .width(140.)
+            .height(40.)
+    }
+
+    let mut pane = PaneBuilder::new("test", view).build(State::default());
+    pane.redraw(300, 200, 1.0);
+    pane.click(FIELD).expect("field present");
+    pane.redraw(300, 200, 1.0);
+    assert!(pane.state.text.editing);
+
+    pane.key_pressed(NamedKey::Escape);
+
+    assert!(!pane.state.text.editing);
+}
+
+#[test]
+fn text_field_enter_does_not_end_editing_by_default() {
+    #[derive(Default)]
+    struct State {
+        text: TextState,
+    }
+
+    const FIELD: u64 = 46;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        text_field(FIELD, binding!(state, State, text))
+            .build(app)
+            .width(140.)
+            .height(40.)
+    }
+
+    let mut pane = PaneBuilder::new("test", view).build(State::default());
+    pane.redraw(300, 200, 1.0);
+    pane.click(FIELD).expect("field present");
+    pane.redraw(300, 200, 1.0);
+
+    pane.key_pressed(NamedKey::Enter);
+
+    assert!(pane.state.text.editing);
+}
+
+#[test]
+fn text_field_click_outside_ends_editing() {
+    #[derive(Default)]
+    struct State {
+        text: TextState,
+        edits: Vec<EditInteraction>,
+    }
+
+    const FIELD: u64 = 47;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        text_field(FIELD, binding!(state, State, text))
+            .on_edit(|state, _, edit| state.edits.push(edit))
+            .build(app)
+            .width(140.)
+            .height(40.)
+    }
+
+    let mut pane = PaneBuilder::new("test", view).build(State::default());
+    pane.redraw(300, 200, 1.0);
+    pane.click(FIELD).expect("field present");
+    pane.redraw(300, 200, 1.0);
+    assert!(pane.state.text.editing);
+
+    let field_location = pane.location(FIELD).expect("field present");
+    let outside = Point::new(field_location.x, field_location.y + 200.);
+    pane.move_to(outside);
+    pane.press();
+    pane.release();
+
+    assert!(!pane.state.text.editing);
+    assert!(matches!(
+        pane.state.edits.last(),
+        Some(EditInteraction::End)
+    ));
+}
+
+#[test]
+fn text_field_focus_switches_between_two_fields() {
+    #[derive(Default)]
+    struct State {
+        a: TextState,
+        b: TextState,
+    }
+
+    const FIELD_A: u64 = 48;
+    const FIELD_B: u64 = 49;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        column_spaced(
+            10.,
+            vec![
+                text_field(FIELD_A, binding!(state, State, a))
+                    .build(app)
+                    .width(140.)
+                    .height(40.),
+                text_field(FIELD_B, binding!(state, State, b))
+                    .build(app)
+                    .width(140.)
+                    .height(40.),
+            ],
+        )
+    }
+
+    let mut pane = PaneBuilder::new("test", view).build(State::default());
+    pane.redraw(400, 400, 1.0);
+
+    pane.click(FIELD_A).expect("field a present");
+    pane.redraw(400, 400, 1.0);
+    pane.key_pressed("x");
+    pane.redraw(400, 400, 1.0);
+    assert_eq!(pane.state.a.text, "x");
+    assert!(pane.state.a.editing);
+
+    pane.click(FIELD_B).expect("field b present");
+    pane.redraw(400, 400, 1.0);
+    assert!(!pane.state.a.editing);
+    assert!(pane.state.b.editing);
+
+    pane.key_pressed("y");
+    pane.redraw(400, 400, 1.0);
+    assert_eq!(pane.state.a.text, "x");
+    assert_eq!(pane.state.b.text, "y");
+}
+
+#[test]
+fn text_field_drag_in_second_field_switches_focus() {
+    #[derive(Default)]
+    struct State {
+        a: TextState,
+        b: TextState,
+    }
+
+    const FIELD_A: u64 = 60;
+    const FIELD_B: u64 = 61;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        column_spaced(
+            10.,
+            vec![
+                text_field(FIELD_A, binding!(state, State, a))
+                    .build(app)
+                    .width(140.)
+                    .height(40.),
+                text_field(FIELD_B, binding!(state, State, b))
+                    .build(app)
+                    .width(140.)
+                    .height(40.),
+            ],
+        )
+    }
+
+    let mut pane = PaneBuilder::new("test", view).build(State {
+        a: TextState::new("hello"),
+        b: TextState::new("world"),
+    });
+    pane.redraw(400, 400, 1.0);
+
+    let a_location = pane.location(FIELD_A).expect("field a present");
+    pane.move_to(a_location);
+    pane.press();
+    pane.move_to(Point::new(a_location.x + 30., a_location.y));
+    pane.release();
+    pane.redraw(400, 400, 1.0);
+    assert!(pane.state.a.editing);
+    assert!(!pane.state.b.editing);
+
+    let b_location = pane.location(FIELD_B).expect("field b present");
+    pane.move_to(b_location);
+    pane.press();
+    pane.move_to(Point::new(b_location.x + 30., b_location.y));
+    pane.release();
+    pane.redraw(400, 400, 1.0);
+
+    assert!(!pane.state.a.editing);
+    assert!(pane.state.b.editing);
+}
+
+#[test]
 fn scroller_scroll_updates_state() {
     #[derive(Default)]
     struct State;
