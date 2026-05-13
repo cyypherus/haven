@@ -26,7 +26,7 @@ pub use backer::{Area, Layout, nodes::*};
 pub use brush_source::BrushSource;
 pub use bytemuck;
 pub use gestures::{
-    ClickState, DragState, EditInteraction, GestureHandler, GestureState, ScrollDelta,
+    ClickState, DragState, EditInteraction, GestureHandler, GestureState, KeyState, ScrollDelta,
 };
 pub use parley::{Alignment, FontWeight, StyleProperty};
 use peniko::color::AlphaColor;

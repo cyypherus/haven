@@ -7,7 +7,8 @@ use crate::primitives::{
 use crate::view::DrawableType;
 use crate::{
     Binding, DEFAULT_CORNER_ROUNDING, DEFAULT_FG_COLOR, DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE,
-    DEFAULT_PADDING, DEFAULT_PURP, DEFAULT_STROKE_WIDTH, EditInteraction, Key, NamedKey, rect,
+    DEFAULT_PADDING, DEFAULT_PURP, DEFAULT_STROKE_WIDTH, EditInteraction, Key, KeyState, NamedKey,
+    rect,
 };
 use backer::{Area, Layout, nodes::*};
 use parley::{Alignment, FontWeight};
@@ -360,7 +361,10 @@ impl<'a, State> TextField<'a, State> {
                     .on_key({
                         let on_edit = on_edit.clone();
                         let binding = binding.clone();
-                        move |state, app, key| {
+                        move |state, app, key, key_state| {
+                            if key_state != KeyState::Pressed {
+                                return;
+                            }
                             if (self.enter_end_editing && key == Key::Named(NamedKey::Enter))
                                 || (self.esc_end_editing && key == Key::Named(NamedKey::Escape))
                             {

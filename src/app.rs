@@ -6,7 +6,8 @@ use crate::primitives::TextLayout;
 use crate::utils::area_contains;
 use crate::view::DrawableType;
 use crate::{
-    ClickState, DragState, GestureHandler, GestureState, Key, Modifiers, Point, RUBIK_FONT,
+    ClickState, DragState, GestureHandler, GestureState, Key, KeyState, Modifiers, Point,
+    RUBIK_FONT,
 };
 use backer::{Area, Layout};
 use parley::fontique::Blob;
@@ -451,32 +452,29 @@ impl<State: 'static> Pane<State> {
         self.pane_state.redraw_notify.notified()
     }
 
-    pub(crate) fn location(&self, id: u64) -> Point {
-        let area = *self
-            .elements
-            .get(&id)
-            .unwrap_or_else(|| panic!("expected item {id}"));
-        Point::new(
+    pub(crate) fn location(&self, id: u64) -> Option<Point> {
+        let area = *self.elements.get(&id)?;
+        Some(Point::new(
             area.x as f64 + area.width as f64 * 0.5,
             area.y as f64 + area.height as f64 * 0.5,
-        )
+        ))
     }
 
-    pub fn click(&mut self, id: u64) -> Vec<PaneEffect> {
-        let location = self.location(id);
+    pub fn click(&mut self, id: u64) -> Option<Vec<PaneEffect>> {
+        let location = self.location(id)?;
         let mut effects = self.move_to(location);
         effects.extend(self.press());
         effects.extend(self.release());
-        effects
+        Some(effects)
     }
 
-    pub fn drag(&mut self, id: u64, to: Point) -> Vec<PaneEffect> {
-        let location = self.location(id);
+    pub fn drag(&mut self, id: u64, to: Point) -> Option<Vec<PaneEffect>> {
+        let location = self.location(id)?;
         let mut effects = self.move_to(location);
         effects.extend(self.press());
         effects.extend(self.move_to(to));
         effects.extend(self.release());
-        effects
+        Some(effects)
     }
 
     pub(crate) fn close(mut self) {
@@ -628,16 +626,15 @@ impl<State: 'static> Pane<State> {
         std::mem::take(&mut self.pane_state.effects)
     }
 
-    pub(crate) fn key_pressed(&mut self, key: Key) -> Vec<PaneEffect> {
-        self.key(key)
+    pub fn key_pressed(&mut self, key: impl Into<Key>) -> Vec<PaneEffect> {
+        self.dispatch_key(key.into(), KeyState::Pressed)
     }
 
-    pub(crate) fn key_released(&mut self, _key: Key) -> Vec<PaneEffect> {
-        Vec::new()
+    pub fn key_released(&mut self, key: impl Into<Key>) -> Vec<PaneEffect> {
+        self.dispatch_key(key.into(), KeyState::Released)
     }
 
-    pub fn key(&mut self, key: impl Into<Key>) -> Vec<PaneEffect> {
-        let key = key.into();
+    fn dispatch_key(&mut self, key: Key, key_state: KeyState) -> Vec<PaneEffect> {
         let mut needs_redraw = false;
         for (_id, _area, handler) in self.gesture_handlers() {
             if let Some(ref interaction_handler) = handler.interaction_handler
@@ -647,7 +644,7 @@ impl<State: 'static> Pane<State> {
                 interaction_handler(
                     &mut self.state,
                     &mut self.pane_state,
-                    Interaction::Key(key.clone()),
+                    Interaction::Key(key.clone(), key_state),
                 );
             }
         }

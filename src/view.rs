@@ -1,7 +1,7 @@
 use crate::app::{PaneState, View};
 use crate::gestures::{ClickLocation, Interaction, InteractionType, ScrollDelta};
 use crate::primitives::{Image, PathData, Svg, Text};
-use crate::{Binding, ClickState, DragState, GestureHandler, Key, OwnedBinding};
+use crate::{Binding, ClickState, DragState, GestureHandler, Key, KeyState, OwnedBinding};
 use backer::{Area, Layout, nodes::*};
 use parley::Layout as TextLayout;
 use std::rc::Rc;
@@ -281,17 +281,20 @@ impl<State> Drawable<State> {
         });
         self
     }
-    pub fn on_key(mut self, f: impl Fn(&mut State, &mut PaneState, Key) + 'static) -> Self {
+    pub fn on_key(
+        mut self,
+        f: impl Fn(&mut State, &mut PaneState, Key, KeyState) + 'static,
+    ) -> Self {
         self.gesture_handlers.push(GestureHandler {
             interaction_type: InteractionType {
                 key: true,
                 ..Default::default()
             },
             interaction_handler: Some(Rc::new(move |state, app_state, interaction| {
-                let Interaction::Key(key) = interaction else {
+                let Interaction::Key(key, key_state) = interaction else {
                     return;
                 };
-                (f)(state, app_state, key);
+                (f)(state, app_state, key, key_state);
             })),
         });
         self

@@ -68,13 +68,19 @@ impl ClickLocation {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyState {
+    Pressed,
+    Released,
+}
+
 #[derive(Clone)]
 pub(crate) enum Interaction {
     Click(ClickState, ClickLocation),
     ClickOutside(ClickState, ClickLocation),
     Drag(DragState),
     Hover(bool),
-    Key(Key),
+    Key(Key, KeyState),
     Scroll(ScrollDelta),
 }
 

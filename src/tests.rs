@@ -43,13 +43,13 @@ fn dropdown_expands_and_selects_an_option() {
     assert!(effects.is_empty(), "unexpected effects: {effects:?}");
     assert!(!pane.state.dropdown.expanded);
 
-    assert!(pane.click(DROPDOWN).is_empty());
+    assert!(pane.click(DROPDOWN).expect("dropdown present").is_empty());
     assert!(pane.state.dropdown.expanded);
 
     let (_, effects) = pane.redraw(300, 200, 1.0);
     assert!(effects.is_empty(), "unexpected effects: {effects:?}");
 
-    assert!(pane.click(OPTIONS[1].0).is_empty());
+    assert!(pane.click(OPTIONS[1].0).expect("option present").is_empty());
     assert_eq!(pane.state.dropdown.selected, "two");
     assert_eq!(pane.state.selected, Some("two"));
     assert!(!pane.state.dropdown.expanded);
@@ -77,7 +77,7 @@ fn toggle_click_updates_state() {
     let (_, effects) = pane.redraw(300, 200, 1.0);
     assert!(effects.is_empty(), "unexpected effects: {effects:?}");
 
-    let location = pane.location(TOGGLE);
+    let location = pane.location(TOGGLE).expect("toggle present");
     assert!(pane.move_to(location).is_empty());
     assert!(pane.state.toggle.hovered);
     assert!(pane.press().is_empty());
@@ -111,7 +111,7 @@ fn slider_drag_updates_value() {
     let (_, effects) = pane.redraw(300, 200, 1.0);
     assert!(effects.is_empty(), "unexpected effects: {effects:?}");
 
-    let location = pane.location(SLIDER);
+    let location = pane.location(SLIDER).expect("slider present");
     assert!(pane.move_to(location).is_empty());
     assert!(pane.state.slider.hovered);
     assert!(pane.press().is_empty());
@@ -154,13 +154,13 @@ fn text_field_click_and_key_update_state() {
     let (_, effects) = pane.redraw(300, 200, 1.0);
     assert!(effects.is_empty(), "unexpected effects: {effects:?}");
 
-    assert!(pane.click(FIELD).is_empty());
+    assert!(pane.click(FIELD).expect("field present").is_empty());
     assert!(pane.state.text.editing);
 
     let (_, effects) = pane.redraw(300, 200, 1.0);
     assert!(effects.is_empty(), "unexpected effects: {effects:?}");
 
-    assert!(pane.key_pressed("a".into()).is_empty());
+    assert!(pane.key_pressed("a").is_empty());
 
     assert_eq!(pane.state.text.text, "a");
     assert!(matches!(
@@ -205,7 +205,7 @@ fn scroller_scroll_updates_state() {
 
     assert!(pane.elements.contains_key(&cell_id(0)));
 
-    let location = pane.location(SCROLLER);
+    let location = pane.location(SCROLLER).expect("scroller present");
     assert!(pane.move_to(location).is_empty());
     assert!(
         pane.scroll(ScrollDelta { x: 0., y: -200. })
