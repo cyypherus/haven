@@ -38,7 +38,7 @@ fn text_cell<'a>(i: usize, s: &str, ctx: &mut PaneState) -> Layout<'a, View<Stat
 fn main() {
     WinitApp::new(State { texts: texts() })
         .pane(
-            PaneConfig::new("main", |state: &State, app: &mut PaneState| {
+            PaneBuilder::new("main", |state: &State, app: &mut PaneState| {
                 let short = [state.texts[0].clone()];
                 let long = state.texts.clone();
 

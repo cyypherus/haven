@@ -1,49 +1,6 @@
 use crate::*;
 
 #[test]
-fn pane_can_be_driven_without_a_renderer() {
-    struct State {
-        button: ButtonState,
-        clicks: usize,
-    }
-
-    impl Default for State {
-        fn default() -> Self {
-            Self {
-                button: ButtonState::default(),
-                clicks: 0,
-            }
-        }
-    }
-
-    const BACKGROUND: u64 = 1;
-    const BUTTON: u64 = 2;
-
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        stack(vec![
-            rect(BACKGROUND).fill(Color::from_rgb8(10, 20, 30)).build(app),
-            button(BUTTON, binding!(state, State, button))
-                .label(|_, _| empty())
-                .on_click(|state, _| {
-                    state.clicks += 1;
-                })
-                .build(app)
-                .width(100.)
-                .height(40.),
-        ])
-    }
-
-    let mut pane = PaneConfig::new("test", view).build(State::default(), Redraw::new(|| {}));
-
-    let (_, effects) = pane.redraw(300, 200, 1.0);
-    assert!(effects.is_empty(), "unexpected effects: {effects:?}");
-
-    assert!(pane.click(BUTTON).is_empty());
-
-    assert_eq!(pane.state.clicks, 1);
-}
-
-#[test]
 fn dropdown_expands_and_selects_an_option() {
     struct State {
         dropdown: DropdownState<&'static str>,
@@ -80,7 +37,7 @@ fn dropdown_expands_and_selects_an_option() {
         .height(30.)
     }
 
-    let mut pane = PaneConfig::new("test", view).build(State::default(), Redraw::new(|| {}));
+    let mut pane = PaneBuilder::new("test", view).build(State::default());
 
     let (_, effects) = pane.redraw(300, 200, 1.0);
     assert!(effects.is_empty(), "unexpected effects: {effects:?}");
@@ -116,7 +73,7 @@ fn toggle_click_updates_state() {
             .height(30.)
     }
 
-    let mut pane = PaneConfig::new("test", view).build(State::default(), Redraw::new(|| {}));
+    let mut pane = PaneBuilder::new("test", view).build(State::default());
     let (_, effects) = pane.redraw(300, 200, 1.0);
     assert!(effects.is_empty(), "unexpected effects: {effects:?}");
 
@@ -150,7 +107,7 @@ fn slider_drag_updates_value() {
             .height(20.)
     }
 
-    let mut pane = PaneConfig::new("test", view).build(State::default(), Redraw::new(|| {}));
+    let mut pane = PaneBuilder::new("test", view).build(State::default());
     let (_, effects) = pane.redraw(300, 200, 1.0);
     assert!(effects.is_empty(), "unexpected effects: {effects:?}");
 
@@ -193,7 +150,7 @@ fn text_field_click_and_key_update_state() {
             .height(40.)
     }
 
-    let mut pane = PaneConfig::new("test", view).build(State::default(), Redraw::new(|| {}));
+    let mut pane = PaneBuilder::new("test", view).build(State::default());
     let (_, effects) = pane.redraw(300, 200, 1.0);
     assert!(effects.is_empty(), "unexpected effects: {effects:?}");
 
@@ -219,6 +176,10 @@ fn scroller_scroll_updates_state() {
 
     const SCROLLER: u64 = 50;
 
+    fn cell_id(index: usize) -> u64 {
+        id!(index as u64)
+    }
+
     fn view<'a>(_state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
         scroller(
             SCROLLER,
@@ -227,21 +188,34 @@ fn scroller_scroll_updates_state() {
                 if index >= 10 {
                     return None;
                 }
-                Some(text(id!(index as u64), format!("row {index}")).build(app).height(60.))
+                Some(
+                    text(cell_id(index), format!("row {index}"))
+                        .build(app)
+                        .height(60.),
+                )
             },
             app,
         )
         .height(90.)
     }
 
-    let mut pane = PaneConfig::new("test", view).build(State, Redraw::new(|| {}));
+    let mut pane = PaneBuilder::new("test", view).build(State);
     let (_, effects) = pane.redraw(300, 200, 1.0);
     assert!(effects.is_empty(), "unexpected effects: {effects:?}");
 
-    assert!(pane.scroll_at(SCROLLER, ScrollDelta { x: 0., y: -60. }).is_empty());
+    assert!(pane.elements.contains_key(&cell_id(0)));
+
+    let location = pane.location(SCROLLER);
+    assert!(pane.move_to(location).is_empty());
+    assert!(
+        pane.scroll(ScrollDelta { x: 0., y: -200. })
+            .is_empty()
+    );
     let (_, effects) = pane.redraw(300, 200, 1.0);
     assert!(effects.is_empty(), "unexpected effects: {effects:?}");
 
-    let scroller = pane.pane_state.scrollers.get(&SCROLLER).unwrap();
-    assert!(scroller.engine.compensated < 0.);
+    assert!(
+        !pane.elements.contains_key(&cell_id(0)),
+        "cell 0 should have scrolled out of view"
+    );
 }

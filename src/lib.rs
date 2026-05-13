@@ -21,7 +21,7 @@ mod tests;
 #[cfg(feature = "winit")]
 pub use platforms::winit;
 
-pub use app::{Pane, PaneConfig, PaneEffect, PaneState, Redraw, RedrawTrigger, View};
+pub use app::{Pane, PaneBuilder, PaneEffect, PaneState, RedrawTrigger, View};
 pub use backer::{Area, Layout, nodes::*};
 pub use brush_source::BrushSource;
 pub use bytemuck;

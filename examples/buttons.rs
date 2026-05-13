@@ -13,7 +13,7 @@ struct State {
 fn main() {
     WinitApp::new(State::default())
         .pane(
-            PaneConfig::new("main", |state: &State, app: &mut PaneState| {
+            PaneBuilder::new("main", |state: &State, app: &mut PaneState| {
                 row_spaced(
                     20.,
                     vec![

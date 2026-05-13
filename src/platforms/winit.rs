@@ -1,5 +1,5 @@
 use crate::render::Frame;
-use crate::{Key, Modifiers, NamedKey, Pane, PaneConfig, PaneEffect, Redraw, ScrollDelta};
+use crate::{Key, Modifiers, NamedKey, Pane, PaneBuilder, PaneEffect, ScrollDelta};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -90,11 +90,7 @@ pub trait WinitRenderer {
         height: u32,
     ) -> Result<(), Self::Error>;
 
-    fn render(
-        &mut self,
-        surface: &mut Self::Surface,
-        frame: &Frame,
-    ) -> Result<(), Self::Error>;
+    fn render(&mut self, surface: &mut Self::Surface, frame: &Frame) -> Result<(), Self::Error>;
 }
 
 #[cfg(feature = "vello")]
@@ -102,7 +98,7 @@ pub type WinitApp<State> = WinitAppWithRenderer<State, crate::renderers::vello::
 
 pub struct WinitAppWithRenderer<State, R: WinitRenderer> {
     state: Option<State>,
-    panes: HashMap<&'static str, PaneConfig<State>>,
+    panes: HashMap<&'static str, PaneBuilder<State>>,
     windows: HashMap<WindowId, WinitSurface<State, R::Surface>>,
     pane_windows: HashMap<&'static str, WindowId>,
     renderer: R,
@@ -138,7 +134,7 @@ where
         }
     }
 
-    pub fn pane(mut self, pane: PaneConfig<State>) -> Self {
+    pub fn pane(mut self, pane: PaneBuilder<State>) -> Self {
         self.panes.insert(pane.name(), pane);
         self
     }
@@ -212,18 +208,36 @@ where
         let Some(proxy) = self.proxy.clone() else {
             return;
         };
-        let redraw = Redraw::new(move || {
-            let _ = proxy.send_event(WinitEvent::Redraw(window_id));
-        });
         let state = self
             .state
             .as_ref()
             .expect("state must exist while creating windows")
             .clone();
         let pane_name = config.name();
-        let pane = config.build(state, redraw);
+        let pane = config.build(state);
+        let redraw_notify = pane.pane_state.redraw_notify.clone();
+        let cancellation = pane.pane_state.cancellation_token.clone();
+        pane.pane_state.spawn(async move {
+            loop {
+                tokio::select! {
+                    _ = redraw_notify.notified() => {
+                        if proxy.send_event(WinitEvent::Redraw(window_id)).is_err() {
+                            break;
+                        }
+                    }
+                    _ = cancellation.cancelled() => break,
+                }
+            }
+        });
         self.pane_windows.insert(pane_name, window_id);
-        self.windows.insert(window_id, WinitSurface { surface, window, pane });
+        self.windows.insert(
+            window_id,
+            WinitSurface {
+                surface,
+                window,
+                pane,
+            },
+        );
     }
 
     fn apply_effects(

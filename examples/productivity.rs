@@ -216,7 +216,7 @@ impl Priority {
 
 fn main() {
     WinitApp::new(State::default())
-        .pane(PaneConfig::new("main", main_view).inner_size(980, 680))
+        .pane(PaneBuilder::new("main", main_view).inner_size(980, 680))
         .run();
 }
 

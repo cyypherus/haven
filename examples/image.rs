@@ -81,7 +81,7 @@ impl State {
                         *state = DownloadState::Error(format!("Request failed: {e}"));
                     }
                 }
-                redraw.trigger().await;
+                redraw.trigger();
             });
         } else {
             app.spawn(async move {
@@ -100,7 +100,7 @@ impl State {
                         *state = DownloadState::Error(format!("Failed to read file: {e}"));
                     }
                 }
-                redraw.trigger().await;
+                redraw.trigger();
             });
         }
     }
@@ -117,7 +117,7 @@ impl State {
 fn main() {
     WinitApp::new(State::new())
         .pane(
-            PaneConfig::new("main", |state: &State, app: &mut PaneState| {
+            PaneBuilder::new("main", |state: &State, app: &mut PaneState| {
                 let download_state = state.download_state.blocking_lock().clone();
                 let download_state_for_button = download_state.clone();
 

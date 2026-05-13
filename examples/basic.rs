@@ -12,7 +12,7 @@ struct State {
 fn main() {
     WinitApp::new(State::default())
         .pane(
-            PaneConfig::new("main", |state: &State, app: &mut PaneState| {
+            PaneBuilder::new("main", |state: &State, app: &mut PaneState| {
                 column_spaced(
                     10.,
                     vec![
@@ -120,7 +120,7 @@ fn main() {
             .inner_size(800, 600),
         )
         .pane(
-            PaneConfig::new("thrusters", thrusters_view)
+            PaneBuilder::new("thrusters", thrusters_view)
                 .open_at_start(false)
                 .title("Thrusters")
                 .inner_size(400, 300)

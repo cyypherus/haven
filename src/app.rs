@@ -1,5 +1,5 @@
-use crate::render::{Frame, RenderItem};
 use crate::gestures::{ClickLocation, Interaction, ScrollDelta};
+use crate::render::{Frame, RenderItem};
 
 use crate::editor::Editor;
 use crate::primitives::TextLayout;
@@ -15,19 +15,20 @@ use parley::{
     Alignment, FontContext, FontWeight, LayoutContext, LineHeight, OverflowWrap, PlainEditor,
     StyleProperty,
 };
+use peniko::{self, Brush, Color};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::runtime::Runtime;
+use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
-use peniko::{self, Brush, Color};
 
 type FontEntry = (Arc<Vec<u8>>, Option<String>);
 
 type ViewFn<State> = for<'a> fn(&'a State, &mut PaneState) -> Layout<'a, View<State>, PaneState>;
 
-pub struct PaneConfig<State> {
+pub struct PaneBuilder<State> {
     name: &'static str,
     view: ViewFn<State>,
     inner_size: Option<(u32, u32)>,
@@ -43,7 +44,7 @@ pub struct PaneConfig<State> {
     custom_fonts: Vec<FontEntry>,
 }
 
-impl<State> Clone for PaneConfig<State> {
+impl<State> Clone for PaneBuilder<State> {
     fn clone(&self) -> Self {
         Self {
             name: self.name,
@@ -72,14 +73,14 @@ pub struct Pane<State> {
     cursor_position: Option<Point>,
     gesture_state: GestureState,
     pub(crate) pane_state: PaneState,
-    pub(crate) state: State,
+    pub state: State,
     on_frame: fn(&mut State, &mut PaneState) -> (),
     on_start: fn(&mut State, &mut PaneState) -> (),
     on_exit: fn(&mut State, &mut PaneState) -> (),
     started: bool,
 }
 
-impl<State> PaneConfig<State> {
+impl<State> PaneBuilder<State> {
     pub fn new(name: &'static str, view: ViewFn<State>) -> Self {
         Self {
             name,
@@ -177,11 +178,11 @@ impl<State> PaneConfig<State> {
         self.background
     }
 
-    pub(crate) fn build(self, state: State, redraw: Redraw) -> Pane<State>
+    pub fn build(self, state: State) -> Pane<State>
     where
         State: 'static,
     {
-        Pane::new(state, self, redraw)
+        Pane::new(state, self)
     }
 
     pub fn decorations_value(&self) -> Option<bool> {
@@ -227,7 +228,7 @@ pub struct PaneState {
     pub(crate) cancellation_token: CancellationToken,
     pub(crate) task_tracker: TaskTracker,
     pub(crate) modifiers: Option<Modifiers>,
-    pub(crate) redraw: Redraw,
+    pub(crate) redraw_notify: Arc<Notify>,
     pub(crate) effects: Vec<PaneEffect>,
     pub(crate) cursor_position: Option<Point>,
 }
@@ -348,63 +349,41 @@ impl PaneState {
     }
 
     pub fn redraw_trigger(&self) -> RedrawTrigger {
-        RedrawTrigger::new(self.redraw.clone())
+        RedrawTrigger {
+            notify: self.redraw_notify.clone(),
+        }
     }
 
     pub fn redraw(&mut self) {
         self.effects.push(PaneEffect::Redraw);
-        self.redraw.request();
+        self.request_redraw();
+    }
+
+    pub(crate) fn request_redraw(&mut self) {
+        self.needs_redraw = true;
+        self.redraw_notify.notify_one();
     }
 }
 
-pub struct Redraw {
-    sender: Arc<dyn Fn() + Send + Sync>,
-}
-
-impl Redraw {
-    pub fn new(sender: impl Fn() + Send + Sync + 'static) -> Self {
-        Self {
-            sender: Arc::new(sender),
-        }
-    }
-
-
-    fn request(&self) {
-        (self.sender)();
-    }
-}
-
-impl Clone for Redraw {
-    fn clone(&self) -> Self {
-        Self {
-            sender: self.sender.clone(),
-        }
-    }
-}
-
-impl std::fmt::Debug for Redraw {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Redraw").finish()
-    }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct RedrawTrigger {
-    redraw: Redraw,
+    notify: Arc<Notify>,
 }
 
 impl RedrawTrigger {
-    pub fn new(redraw: Redraw) -> Self {
-        Self { redraw }
+    pub fn trigger(&self) {
+        self.notify.notify_one();
     }
+}
 
-    pub async fn trigger(&self) {
-        self.redraw.request();
+impl std::fmt::Debug for RedrawTrigger {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RedrawTrigger").finish()
     }
 }
 
 impl<State: 'static> Pane<State> {
-    fn new(state: State, config: PaneConfig<State>, redraw: Redraw) -> Self {
+    fn new(state: State, config: PaneBuilder<State>) -> Self {
         let mut font_cx = FontContext::new();
 
         font_cx
@@ -452,7 +431,7 @@ impl<State: 'static> Pane<State> {
                 scrollers: HashMap::new(),
                 needs_redraw: false,
                 modifiers: None,
-                redraw,
+                redraw_notify: Arc::new(Notify::new()),
                 effects: Vec::new(),
                 cursor_position: None,
             },
@@ -468,7 +447,9 @@ impl<State: 'static> Pane<State> {
         self.name
     }
 
-
+    pub fn redraw_notified(&self) -> impl std::future::Future<Output = ()> + '_ {
+        self.pane_state.redraw_notify.notified()
+    }
 
     pub(crate) fn location(&self, id: u64) -> Point {
         let area = *self
@@ -497,14 +478,6 @@ impl<State: 'static> Pane<State> {
         effects.extend(self.release());
         effects
     }
-
-    pub fn scroll_at(&mut self, id: u64, delta: ScrollDelta) -> Vec<PaneEffect> {
-        let location = self.location(id);
-        let mut effects = self.move_to(location);
-        effects.extend(self.scroll(delta));
-        effects
-    }
-
 
     pub(crate) fn close(mut self) {
         (self.on_exit)(&mut self.state, &mut self.pane_state);
@@ -595,11 +568,9 @@ impl<State: 'static> Pane<State> {
                             image,
                             area: draw_area,
                         },
-                        DrawableType::PushLayer { path, blend, alpha } => RenderItem::PushLayer {
-                            path,
-                            blend,
-                            alpha,
-                        },
+                        DrawableType::PushLayer { path, blend, alpha } => {
+                            RenderItem::PushLayer { path, blend, alpha }
+                        }
                         DrawableType::PopLayer => RenderItem::PopLayer,
                     };
                     items.push(render_item);
@@ -617,13 +588,13 @@ impl<State: 'static> Pane<State> {
         };
 
         if self.update_hover() {
-            self.pane_state.redraw.request();
+            self.pane_state.request_redraw();
         }
 
         (self.on_frame)(&mut self.state, &mut self.pane_state);
 
         if continue_animating {
-            self.pane_state.redraw.request();
+            self.pane_state.request_redraw();
         }
         (frame, self.take_effects())
     }
@@ -681,7 +652,7 @@ impl<State: 'static> Pane<State> {
             }
         }
         if needs_redraw {
-            self.pane_state.redraw.request();
+            self.pane_state.request_redraw();
         }
         self.take_effects()
     }
@@ -694,7 +665,7 @@ impl<State: 'static> Pane<State> {
     pub(crate) fn scale_factor_changed(&mut self, scale_factor: f64) -> Vec<PaneEffect> {
         self.pane_state.scale_factor = scale_factor;
         self.pane_state.text_layout.layout_cache.clear();
-        self.pane_state.redraw.request();
+        self.pane_state.request_redraw();
         self.take_effects()
     }
 
@@ -714,7 +685,7 @@ impl<State: 'static> Pane<State> {
             }
         }
         if needs_redraw {
-            self.pane_state.redraw.request();
+            self.pane_state.request_redraw();
         }
         self.take_effects()
     }
@@ -785,7 +756,7 @@ impl<State: 'static> Pane<State> {
             };
         }
         if needs_redraw {
-            self.pane_state.redraw.request();
+            self.pane_state.request_redraw();
         }
         self.take_effects()
     }
@@ -839,7 +810,10 @@ impl<State: 'static> Pane<State> {
                     on_click(
                         &mut self.state,
                         &mut self.pane_state,
-                        Interaction::Click(ClickState::Started, ClickLocation::new(location, *area)),
+                        Interaction::Click(
+                            ClickState::Started,
+                            ClickLocation::new(location, *area),
+                        ),
                     );
                 } else if handler.interaction_type.drag
                     && let Some(ref on_drag) = handler.interaction_handler
@@ -868,7 +842,7 @@ impl<State: 'static> Pane<State> {
         }
 
         if needs_redraw {
-            self.pane_state.redraw.request();
+            self.pane_state.request_redraw();
         }
         self.take_effects()
     }
@@ -982,7 +956,7 @@ impl<State: 'static> Pane<State> {
         }
         self.gesture_state = GestureState::None;
         if needs_redraw {
-            self.pane_state.redraw.request();
+            self.pane_state.request_redraw();
         }
         self.take_effects()
     }
@@ -1008,7 +982,7 @@ impl<State: 'static> Pane<State> {
             );
         }
         if needs_redraw {
-            self.pane_state.redraw.request();
+            self.pane_state.request_redraw();
         }
         self.take_effects()
     }
