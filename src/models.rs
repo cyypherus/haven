@@ -38,6 +38,24 @@ impl Key {
     }
 }
 
+impl From<&str> for Key {
+    fn from(value: &str) -> Self {
+        Self::Character(value.to_string())
+    }
+}
+
+impl From<String> for Key {
+    fn from(value: String) -> Self {
+        Self::Character(value)
+    }
+}
+
+impl From<NamedKey> for Key {
+    fn from(value: NamedKey) -> Self {
+        Self::Named(value)
+    }
+}
+
 type Getter<State, T> = Rc<dyn for<'a> Fn(&'a State) -> &'a T>;
 type GetterMut<State, T> = Rc<dyn for<'a> Fn(&'a mut State) -> &'a mut T>;
 type OwnedGetter<State, T> = Rc<dyn Fn(&State) -> Option<T>>;

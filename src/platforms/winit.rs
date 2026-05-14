@@ -20,24 +20,6 @@ use winit::window::{Window as WinitWindow, WindowId};
 #[cfg(all(feature = "vello", target_os = "macos"))]
 use winit::platform::macos::WindowAttributesExtMacOS;
 
-impl From<&str> for Key {
-    fn from(value: &str) -> Self {
-        Self::Character(value.to_string())
-    }
-}
-
-impl From<String> for Key {
-    fn from(value: String) -> Self {
-        Self::Character(value)
-    }
-}
-
-impl From<NamedKey> for Key {
-    fn from(value: NamedKey) -> Self {
-        Self::Named(value)
-    }
-}
-
 pub fn key(value: winit::keyboard::Key) -> Option<Key> {
     match value {
         winit::keyboard::Key::Named(named_key) => named_key_from_winit(named_key).map(Key::Named),
