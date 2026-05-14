@@ -556,7 +556,7 @@ fn panel_actions<'a>(
                 .expand_x()
                 .height(38.),
             button(id!(), binding!(state, PanelActionsState, save_button))
-                .text_label("Plant")
+                .text_label("Create")
                 .on_click(|state, _| {
                     let Some(panel) = &state.panel else { return };
                     let title = panel.draft.text.trim();

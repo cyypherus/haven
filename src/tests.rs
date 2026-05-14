@@ -43,7 +43,7 @@ fn dropdown_expands_and_selects_an_option() {
     assert!(effects.is_empty(), "unexpected effects: {effects:?}");
     assert!(!pane.state.dropdown.expanded);
 
-    assert!(pane.click(DROPDOWN).expect("dropdown present").is_empty());
+    assert!(pane.click(OPTIONS[0].0).expect("dropdown present").is_empty());
     assert!(pane.state.dropdown.expanded);
 
     let (_, effects) = pane.redraw(300, 200, 1.0);

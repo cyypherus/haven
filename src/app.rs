@@ -361,7 +361,6 @@ impl PaneState {
     }
 
     pub(crate) fn request_redraw(&mut self) {
-        self.needs_redraw = true;
         self.redraw_notify.notify_one();
     }
 }
@@ -585,10 +584,6 @@ impl<State: 'static> Pane<State> {
             items,
         };
 
-        if self.update_hover() {
-            self.pane_state.request_redraw();
-        }
-
         (self.on_frame)(&mut self.state, &mut self.pane_state);
 
         if continue_animating {
@@ -606,8 +601,14 @@ impl<State: 'static> Pane<State> {
         let Some(pos) = self.cursor_position else {
             return false;
         };
+        let topmost = self
+            .gesture_handlers
+            .iter()
+            .rev()
+            .find(|(_, area, gh)| gh.interaction_type.hover && area_contains(area, pos))
+            .map(|(id, _, _)| *id);
         let mut needs_redraw = false;
-        for (_, area, gh) in self.gesture_handlers() {
+        for (id, _, gh) in self.gesture_handlers() {
             if gh.interaction_type.hover
                 && let Some(ref on_hover) = gh.interaction_handler
             {
@@ -615,7 +616,7 @@ impl<State: 'static> Pane<State> {
                 (on_hover)(
                     &mut self.state,
                     &mut self.pane_state,
-                    Interaction::Hover(area_contains(&area, pos)),
+                    Interaction::Hover(Some(id) == topmost),
                 );
             }
         }

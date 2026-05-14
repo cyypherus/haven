@@ -1,6 +1,5 @@
 use crate::Area;
 use crate::draw_layout::draw_layout;
-use crate::platforms::winit::WinitRenderer;
 use crate::primitives::{ImageSource, PathData};
 use crate::render::{Frame, RenderItem, TextRenderLayout};
 use image::{DynamicImage, ImageBuffer, Rgba};
@@ -20,36 +19,6 @@ pub struct VelloRenderer {
     renderers: Vec<Option<Renderer>>,
     svg_scenes: HashMap<String, (Scene, f32, f32)>,
     image_scenes: HashMap<u64, (Scene, f32, f32)>,
-}
-
-impl WinitRenderer for VelloRenderer {
-    type Surface = VelloSurface;
-    type Error = ();
-
-    fn create_surface(
-        &mut self,
-        window: Arc<winit::window::Window>,
-        width: u32,
-        height: u32,
-        transparent: bool,
-    ) -> Result<Self::Surface, Self::Error> {
-        Ok(VelloRenderer::create_surface(self, window, width, height, transparent))
-    }
-
-    fn resize(
-        &mut self,
-        surface: &mut Self::Surface,
-        width: u32,
-        height: u32,
-    ) -> Result<(), Self::Error> {
-        VelloRenderer::resize_surface(self, surface, width, height);
-        Ok(())
-    }
-
-    fn render(&mut self, surface: &mut Self::Surface, frame: &Frame) -> Result<(), Self::Error> {
-        VelloRenderer::render_surface(self, surface, frame);
-        Ok(())
-    }
 }
 
 impl Default for VelloRenderer {
@@ -102,7 +71,7 @@ impl VelloRenderer {
         surface.surface.configure(device, &surface.config);
     }
 
-    pub fn resize_surface(
+    pub fn resize(
         &mut self,
         surface: &mut RenderSurface<'static>,
         width: u32,
@@ -111,7 +80,7 @@ impl VelloRenderer {
         self.render_context.resize_surface(surface, width, height);
     }
 
-    pub fn render_surface(&mut self, surface: &mut RenderSurface<'static>, frame: &Frame) {
+    pub fn render(&mut self, surface: &mut RenderSurface<'static>, frame: &Frame) {
         self.renderers
             .resize_with(self.render_context.devices.len(), || None);
         let dev_id = surface.dev_id;

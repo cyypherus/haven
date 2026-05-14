@@ -118,7 +118,7 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
             let hovered = hovered == Some(index);
             let depressed = depressed && hovered;
             let background = if expanded {
-                rect(crate::id!(index as u64 ^ id, 1u64))
+                rect(crate::id!(id, index as u64))
                     .fill(adjust_brush(
                         &Brush::Solid(DEFAULT_GRAY),
                         depressed,
@@ -134,7 +134,7 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
                 background.inert(),
                 {
                     let option = option.clone();
-                    rect(id)
+                    rect(crate::id!(id, index as u64))
                         .fill(TRANSPARENT)
                         .view()
                         .on_click({

@@ -1,15 +1,23 @@
-use crate::render::Frame;
-use crate::{Key, Modifiers, NamedKey, Pane, PaneBuilder, PaneEffect, ScrollDelta};
+use crate::{Key, Modifiers, NamedKey};
+
+#[cfg(feature = "vello")]
+use crate::{Pane, PaneBuilder, PaneEffect, ScrollDelta};
+#[cfg(feature = "vello")]
 use std::collections::HashMap;
-use std::fmt::Debug;
+#[cfg(feature = "vello")]
 use std::sync::Arc;
+#[cfg(feature = "vello")]
 use winit::application::ApplicationHandler;
+#[cfg(feature = "vello")]
 use winit::dpi::LogicalSize;
+#[cfg(feature = "vello")]
 use winit::event::MouseScrollDelta;
+#[cfg(feature = "vello")]
 use winit::event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy};
+#[cfg(feature = "vello")]
 use winit::window::{Window as WinitWindow, WindowId};
 
-#[cfg(target_os = "macos")]
+#[cfg(all(feature = "vello", target_os = "macos"))]
 use winit::platform::macos::WindowAttributesExtMacOS;
 
 impl From<&str> for Key {
@@ -67,45 +75,26 @@ fn named_key_from_winit(value: winit::keyboard::NamedKey) -> Option<NamedKey> {
     Some(key)
 }
 
+#[cfg(feature = "vello")]
 enum WinitEvent {
     Redraw(WindowId),
 }
 
-pub trait WinitRenderer {
-    type Surface;
-    type Error;
-
-    fn create_surface(
-        &mut self,
-        window: Arc<WinitWindow>,
-        width: u32,
-        height: u32,
-        transparent: bool,
-    ) -> Result<Self::Surface, Self::Error>;
-
-    fn resize(
-        &mut self,
-        surface: &mut Self::Surface,
-        width: u32,
-        height: u32,
-    ) -> Result<(), Self::Error>;
-
-    fn render(&mut self, surface: &mut Self::Surface, frame: &Frame) -> Result<(), Self::Error>;
-}
+#[cfg(feature = "vello")]
+use crate::renderers::vello::{VelloRenderer as Renderer, VelloSurface as Surface};
 
 #[cfg(feature = "vello")]
-pub type WinitApp<State> = WinitAppWithRenderer<State, crate::renderers::vello::VelloRenderer>;
-
-pub struct WinitAppWithRenderer<State, R: WinitRenderer> {
+pub struct WinitApp<State> {
     state: Option<State>,
     panes: HashMap<&'static str, PaneBuilder<State>>,
-    windows: HashMap<WindowId, WinitSurface<State, R::Surface>>,
+    windows: HashMap<WindowId, WinitSurface<State>>,
     pane_windows: HashMap<&'static str, WindowId>,
-    renderer: R,
+    renderer: Renderer,
     proxy: Option<EventLoopProxy<WinitEvent>>,
 }
 
-struct WinitSurface<State, Surface> {
+#[cfg(feature = "vello")]
+struct WinitSurface<State> {
     surface: Surface,
     window: Arc<WinitWindow>,
     pane: Pane<State>,
@@ -114,22 +103,12 @@ struct WinitSurface<State, Surface> {
 #[cfg(feature = "vello")]
 impl<State: Clone + 'static> WinitApp<State> {
     pub fn new(state: State) -> Self {
-        Self::new_with_renderer(state, crate::renderers::vello::VelloRenderer::new())
-    }
-}
-
-impl<State: Clone + 'static, R> WinitAppWithRenderer<State, R>
-where
-    R: WinitRenderer,
-    R::Error: Debug,
-{
-    pub fn new_with_renderer(state: State, renderer: R) -> Self {
         Self {
             state: Some(state),
             panes: HashMap::new(),
             windows: HashMap::new(),
             pane_windows: HashMap::new(),
-            renderer,
+            renderer: Renderer::new(),
             proxy: None,
         }
     }
@@ -199,8 +178,7 @@ where
         let window_id = window.id();
         let surface = self
             .renderer
-            .create_surface(window.clone(), size.width, size.height, transparent)
-            .expect("failed to create render surface");
+            .create_surface(window.clone(), size.width, size.height, transparent);
 
         #[cfg(target_os = "windows")]
         window.set_visible(true);
@@ -278,27 +256,20 @@ where
         let size = surface.window.inner_size();
         let width = size.width;
         let height = size.height;
-        self.renderer
-            .resize(&mut surface.surface, width, height)
-            .expect("failed to resize render surface");
+        self.renderer.resize(&mut surface.surface, width, height);
 
         let (frame, effects) = surface
             .pane
             .redraw(width, height, surface.window.scale_factor());
 
         surface.window.pre_present_notify();
-        self.renderer
-            .render(&mut surface.surface, &frame)
-            .expect("failed to render frame");
+        self.renderer.render(&mut surface.surface, &frame);
         effects
     }
 }
 
-impl<State: Clone + 'static, R> ApplicationHandler<WinitEvent> for WinitAppWithRenderer<State, R>
-where
-    R: WinitRenderer,
-    R::Error: Debug,
-{
+#[cfg(feature = "vello")]
+impl<State: Clone + 'static> ApplicationHandler<WinitEvent> for WinitApp<State> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let panes: Vec<_> = self
             .panes
@@ -414,6 +385,7 @@ where
     }
 }
 
+#[cfg(feature = "vello")]
 fn scroll_delta(delta: MouseScrollDelta) -> ScrollDelta {
     match delta {
         MouseScrollDelta::LineDelta(x, y) => ScrollDelta { x, y },
