@@ -61,16 +61,9 @@ type GetterMut<State, T> = Rc<dyn for<'a> Fn(&'a mut State) -> &'a mut T>;
 type OwnedGetter<State, T> = Rc<dyn Fn(&State) -> Option<T>>;
 type OwnedSetter<State, T> = Rc<dyn Fn(&mut State, T)>;
 
-enum BindingStorage<State, T> {
-    Lens {
-        get: Getter<State, T>,
-        get_mut: GetterMut<State, T>,
-    },
-    Constant(Rc<T>),
-}
-
 pub struct Binding<State, T> {
-    storage: BindingStorage<State, T>,
+    get: Getter<State, T>,
+    get_mut: GetterMut<State, T>,
 }
 
 pub struct OwnedBinding<State, T> {
@@ -132,19 +125,8 @@ impl<State, T> Binding<State, T> {
         get_mut: impl for<'a> Fn(&'a mut State) -> &'a mut T + 'static,
     ) -> Self {
         Self {
-            storage: BindingStorage::Lens {
-                get: Rc::new(get),
-                get_mut: Rc::new(get_mut),
-            },
-        }
-    }
-
-    pub fn constant(value: T) -> Self
-    where
-        T: 'static,
-    {
-        Self {
-            storage: BindingStorage::Constant(Rc::new(value)),
+            get: Rc::new(get),
+            get_mut: Rc::new(get_mut),
         }
     }
 }
@@ -152,41 +134,26 @@ impl<State, T> Binding<State, T> {
 impl<State, T> Clone for Binding<State, T> {
     fn clone(&self) -> Self {
         Self {
-            storage: match &self.storage {
-                BindingStorage::Lens { get, get_mut } => BindingStorage::Lens {
-                    get: get.clone(),
-                    get_mut: get_mut.clone(),
-                },
-                BindingStorage::Constant(value) => BindingStorage::Constant(value.clone()),
-            },
+            get: self.get.clone(),
+            get_mut: self.get_mut.clone(),
         }
     }
 }
 
 impl<State, T> Binding<State, T> {
     pub fn get<'a>(&'a self, state: &'a State) -> &'a T {
-        match &self.storage {
-            BindingStorage::Lens { get, .. } => get(state),
-            BindingStorage::Constant(value) => value.as_ref(),
-        }
+        (self.get)(state)
     }
 
     pub fn get_mut<'a>(&'a self, state: &'a mut State) -> &'a mut T {
-        match &self.storage {
-            BindingStorage::Lens { get_mut, .. } => get_mut(state),
-            BindingStorage::Constant(_) => panic!("constant binding cannot be mutably borrowed"),
-        }
+        (self.get_mut)(state)
     }
 
     pub fn set(&self, state: &mut State, value: T) {
-        if let BindingStorage::Lens { get_mut, .. } = &self.storage {
-            *get_mut(state) = value;
-        }
+        *(self.get_mut)(state) = value;
     }
 
     pub fn update(&self, state: &mut State, f: impl FnOnce(&mut T)) {
-        if let BindingStorage::Lens { get_mut, .. } = &self.storage {
-            f(get_mut(state));
-        }
+        f((self.get_mut)(state));
     }
 }

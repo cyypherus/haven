@@ -61,16 +61,6 @@ macro_rules! binding {
     };
 }
 
-#[macro_export]
-macro_rules! scope {
-    ($state_var:ident, $Parent:ty, $field:ident, $layout:expr) => {{
-        $crate::scope(
-            $layout($state_var.$field.clone()),
-            Binding::new(|s: &$Parent| &s.$field, |s: &mut $Parent| &mut s.$field),
-        )
-    }};
-}
-
 pub fn rect_path(area: Area) -> BezPath {
     use kurbo::{Rect, Shape};
     Rect::new(
