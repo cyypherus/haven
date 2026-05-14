@@ -1,9 +1,8 @@
 use crate::primitives::{Image, PathData, Svg};
 use crate::{Area, Color};
-use kurbo::{Affine, BezPath};
+use kurbo::{Affine, BezPath, Rect};
 use parley::Layout as TextLayout;
 use peniko::{self, Brush};
-use std::ops::Range;
 
 pub struct Frame {
     pub base_color: Color,
@@ -42,5 +41,5 @@ pub enum RenderItem {
 pub struct TextRenderLayout {
     pub transform: Affine,
     pub layout: TextLayout<Brush>,
-    pub backgrounds: Vec<(Range<usize>, Brush)>,
+    pub backgrounds: Vec<(Rect, Brush)>,
 }

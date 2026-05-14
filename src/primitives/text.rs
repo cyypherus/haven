@@ -10,7 +10,8 @@ use parley::{
 };
 use std::fmt::Debug;
 use std::ops::Range;
-use kurbo::Affine;
+use kurbo::{Affine, Rect};
+use parley::{Affinity, Cursor};
 use peniko::Brush;
 
 pub fn text(id: u64, text: impl AsRef<str>) -> Text {
@@ -319,10 +320,26 @@ impl Text {
         let layout = app.text_layout.build_layout(self, &fill, area.width, true);
         let transform = Affine::translate((area.x as f64, area.y as f64)).then_scale(scale_factor);
 
+        let backgrounds = self
+            .backgrounds
+            .iter()
+            .flat_map(|(range, brush)| {
+                let mut rects = Vec::new();
+                if !range.is_empty() {
+                    let anchor = Cursor::from_byte_index(&layout, range.start, Affinity::Downstream);
+                    let focus = Cursor::from_byte_index(&layout, range.end, Affinity::Upstream);
+                    parley::Selection::new(anchor, focus).geometry_with(&layout, |bb, _| {
+                        rects.push((Rect::new(bb.x0, bb.y0, bb.x1, bb.y1), brush.clone()));
+                    });
+                }
+                rects
+            })
+            .collect();
+
         TextRenderLayout {
             transform,
             layout,
-            backgrounds: self.backgrounds.clone(),
+            backgrounds,
         }
     }
 

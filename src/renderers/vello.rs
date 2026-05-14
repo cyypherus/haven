@@ -4,10 +4,8 @@ use crate::primitives::{ImageSource, PathData};
 use crate::render::{Frame, RenderItem, TextRenderLayout};
 use image::{DynamicImage, ImageBuffer, Rgba};
 use kurbo::{Affine, Point, Rect, RoundedRect, Size, Vec2};
-use parley::{Affinity, Cursor, Layout as TextLayout};
 use peniko::{self, Brush, Compose, Fill, Mix};
 use std::collections::HashMap;
-use std::ops::Range;
 use std::sync::Arc;
 use vello_svg::vello::util::{RenderContext, RenderSurface};
 use vello_svg::vello::{Renderer, RendererOptions, Scene};
@@ -178,8 +176,8 @@ impl VelloRenderer {
     }
 
     fn draw_text(&mut self, scene: &mut Scene, text: &TextRenderLayout) {
-        for (range, brush) in &text.backgrounds {
-            draw_background(scene, text.transform, &text.layout, range.clone(), brush);
+        for (rect, brush) in &text.backgrounds {
+            scene.fill(Fill::NonZero, text.transform, brush, None, rect);
         }
         draw_layout(text.transform, &text.layout, scene);
     }
@@ -373,30 +371,6 @@ fn draw_path(scene: &mut Scene, path: &PathData, area: Area, scale_factor: f64) 
             scene.stroke(stroke_style, scale, &brush, None, &user_path);
         }
     }
-}
-
-fn draw_background(
-    scene: &mut Scene,
-    transform: Affine,
-    layout: &TextLayout<Brush>,
-    range: Range<usize>,
-    brush: &Brush,
-) {
-    if range.is_empty() {
-        return;
-    }
-    let anchor = Cursor::from_byte_index(layout, range.start, Affinity::Downstream);
-    let focus = Cursor::from_byte_index(layout, range.end, Affinity::Upstream);
-    let selection = parley::Selection::new(anchor, focus);
-    selection.geometry_with(layout, |bb, _line_idx| {
-        scene.fill(
-            Fill::NonZero,
-            transform,
-            brush,
-            None,
-            &Rect::new(bb.x0, bb.y0, bb.x1, bb.y1),
-        );
-    });
 }
 
 fn load_image(source: &ImageSource) -> Result<peniko::ImageData, Box<dyn std::error::Error>> {
