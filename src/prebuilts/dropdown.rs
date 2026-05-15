@@ -3,9 +3,9 @@ use crate::utils::adjust_brush;
 use crate::{Binding, ClickState, DEFAULT_CORNER_ROUNDING, DEFAULT_GRAY, rect};
 use crate::{Color, TRANSPARENT};
 use backer::{Align, Layout, nodes::*};
-use std::rc::Rc;
 use kurbo::Stroke;
 use peniko::Brush;
+use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 pub struct DropdownState<T> {

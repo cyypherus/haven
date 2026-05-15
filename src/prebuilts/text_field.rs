@@ -11,12 +11,12 @@ use crate::{
     rect,
 };
 use backer::{Area, Layout, nodes::*};
-use parley::{Alignment, FontWeight};
-use std::fmt::Debug;
-use std::rc::Rc;
 use kurbo::{Affine, Rect as KRect, Stroke};
+use parley::{Alignment, FontWeight};
 use peniko::color::palette::css::TRANSPARENT;
 use peniko::{Brush, Color};
+use std::fmt::Debug;
+use std::rc::Rc;
 
 #[derive(Debug, Clone, Default)]
 pub struct TextState {

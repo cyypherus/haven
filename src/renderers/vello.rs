@@ -69,12 +69,7 @@ impl VelloRenderer {
         surface.surface.configure(device, &surface.config);
     }
 
-    pub fn resize(
-        &mut self,
-        surface: &mut RenderSurface<'static>,
-        width: u32,
-        height: u32,
-    ) {
+    pub fn resize(&mut self, surface: &mut RenderSurface<'static>, width: u32, height: u32) {
         self.render_context.resize_surface(surface, width, height);
     }
 
@@ -171,6 +166,16 @@ impl VelloRenderer {
                     image.unlocked_aspect_ratio,
                     image.corner_rounding,
                 ),
+                RenderItem::Shadow { shadow, area } => {
+                    let rect = shadow.rect(*area, frame.scale_factor);
+                    scene.draw_blurred_rounded_rect(
+                        Affine::IDENTITY,
+                        rect,
+                        shadow.color,
+                        shadow.corner_rounding * frame.scale_factor,
+                        shadow.blur * frame.scale_factor,
+                    );
+                }
             }
         }
     }

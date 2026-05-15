@@ -42,7 +42,11 @@ fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, Pa
                 if state.loading {
                     "Loading...".to_string()
                 } else {
-                    state.value.as_deref().unwrap_or("No value loaded").to_string()
+                    state
+                        .value
+                        .as_deref()
+                        .unwrap_or("No value loaded")
+                        .to_string()
                 },
             )
             .font_size(16)

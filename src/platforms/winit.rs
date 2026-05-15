@@ -15,10 +15,12 @@ use winit::event::MouseScrollDelta;
 #[cfg(feature = "vello")]
 use winit::event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy};
 #[cfg(feature = "vello")]
-use winit::window::{Window as WinitWindow, WindowId};
+use winit::window::{Icon, Window as WinitWindow, WindowId};
 
 #[cfg(all(feature = "vello", target_os = "macos"))]
 use winit::platform::macos::WindowAttributesExtMacOS;
+#[cfg(all(feature = "vello", target_os = "windows"))]
+use winit::platform::windows::WindowAttributesExtWindows;
 
 pub fn key(value: winit::keyboard::Key) -> Option<Key> {
     match value {
@@ -73,6 +75,7 @@ pub struct WinitApp<State> {
     pane_windows: HashMap<&'static str, WindowId>,
     renderer: Renderer,
     proxy: Option<EventLoopProxy<WinitEvent>>,
+    window_icon: Option<Icon>,
 }
 
 #[cfg(feature = "vello")]
@@ -92,7 +95,13 @@ impl<State: 'static> WinitApp<State> {
             pane_windows: HashMap::new(),
             renderer: Renderer::new(),
             proxy: None,
+            window_icon: None,
         }
+    }
+
+    pub fn window_icon(mut self, icon: Icon) -> Self {
+        self.window_icon = Some(icon);
+        self
     }
 
     pub fn pane(mut self, pane: PaneBuilder<State>) -> Self {
@@ -131,6 +140,7 @@ impl<State: 'static> WinitApp<State> {
             .with_resizable(resizable)
             .with_transparent(transparent)
             .with_decorations(decorations)
+            .with_window_icon(self.window_icon.clone())
             .with_titlebar_hidden(false)
             .with_titlebar_transparent(true)
             .with_title_hidden(true)
@@ -142,6 +152,8 @@ impl<State: 'static> WinitApp<State> {
             .with_resizable(resizable)
             .with_transparent(transparent)
             .with_decorations(decorations)
+            .with_window_icon(self.window_icon.clone())
+            .with_taskbar_icon(self.window_icon.clone())
             .with_visible(false);
 
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -149,7 +161,8 @@ impl<State: 'static> WinitApp<State> {
             .with_inner_size(LogicalSize::new(inner_size.0, inner_size.1))
             .with_resizable(resizable)
             .with_transparent(transparent)
-            .with_decorations(decorations);
+            .with_decorations(decorations)
+            .with_window_icon(self.window_icon.clone());
 
         if let Some(title) = config.title_value() {
             attributes = attributes.with_title(title.to_string());

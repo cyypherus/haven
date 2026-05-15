@@ -6,9 +6,9 @@ use crate::{
     rect,
 };
 use backer::{Layout, nodes::stack};
-use std::rc::Rc;
 use peniko::Brush;
 use peniko::color::palette::css::TRANSPARENT;
+use std::rc::Rc;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ButtonState {

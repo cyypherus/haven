@@ -207,6 +207,7 @@ pub(crate) type LayoutCache = HashMap<
             parley::StyleProperty<'static, Brush>,
         )>,
         Vec<(std::ops::Range<usize>, Brush)>,
+        Brush,
         f32,
         parley::Layout<Brush>,
     )>,
@@ -555,6 +556,10 @@ impl<State: 'static> Pane<State> {
                             image,
                             area: draw_area,
                         },
+                        DrawableType::Shadow(shadow) => RenderItem::Shadow {
+                            shadow,
+                            area: draw_area,
+                        },
                         DrawableType::PushLayer { path, blend, alpha } => {
                             RenderItem::PushLayer { path, blend, alpha }
                         }
@@ -617,11 +622,7 @@ impl<State: 'static> Pane<State> {
         self.dispatch_key(state, key.into(), KeyState::Pressed)
     }
 
-    pub fn key_released(
-        &mut self,
-        state: &mut State,
-        key: impl Into<Key>,
-    ) -> Vec<PaneEffect> {
+    pub fn key_released(&mut self, state: &mut State, key: impl Into<Key>) -> Vec<PaneEffect> {
         self.dispatch_key(state, key.into(), KeyState::Released)
     }
 
@@ -950,11 +951,7 @@ impl<State: 'static> Pane<State> {
         std::mem::take(&mut self.pane_state.effects)
     }
 
-    pub(crate) fn scroll(
-        &mut self,
-        state: &mut State,
-        delta: ScrollDelta,
-    ) -> Vec<PaneEffect> {
+    pub(crate) fn scroll(&mut self, state: &mut State, delta: ScrollDelta) -> Vec<PaneEffect> {
         let mut needs_redraw = false;
         let cursor_position = self.cursor_position;
         if let Some(current) = cursor_position

@@ -9,8 +9,8 @@ use backer::{
     nodes::{column, draw, empty, stack, stack_aligned},
 };
 use lilt::{Animated, Easing};
-use std::time::Instant;
 use peniko::{Brush, Gradient};
+use std::time::Instant;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ScrollerState {

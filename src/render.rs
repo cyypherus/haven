@@ -1,4 +1,4 @@
-use crate::primitives::{Image, PathData, Svg};
+use crate::primitives::{Image, PathData, Shadow, Svg};
 use crate::{Area, Color};
 use kurbo::{Affine, BezPath, Rect};
 use parley::Layout as TextLayout;
@@ -34,6 +34,10 @@ pub enum RenderItem {
     },
     Image {
         image: Image,
+        area: Area,
+    },
+    Shadow {
+        shadow: Shadow,
         area: Area,
     },
 }

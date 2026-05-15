@@ -1,6 +1,6 @@
 use backer::Area;
-use std::{fmt::Debug, rc::Rc};
 use peniko::{Brush, Gradient};
+use std::{fmt::Debug, rc::Rc};
 
 use crate::Color;
 

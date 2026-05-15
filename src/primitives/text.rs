@@ -4,15 +4,15 @@ use crate::render::{RenderItem, TextRenderLayout};
 use crate::view::{Drawable, DrawableType};
 use crate::{DEFAULT_FG_COLOR, DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE};
 use backer::{Area, Layout};
+use kurbo::{Affine, Rect};
+use parley::{Affinity, Cursor};
 use parley::{
     Alignment, AlignmentOptions, FontContext, FontStack, FontWeight, Layout as ParleyLayout,
     LayoutContext, LineHeight, StyleProperty, TextStyle,
 };
+use peniko::Brush;
 use std::fmt::Debug;
 use std::ops::Range;
-use kurbo::{Affine, Rect};
-use parley::{Affinity, Cursor};
-use peniko::Brush;
 
 pub fn text(id: u64, text: impl AsRef<str>) -> Text {
     Text {
@@ -237,13 +237,16 @@ impl TextLayout {
             text.string.clone()
         };
 
-        if let Some((_, _, _, _, layout)) = self.layout_cache.get(&text.id).and_then(|cached| {
-            cached.iter().find(|(t, styles, backgrounds, width, _)| {
-                t == &current_text
-                    && styles == &text.styles
-                    && backgrounds == &text.backgrounds
-                    && *width == available_width
-            })
+        if let Some((_, _, _, _, _, layout)) = self.layout_cache.get(&text.id).and_then(|cached| {
+            cached
+                .iter()
+                .find(|(t, styles, backgrounds, fill, width, _)| {
+                    t == &current_text
+                        && styles == &text.styles
+                        && backgrounds == &text.backgrounds
+                        && fill == current_fill
+                        && *width == available_width
+                })
         }) {
             return layout.clone();
         }
@@ -298,6 +301,7 @@ impl TextLayout {
                 current_text,
                 text.styles.clone(),
                 text.backgrounds.clone(),
+                current_fill.clone(),
                 available_width,
                 layout.clone(),
             ));
@@ -326,7 +330,8 @@ impl Text {
             .flat_map(|(range, brush)| {
                 let mut rects = Vec::new();
                 if !range.is_empty() {
-                    let anchor = Cursor::from_byte_index(&layout, range.start, Affinity::Downstream);
+                    let anchor =
+                        Cursor::from_byte_index(&layout, range.start, Affinity::Downstream);
                     let focus = Cursor::from_byte_index(&layout, range.end, Affinity::Upstream);
                     parley::Selection::new(anchor, focus).geometry_with(&layout, |bb, _| {
                         rects.push((Rect::new(bb.x0, bb.y0, bb.x1, bb.y1), brush.clone()));
@@ -343,7 +348,12 @@ impl Text {
         }
     }
 
-    pub(crate) fn render_item(&self, scale_factor: f64, area: Area, app: &mut PaneState) -> RenderItem {
+    pub(crate) fn render_item(
+        &self,
+        scale_factor: f64,
+        area: Area,
+        app: &mut PaneState,
+    ) -> RenderItem {
         RenderItem::Text(self.render_layout(scale_factor, area, app))
     }
 }

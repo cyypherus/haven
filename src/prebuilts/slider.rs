@@ -8,8 +8,8 @@ use backer::{
     Area, Layout,
     nodes::{draw, stack},
 };
-use std::rc::Rc;
 use peniko::Brush;
+use std::rc::Rc;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SliderState {

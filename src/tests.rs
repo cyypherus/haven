@@ -593,3 +593,31 @@ fn wake_runs_on_wake_and_returns_pane_effects() {
             .any(|effect| matches!(effect, PaneEffect::Redraw))
     );
 }
+
+#[test]
+fn shadow_primitive_emits_render_item() {
+    struct State;
+
+    fn view<'a>(_state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        shadow(70)
+            .color(Color::BLACK.with_alpha(0.4))
+            .blur(12.)
+            .spread(4.)
+            .corner_rounding(8.)
+            .build(app)
+            .width(100.)
+            .height(40.)
+    }
+
+    let mut state = State;
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    let (frame, effects) = pane.redraw(&mut state, 300, 200, 1.0);
+
+    assert!(effects.is_empty(), "unexpected effects: {effects:?}");
+    assert!(
+        frame
+            .items
+            .iter()
+            .any(|item| matches!(item, crate::render::RenderItem::Shadow { .. }))
+    );
+}

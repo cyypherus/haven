@@ -6,8 +6,8 @@ use backer::{
     Area, Layout,
     nodes::{draw, stack},
 };
-use std::rc::Rc;
 use peniko::Brush;
+use std::rc::Rc;
 
 #[derive(Default, Debug, Clone, Copy)]
 pub struct ToggleState {

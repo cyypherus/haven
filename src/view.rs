@@ -1,6 +1,6 @@
 use crate::app::{PaneState, View};
 use crate::gestures::{ClickLocation, Interaction, InteractionType, ScrollDelta};
-use crate::primitives::{Image, PathData, Svg, Text};
+use crate::primitives::{Image, PathData, Shadow, Svg, Text};
 use crate::{Binding, ClickState, DragState, GestureHandler, Key, KeyState, OwnedBinding};
 use backer::{Area, Layout, nodes::*};
 use kurbo::{Affine, BezPath};
@@ -178,6 +178,7 @@ pub enum DrawableType {
     Path(Box<PathData>),
     Svg(Svg),
     Image(Image),
+    Shadow(Shadow),
     PushLayer {
         path: BezPath,
         blend: peniko::BlendMode,
@@ -194,6 +195,7 @@ impl Clone for DrawableType {
             DrawableType::Path(path) => DrawableType::Path(path.clone()),
             DrawableType::Svg(svg) => DrawableType::Svg(svg.clone()),
             DrawableType::Image(image) => DrawableType::Image(image.clone()),
+            DrawableType::Shadow(shadow) => DrawableType::Shadow(shadow.clone()),
             DrawableType::PushLayer { path, blend, alpha } => DrawableType::PushLayer {
                 path: path.clone(),
                 blend: *blend,
@@ -317,6 +319,7 @@ impl DrawableType {
             DrawableType::Path(view) => Some(view.id),
             DrawableType::Svg(view) => Some(view.id),
             DrawableType::Image(view) => Some(view.id),
+            DrawableType::Shadow(view) => Some(view.id),
             DrawableType::PushLayer { .. } | DrawableType::PopLayer => None,
         }
     }

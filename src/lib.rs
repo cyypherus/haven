@@ -34,7 +34,7 @@ use peniko::color::Srgb;
 pub use prebuilts::*;
 pub use primitives::{
     ImageSource, Span, Text, circle, image, image_from_bytes, image_from_path, path, rect,
-    rich_text, span, svg, text,
+    rich_text, shadow, span, svg, text,
 };
 pub use view::{
     BlendMode, Compositing, const_hash, owned_scope, rect_path, rounded_rect_path, scope,
