@@ -1,7 +1,7 @@
 use crate::app::{PaneState, View};
-use crate::gestures::{ClickLocation, Interaction, InteractionType, ScrollDelta};
+use crate::gestures::{ClickEvent, Interaction, InteractionType, ScrollDelta};
 use crate::primitives::{Image, PathData, Shadow, Svg, Text};
-use crate::{Binding, ClickState, DragState, GestureHandler, Key, KeyState, OwnedBinding};
+use crate::{Binding, DragPhase, GestureHandler, Key, KeyPhase, MouseButton, OwnedBinding};
 use backer::{Area, Layout, nodes::*};
 use kurbo::{Affine, BezPath};
 use parley::Layout as TextLayout;
@@ -209,41 +209,43 @@ impl Clone for DrawableType {
 impl<State> Drawable<State> {
     pub fn on_click(
         mut self,
-        f: impl Fn(&mut State, &mut PaneState, ClickState, ClickLocation) + 'static,
+        button: MouseButton,
+        f: impl Fn(&mut State, &mut PaneState, ClickEvent) + 'static,
     ) -> Self {
         self.gesture_handlers.push(GestureHandler {
             interaction_type: InteractionType {
-                click: true,
+                click: Some(button),
                 ..Default::default()
             },
             interaction_handler: Some(Rc::new(move |state, app_state, interaction| {
-                let Interaction::Click(click, location) = interaction else {
+                let Interaction::Click(event) = interaction else {
                     return;
                 };
-                (f)(state, app_state, click, location);
+                (f)(state, app_state, event);
             })),
         });
         self
     }
     pub fn on_click_outside(
         mut self,
-        f: impl Fn(&mut State, &mut PaneState, ClickState, ClickLocation) + 'static,
+        button: MouseButton,
+        f: impl Fn(&mut State, &mut PaneState, ClickEvent) + 'static,
     ) -> Self {
         self.gesture_handlers.push(GestureHandler {
             interaction_type: InteractionType {
-                click_outside: true,
+                click_outside: Some(button),
                 ..Default::default()
             },
             interaction_handler: Some(Rc::new(move |state, app_state, interaction| {
-                let Interaction::ClickOutside(click, location) = interaction else {
+                let Interaction::ClickOutside(event) = interaction else {
                     return;
                 };
-                (f)(state, app_state, click, location);
+                (f)(state, app_state, event);
             })),
         });
         self
     }
-    pub fn on_drag(mut self, f: impl Fn(&mut State, &mut PaneState, DragState) + 'static) -> Self {
+    pub fn on_drag(mut self, f: impl Fn(&mut State, &mut PaneState, DragPhase) + 'static) -> Self {
         self.gesture_handlers.push(GestureHandler {
             interaction_type: InteractionType {
                 drag: true,
@@ -275,7 +277,7 @@ impl<State> Drawable<State> {
     }
     pub fn on_key(
         mut self,
-        f: impl Fn(&mut State, &mut PaneState, Key, KeyState) + 'static,
+        f: impl Fn(&mut State, &mut PaneState, Key, KeyPhase) + 'static,
     ) -> Self {
         self.gesture_handlers.push(GestureHandler {
             interaction_type: InteractionType {

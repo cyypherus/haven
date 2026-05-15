@@ -1,6 +1,6 @@
 use crate::app::{PaneState, View};
 use crate::utils::adjust_brush;
-use crate::{Binding, ClickState, id, rect};
+use crate::{Binding, ClickPhase, MouseButton, id, rect};
 use crate::{DEFAULT_FG, DEFAULT_GRAY, DEFAULT_LIGHT_GRAY, TRANSPARENT, circle};
 use backer::{
     Area, Layout,
@@ -143,25 +143,19 @@ impl<'a, State> Toggle<'a, State> {
                             binding.update(state, |s| s.hovered = h)
                         }
                     })
-                    .on_click({
+                    .on_click(MouseButton::Left, {
                         let binding = self.binding.clone();
-                        move |state: &mut State, app: &mut PaneState, click_state, _| {
-                            match click_state {
-                                ClickState::Started => {
-                                    binding.update(state, |s| s.depressed = true)
+                        move |state: &mut State, app: &mut PaneState, event| match event.state {
+                            ClickPhase::Started => binding.update(state, |s| s.depressed = true),
+                            ClickPhase::Cancelled => binding.update(state, |s| s.depressed = false),
+                            ClickPhase::Completed => {
+                                if let Some(f) = self.on_toggle {
+                                    f(state, app, !binding.get(state).on);
                                 }
-                                ClickState::Cancelled => {
-                                    binding.update(state, |s| s.depressed = false)
-                                }
-                                ClickState::Completed => {
-                                    if let Some(f) = self.on_toggle {
-                                        f(state, app, !binding.get(state).on);
-                                    }
-                                    binding.update(state, |s| {
-                                        s.on = !s.on;
-                                        s.depressed = false
-                                    })
-                                }
+                                binding.update(state, |s| {
+                                    s.on = !s.on;
+                                    s.depressed = false
+                                })
                             }
                         }
                     })

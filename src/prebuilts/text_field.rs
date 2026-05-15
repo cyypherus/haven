@@ -7,8 +7,8 @@ use crate::primitives::{
 use crate::view::DrawableType;
 use crate::{
     Binding, DEFAULT_CORNER_ROUNDING, DEFAULT_FG_COLOR, DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE,
-    DEFAULT_PADDING, DEFAULT_PURP, DEFAULT_STROKE_WIDTH, EditInteraction, Key, KeyState, NamedKey,
-    rect,
+    DEFAULT_PADDING, DEFAULT_PURP, DEFAULT_STROKE_WIDTH, EditInteraction, Key, KeyPhase,
+    MouseButton, NamedKey, rect,
 };
 use backer::{Area, Layout, nodes::*};
 use kurbo::{Affine, Rect as KRect, Stroke};
@@ -362,7 +362,7 @@ impl<'a, State> TextField<'a, State> {
                         let on_edit = on_edit.clone();
                         let binding = binding.clone();
                         move |state, app, key, key_state| {
-                            if key_state != KeyState::Pressed {
+                            if key_state != KeyPhase::Pressed {
                                 return;
                             }
                             if (self.enter_end_editing && key == Key::Named(NamedKey::Enter))
@@ -401,10 +401,10 @@ impl<'a, State> TextField<'a, State> {
                             }
                         }
                     })
-                    .on_click_outside({
+                    .on_click_outside(MouseButton::Left, {
                         let binding = binding.clone();
                         let on_edit = on_edit.clone();
-                        move |state: &mut State, app, _, _| {
+                        move |state: &mut State, app, _event| {
                             if let PaneState {
                                 editor: Some(EditState { id, .. }),
                                 ..
@@ -419,10 +419,10 @@ impl<'a, State> TextField<'a, State> {
                             }
                         }
                     })
-                    .on_click({
+                    .on_click(MouseButton::Left, {
                         let binding = binding.clone();
                         let font_family = font_family.clone();
-                        move |state: &mut State, app, _, _| {
+                        move |state: &mut State, app, _event| {
                             let editing = binding.get(state).editing;
                             if !editing && app.editor.is_none() {
                                 binding.update(state, |s| s.editing = true);

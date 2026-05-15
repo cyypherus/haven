@@ -7,17 +7,18 @@ use std::{
 };
 
 #[derive(Debug, Clone, Copy)]
-pub enum GestureState {
+pub(crate) enum GestureState {
     None,
     Dragging {
         start: Point,
         last_position: Point,
         capturer: u64,
+        button: MouseButton,
     },
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum DragState {
+pub enum DragPhase {
     Began {
         start: Point,
         start_global: Point,
@@ -41,10 +42,20 @@ pub enum DragState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ClickState {
+pub enum ClickPhase {
     Started,
     Cancelled,
     Completed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MouseButton {
+    Left,
+    Right,
+    Middle,
+    Back,
+    Forward,
+    Other(u16),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -68,19 +79,25 @@ impl ClickLocation {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct ClickEvent {
+    pub state: ClickPhase,
+    pub location: ClickLocation,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum KeyState {
+pub enum KeyPhase {
     Pressed,
     Released,
 }
 
 #[derive(Clone)]
 pub(crate) enum Interaction {
-    Click(ClickState, ClickLocation),
-    ClickOutside(ClickState, ClickLocation),
-    Drag(DragState),
+    Click(ClickEvent),
+    ClickOutside(ClickEvent),
+    Drag(DragPhase),
     Hover(bool),
-    Key(Key, KeyState),
+    Key(Key, KeyPhase),
     Scroll(ScrollDelta),
 }
 
@@ -92,8 +109,8 @@ pub enum EditInteraction {
 
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct InteractionType {
-    pub(crate) click: bool,
-    pub(crate) click_outside: bool,
+    pub(crate) click: Option<MouseButton>,
+    pub(crate) click_outside: Option<MouseButton>,
     pub(crate) drag: bool,
     pub(crate) hover: bool,
     pub(crate) key: bool,

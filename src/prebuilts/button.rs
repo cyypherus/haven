@@ -1,7 +1,7 @@
 use crate::DEFAULT_FG;
 use crate::utils::adjust_brush;
 use crate::{
-    Binding, ClickState, DEFAULT_CORNER_ROUNDING, DEFAULT_FONT_SIZE, DEFAULT_PURP,
+    Binding, ClickPhase, DEFAULT_CORNER_ROUNDING, DEFAULT_FONT_SIZE, DEFAULT_PURP, MouseButton,
     app::{PaneState, View},
     rect,
 };
@@ -114,14 +114,13 @@ impl<'a, State> Button<'a, State> {
                     let binding = self.binding.clone();
                     move |state, _app: &mut PaneState, h| binding.update(state, |s| s.hovered = h)
                 })
-                .on_click({
+                .on_click(MouseButton::Left, {
                     let binding = self.binding.clone();
                     let on_click = self.on_click.clone();
-                    move |state: &mut State, app: &mut PaneState, click_state, _| match click_state
-                    {
-                        ClickState::Started => binding.update(state, |s| s.depressed = true),
-                        ClickState::Cancelled => binding.update(state, |s| s.depressed = false),
-                        ClickState::Completed => {
+                    move |state: &mut State, app: &mut PaneState, event| match event.state {
+                        ClickPhase::Started => binding.update(state, |s| s.depressed = true),
+                        ClickPhase::Cancelled => binding.update(state, |s| s.depressed = false),
+                        ClickPhase::Completed => {
                             if let Some(f) = &on_click {
                                 f(state, app);
                             }

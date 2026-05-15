@@ -1,4 +1,4 @@
-use crate::gestures::{ClickLocation, Interaction, ScrollDelta};
+use crate::gestures::{ClickEvent, ClickLocation, Interaction, ScrollDelta};
 use crate::render::{Frame, RenderItem};
 
 use crate::editor::Editor;
@@ -6,8 +6,8 @@ use crate::primitives::TextLayout;
 use crate::utils::area_contains;
 use crate::view::DrawableType;
 use crate::{
-    ClickState, DragState, GestureHandler, GestureState, Key, KeyState, Modifiers, Point,
-    RUBIK_FONT,
+    ClickPhase, DragPhase, GestureHandler, GestureState, Key, KeyPhase, Modifiers, MouseButton,
+    Point, RUBIK_FONT,
 };
 use backer::{Area, Layout};
 use parley::fontique::Blob;
@@ -619,18 +619,18 @@ impl<State: 'static> Pane<State> {
     }
 
     pub fn key_pressed(&mut self, state: &mut State, key: impl Into<Key>) -> Vec<PaneEffect> {
-        self.dispatch_key(state, key.into(), KeyState::Pressed)
+        self.dispatch_key(state, key.into(), KeyPhase::Pressed)
     }
 
     pub fn key_released(&mut self, state: &mut State, key: impl Into<Key>) -> Vec<PaneEffect> {
-        self.dispatch_key(state, key.into(), KeyState::Released)
+        self.dispatch_key(state, key.into(), KeyPhase::Released)
     }
 
     fn dispatch_key(
         &mut self,
         state: &mut State,
         key: Key,
-        key_state: KeyState,
+        key_state: KeyPhase,
     ) -> Vec<PaneEffect> {
         let mut needs_redraw = false;
         for (_id, _area, handler) in self.gesture_handlers() {
@@ -706,6 +706,7 @@ impl<State: 'static> Pane<State> {
             start,
             last_position,
             capturer,
+            button,
         } = gesture_state
         {
             let distance = start.distance(pos);
@@ -722,7 +723,7 @@ impl<State: 'static> Pane<State> {
                         (handler)(
                             state,
                             &mut self.pane_state,
-                            Interaction::Drag(DragState::Updated {
+                            Interaction::Drag(DragPhase::Updated {
                                 start: Point {
                                     x: start.x - area.x as f64,
                                     y: start.y - area.y as f64,
@@ -743,6 +744,7 @@ impl<State: 'static> Pane<State> {
                 start,
                 last_position: pos,
                 capturer,
+                button,
             };
         }
         if needs_redraw {
@@ -751,6 +753,14 @@ impl<State: 'static> Pane<State> {
         std::mem::take(&mut self.pane_state.effects)
     }
     pub(crate) fn press(&mut self, state: &mut State) -> Vec<PaneEffect> {
+        self.press_button(state, MouseButton::Left)
+    }
+
+    pub(crate) fn press_button(
+        &mut self,
+        state: &mut State,
+        button: MouseButton,
+    ) -> Vec<PaneEffect> {
         let mut needs_redraw = false;
         let cursor_position = self.cursor_position;
         if let Some(location) = cursor_position {
@@ -760,7 +770,8 @@ impl<State: 'static> Pane<State> {
                 .rev()
                 .find(|(_, area, handler)| {
                     area_contains(area, location)
-                        && (handler.interaction_type.click || handler.interaction_type.drag)
+                        && (handler.interaction_type.click == Some(button)
+                            || (button == MouseButton::Left && handler.interaction_type.drag))
                 })
                 .or(handlers.iter().rev().find(|(_, area, handler)| {
                     area_contains(
@@ -771,13 +782,14 @@ impl<State: 'static> Pane<State> {
                             height: area.height + 20.,
                         },
                         location,
-                    ) && (handler.interaction_type.click || handler.interaction_type.drag)
+                    ) && (handler.interaction_type.click == Some(button)
+                        || (button == MouseButton::Left && handler.interaction_type.drag))
                 }));
             let winner_id = winner.map(|(id, _, _)| *id);
             for (id, area, handler) in handlers
                 .iter()
                 .rev()
-                .filter(|(_, _, h)| h.interaction_type.click_outside)
+                .filter(|(_, _, h)| h.interaction_type.click_outside == Some(button))
             {
                 if Some(*id) != winner_id
                     && let Some(ref on_click_outside) = handler.interaction_handler
@@ -785,33 +797,37 @@ impl<State: 'static> Pane<State> {
                     on_click_outside(
                         state,
                         &mut self.pane_state,
-                        Interaction::ClickOutside(
-                            ClickState::Started,
-                            ClickLocation::new(location, *area),
-                        ),
+                        Interaction::ClickOutside(ClickEvent {
+                            state: ClickPhase::Started,
+                            location: ClickLocation::new(location, *area),
+                        }),
                     );
                 }
             }
             if let Some((capturer, area, handler)) = winner {
                 needs_redraw = true;
-                if handler.interaction_type.click
+                let mut should_capture = false;
+                if handler.interaction_type.click == Some(button)
                     && let Some(ref on_click) = handler.interaction_handler
                 {
+                    should_capture = true;
                     on_click(
                         state,
                         &mut self.pane_state,
-                        Interaction::Click(
-                            ClickState::Started,
-                            ClickLocation::new(location, *area),
-                        ),
+                        Interaction::Click(ClickEvent {
+                            state: ClickPhase::Started,
+                            location: ClickLocation::new(location, *area),
+                        }),
                     );
-                } else if handler.interaction_type.drag
+                } else if button == MouseButton::Left
+                    && handler.interaction_type.drag
                     && let Some(ref on_drag) = handler.interaction_handler
                 {
+                    should_capture = true;
                     on_drag(
                         state,
                         &mut self.pane_state,
-                        Interaction::Drag(DragState::Began {
+                        Interaction::Drag(DragPhase::Began {
                             start: Point {
                                 x: location.x - area.x as f64,
                                 y: location.y - area.y as f64,
@@ -820,13 +836,18 @@ impl<State: 'static> Pane<State> {
                         }),
                     );
                 }
-                self.gesture_state = GestureState::Dragging {
-                    start: location,
-                    last_position: location,
-                    capturer: *capturer,
-                };
+                if should_capture {
+                    self.gesture_state = GestureState::Dragging {
+                        start: location,
+                        last_position: location,
+                        capturer: *capturer,
+                        button,
+                    };
+                }
             }
-            if let Some(EditState { editor, .. }) = self.pane_state.editor.as_mut() {
+            if button == MouseButton::Left
+                && let Some(EditState { editor, .. }) = self.pane_state.editor.as_mut()
+            {
                 editor.mouse_pressed(&mut self.pane_state.layout_cx, &mut self.pane_state.font_cx);
             }
         }
@@ -837,6 +858,14 @@ impl<State: 'static> Pane<State> {
         std::mem::take(&mut self.pane_state.effects)
     }
     pub(crate) fn release(&mut self, state: &mut State) -> Vec<PaneEffect> {
+        self.release_button(state, MouseButton::Left)
+    }
+
+    pub(crate) fn release_button(
+        &mut self,
+        state: &mut State,
+        button: MouseButton,
+    ) -> Vec<PaneEffect> {
         let mut needs_redraw = false;
         let cursor_position = self.cursor_position;
         let gesture_state = self.gesture_state;
@@ -844,7 +873,9 @@ impl<State: 'static> Pane<State> {
             if let Some(EditState { id, editor, .. }) = self.pane_state.editor.as_mut()
                 && let Some(area) = self.pane_state.editor_areas.get(id)
             {
-                editor.mouse_released();
+                if button == MouseButton::Left {
+                    editor.mouse_released();
+                }
                 needs_redraw = true;
                 if !area_contains(area, current)
                     && (!matches!(gesture_state, GestureState::Dragging { .. })
@@ -860,8 +891,12 @@ impl<State: 'static> Pane<State> {
                 start,
                 last_position,
                 capturer,
+                button: press_button,
             } = gesture_state
             {
+                if button != press_button {
+                    return std::mem::take(&mut self.pane_state.effects);
+                }
                 let distance = start.distance(current);
                 let delta = Point {
                     x: current.x - last_position.x,
@@ -872,26 +907,26 @@ impl<State: 'static> Pane<State> {
                     .filter(|(id, _, _)| *id == capturer)
                     .for_each(|(_, area, gh)| {
                         if let (Some(on_click), true) =
-                            (&gh.interaction_handler, gh.interaction_type.click)
+                            (&gh.interaction_handler, gh.interaction_type.click.is_some())
                         {
                             needs_redraw = true;
                             if area_contains(area, current) {
                                 on_click(
                                     state,
                                     &mut self.pane_state,
-                                    Interaction::Click(
-                                        ClickState::Completed,
-                                        ClickLocation::new(current, *area),
-                                    ),
+                                    Interaction::Click(ClickEvent {
+                                        state: ClickPhase::Completed,
+                                        location: ClickLocation::new(current, *area),
+                                    }),
                                 );
                             } else {
                                 on_click(
                                     state,
                                     &mut self.pane_state,
-                                    Interaction::Click(
-                                        ClickState::Cancelled,
-                                        ClickLocation::new(current, *area),
-                                    ),
+                                    Interaction::Click(ClickEvent {
+                                        state: ClickPhase::Cancelled,
+                                        location: ClickLocation::new(current, *area),
+                                    }),
                                 );
                             }
                         }
@@ -902,7 +937,7 @@ impl<State: 'static> Pane<State> {
                             on_drag(
                                 state,
                                 &mut self.pane_state,
-                                Interaction::Drag(DragState::Completed {
+                                Interaction::Drag(DragPhase::Completed {
                                     start: Point {
                                         x: start.x - area.x as f64,
                                         y: start.y - area.y as f64,
@@ -927,7 +962,7 @@ impl<State: 'static> Pane<State> {
             for (id, area, handler) in self
                 .gesture_handlers()
                 .iter()
-                .filter(|(_, _, h)| h.interaction_type.click_outside)
+                .filter(|(_, _, h)| h.interaction_type.click_outside == Some(button))
             {
                 if Some(*id) != press_capturer
                     && let Some(ref handler) = handler.interaction_handler
@@ -936,10 +971,10 @@ impl<State: 'static> Pane<State> {
                     handler(
                         state,
                         &mut self.pane_state,
-                        Interaction::ClickOutside(
-                            ClickState::Completed,
-                            ClickLocation::new(current, *area),
-                        ),
+                        Interaction::ClickOutside(ClickEvent {
+                            state: ClickPhase::Completed,
+                            location: ClickLocation::new(current, *area),
+                        }),
                     );
                 }
             }

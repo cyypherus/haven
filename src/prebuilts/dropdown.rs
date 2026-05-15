@@ -1,6 +1,6 @@
 use crate::app::{PaneState, View};
 use crate::utils::adjust_brush;
-use crate::{Binding, ClickState, DEFAULT_CORNER_ROUNDING, DEFAULT_GRAY, rect};
+use crate::{Binding, ClickPhase, DEFAULT_CORNER_ROUNDING, DEFAULT_GRAY, MouseButton, rect};
 use crate::{Color, TRANSPARENT};
 use backer::{Align, Layout, nodes::*};
 use kurbo::Stroke;
@@ -137,17 +137,17 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
                     rect(crate::id!(id, index as u64))
                         .fill(TRANSPARENT)
                         .view()
-                        .on_click({
+                        .on_click(MouseButton::Left, {
                             let binding = row_binding.clone();
                             let on_select = on_select.clone();
-                            move |state: &mut State, app, click, _pos| match click {
-                                ClickState::Started => {
+                            move |state: &mut State, app, event| match event.state {
+                                ClickPhase::Started => {
                                     binding.update(state, |s| s.depressed = true)
                                 }
-                                ClickState::Cancelled => {
+                                ClickPhase::Cancelled => {
                                     binding.update(state, |s| s.depressed = false)
                                 }
-                                ClickState::Completed => {
+                                ClickPhase::Completed => {
                                     if expanded {
                                         if let Some(ref on_select) = on_select {
                                             on_select(state, app, &option);
@@ -217,10 +217,12 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
         let interactive_bg = rect(crate::id!(id, 1u64))
             .fill(TRANSPARENT)
             .view()
-            .on_click_outside({
+            .on_click_outside(MouseButton::Left, {
                 let binding = binding.clone();
-                move |state: &mut State, _app, click, _pos| {
-                    let ClickState::Completed = click else { return };
+                move |state: &mut State, _app, event| {
+                    let ClickPhase::Completed = event.state else {
+                        return;
+                    };
                     binding.update(state, |s| {
                         s.expanded = false;
                         s.depressed = false;

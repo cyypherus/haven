@@ -104,6 +104,257 @@ fn toggle_click_updates_state() {
 }
 
 #[test]
+fn drawable_click_event_reports_mouse_button_and_location() {
+    #[derive(Default)]
+    struct State {
+        events: Vec<(ClickPhase, Point)>,
+    }
+
+    const TARGET: u64 = 25;
+
+    fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        rect(TARGET)
+            .fill(TRANSPARENT)
+            .view()
+            .on_click(MouseButton::Right, |state: &mut State, _, event| {
+                state.events.push((event.state, event.location.local()));
+            })
+            .finish(app)
+            .width(80.)
+            .height(40.)
+    }
+
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    let (_, effects) = pane.redraw(&mut state, 300, 200, 1.0);
+    assert!(effects.is_empty(), "unexpected effects: {effects:?}");
+
+    let location = pane.location(TARGET).expect("target present");
+    assert!(pane.move_to(&mut state, location).is_empty());
+    assert!(pane.press_button(&mut state, MouseButton::Right).is_empty());
+    assert!(
+        pane.release_button(&mut state, MouseButton::Right)
+            .is_empty()
+    );
+
+    assert_eq!(state.events.len(), 2);
+    assert_eq!(state.events[0].0, ClickPhase::Started);
+    assert_eq!(state.events[1].0, ClickPhase::Completed);
+    assert_eq!(state.events[0].1, state.events[1].1);
+}
+
+#[test]
+fn click_capture_ignores_handlers_for_other_buttons() {
+    #[derive(Default)]
+    struct State {
+        left_events: Vec<ClickPhase>,
+        right_events: Vec<ClickPhase>,
+    }
+
+    const LEFT_TARGET: u64 = 26;
+    const RIGHT_TARGET: u64 = 27;
+
+    fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        stack(vec![
+            rect(LEFT_TARGET)
+                .fill(TRANSPARENT)
+                .view()
+                .on_click(MouseButton::Left, |state: &mut State, _, event| {
+                    state.left_events.push(event.state);
+                })
+                .finish(app)
+                .width(80.)
+                .height(40.),
+            rect(RIGHT_TARGET)
+                .fill(TRANSPARENT)
+                .view()
+                .on_click(MouseButton::Right, |state: &mut State, _, event| {
+                    state.right_events.push(event.state);
+                })
+                .finish(app)
+                .width(80.)
+                .height(40.),
+        ])
+    }
+
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    let (_, effects) = pane.redraw(&mut state, 300, 200, 1.0);
+    assert!(effects.is_empty(), "unexpected effects: {effects:?}");
+
+    let location = pane.location(RIGHT_TARGET).expect("target present");
+    assert!(pane.move_to(&mut state, location).is_empty());
+    assert!(pane.press_button(&mut state, MouseButton::Left).is_empty());
+    assert!(
+        pane.release_button(&mut state, MouseButton::Left)
+            .is_empty()
+    );
+
+    assert_eq!(
+        state.left_events,
+        vec![ClickPhase::Started, ClickPhase::Completed]
+    );
+    assert!(state.right_events.is_empty());
+}
+
+#[test]
+fn click_capture_waits_for_matching_release_button() {
+    #[derive(Default)]
+    struct State {
+        events: Vec<ClickPhase>,
+    }
+
+    const TARGET: u64 = 28;
+
+    fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        rect(TARGET)
+            .fill(TRANSPARENT)
+            .view()
+            .on_click(MouseButton::Right, |state: &mut State, _, event| {
+                state.events.push(event.state);
+            })
+            .finish(app)
+            .width(80.)
+            .height(40.)
+    }
+
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+
+    let location = pane.location(TARGET).expect("target present");
+    pane.move_to(&mut state, location);
+    pane.press_button(&mut state, MouseButton::Right);
+    pane.release_button(&mut state, MouseButton::Left);
+    assert_eq!(state.events, vec![ClickPhase::Started]);
+
+    pane.release_button(&mut state, MouseButton::Right);
+    assert_eq!(
+        state.events,
+        vec![ClickPhase::Started, ClickPhase::Completed]
+    );
+}
+
+#[test]
+fn click_release_outside_cancels_captured_click() {
+    #[derive(Default)]
+    struct State {
+        events: Vec<ClickPhase>,
+    }
+
+    const TARGET: u64 = 29;
+
+    fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        rect(TARGET)
+            .fill(TRANSPARENT)
+            .view()
+            .on_click(MouseButton::Left, |state: &mut State, _, event| {
+                state.events.push(event.state);
+            })
+            .finish(app)
+            .width(80.)
+            .height(40.)
+    }
+
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+
+    let location = pane.location(TARGET).expect("target present");
+    pane.move_to(&mut state, location);
+    pane.press(&mut state);
+    pane.move_to(&mut state, Point::new(location.x + 200., location.y));
+    pane.release(&mut state);
+
+    assert_eq!(
+        state.events,
+        vec![ClickPhase::Started, ClickPhase::Cancelled]
+    );
+}
+
+#[test]
+fn click_outside_is_button_specific() {
+    #[derive(Default)]
+    struct State {
+        outside: Vec<ClickPhase>,
+    }
+
+    const LISTENER: u64 = 30;
+    const TARGET: u64 = 31;
+
+    fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        row_spaced(
+            20.,
+            vec![
+                rect(LISTENER)
+                    .fill(TRANSPARENT)
+                    .view()
+                    .on_click_outside(MouseButton::Right, |state: &mut State, _, event| {
+                        state.outside.push(event.state);
+                    })
+                    .finish(app)
+                    .width(60.)
+                    .height(40.),
+                rect(TARGET)
+                    .fill(TRANSPARENT)
+                    .view()
+                    .on_click(MouseButton::Right, |_, _, _| {})
+                    .finish(app)
+                    .width(60.)
+                    .height(40.),
+            ],
+        )
+    }
+
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+
+    let location = pane.location(TARGET).expect("target present");
+    pane.move_to(&mut state, location);
+    pane.press(&mut state);
+    pane.release(&mut state);
+    assert!(state.outside.is_empty());
+
+    pane.press_button(&mut state, MouseButton::Right);
+    pane.release_button(&mut state, MouseButton::Right);
+    assert_eq!(
+        state.outside,
+        vec![ClickPhase::Started, ClickPhase::Completed]
+    );
+}
+
+#[test]
+fn right_click_does_not_start_left_drag_handler() {
+    #[derive(Default)]
+    struct State {
+        slider: SliderState,
+    }
+
+    const SLIDER: u64 = 32;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        slider(SLIDER, binding!(state, State, slider))
+            .build(app)
+            .width(100.)
+            .height(20.)
+    }
+
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+
+    let location = pane.location(SLIDER).expect("slider present");
+    pane.move_to(&mut state, location);
+    pane.press_button(&mut state, MouseButton::Right);
+    pane.move_to(&mut state, Point::new(location.x + 50., location.y));
+    pane.release_button(&mut state, MouseButton::Right);
+
+    assert!(!state.slider.dragging);
+    assert_eq!(state.slider.value, 0.);
+}
+
+#[test]
 fn slider_drag_updates_value() {
     #[derive(Default)]
     struct State {

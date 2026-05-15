@@ -25,8 +25,10 @@ pub use app::{Pane, PaneBuilder, PaneEffect, PaneState, PaneWaker, View};
 pub use backer::{Area, Layout, nodes::*};
 pub use brush_source::BrushSource;
 pub use bytemuck;
+pub(crate) use gestures::GestureState;
 pub use gestures::{
-    ClickState, DragState, EditInteraction, GestureHandler, GestureState, KeyState, ScrollDelta,
+    ClickEvent, ClickLocation, ClickPhase, DragPhase, EditInteraction, GestureHandler, KeyPhase,
+    MouseButton, ScrollDelta,
 };
 pub use parley::{Alignment, FontWeight, StyleProperty};
 use peniko::color::AlphaColor;

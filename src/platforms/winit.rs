@@ -1,3 +1,5 @@
+#[cfg(feature = "winit")]
+use crate::MouseButton;
 use crate::{Key, Modifiers, NamedKey};
 
 #[cfg(feature = "vello")]
@@ -320,24 +322,22 @@ impl<State: 'static> ApplicationHandler<WinitEvent> for WinitApp<State> {
                     Vec::new()
                 }
             }
-            winit::event::WindowEvent::MouseInput {
-                state,
-                button: winit::event::MouseButton::Left,
-                ..
-            } => {
+            winit::event::WindowEvent::MouseInput { state, button, .. } => {
                 if let Some(surface) = self.windows.get_mut(&window_id) {
                     invalidate_all = true;
+                    let button = mouse_button(button);
                     match state {
-                        winit::event::ElementState::Pressed => surface.pane.press(&mut self.state),
+                        winit::event::ElementState::Pressed => {
+                            surface.pane.press_button(&mut self.state, button)
+                        }
                         winit::event::ElementState::Released => {
-                            surface.pane.release(&mut self.state)
+                            surface.pane.release_button(&mut self.state, button)
                         }
                     }
                 } else {
                     Vec::new()
                 }
             }
-            winit::event::WindowEvent::MouseInput { .. } => Vec::new(),
             winit::event::WindowEvent::CursorEntered { .. } => Vec::new(),
             winit::event::WindowEvent::CursorLeft { .. } => {
                 if let Some(surface) = self.windows.get_mut(&window_id) {
@@ -407,5 +407,17 @@ fn scroll_delta(delta: MouseScrollDelta) -> ScrollDelta {
             x: physical_position.x as f32,
             y: physical_position.y as f32,
         },
+    }
+}
+
+#[cfg(feature = "winit")]
+fn mouse_button(value: winit::event::MouseButton) -> MouseButton {
+    match value {
+        winit::event::MouseButton::Left => MouseButton::Left,
+        winit::event::MouseButton::Right => MouseButton::Right,
+        winit::event::MouseButton::Middle => MouseButton::Middle,
+        winit::event::MouseButton::Back => MouseButton::Back,
+        winit::event::MouseButton::Forward => MouseButton::Forward,
+        winit::event::MouseButton::Other(value) => MouseButton::Other(value),
     }
 }

@@ -1,6 +1,6 @@
 use crate::utils::adjust_brush;
 use crate::{
-    Binding, DEFAULT_DARK_GRAY, DEFAULT_FG, DEFAULT_GRAY, DEFAULT_PURP, DragState, TRANSPARENT,
+    Binding, DEFAULT_DARK_GRAY, DEFAULT_FG, DEFAULT_GRAY, DEFAULT_PURP, DragPhase, TRANSPARENT,
     app::{PaneState, View},
     circle, id, rect,
 };
@@ -191,7 +191,7 @@ impl<'a, State> Slider<'a, State> {
                             };
 
                             match drag_state {
-                                DragState::Began { start, .. } => {
+                                DragPhase::Began { start, .. } => {
                                     binding.update(state, |s| s.dragging = true);
                                     let new_value = update_value(start.x);
                                     binding.update(state, |s| s.value = new_value);
@@ -199,14 +199,14 @@ impl<'a, State> Slider<'a, State> {
                                         f(state, app, new_value);
                                     }
                                 }
-                                DragState::Updated { current, .. } => {
+                                DragPhase::Updated { current, .. } => {
                                     let new_value = update_value(current.x);
                                     binding.update(state, |s| s.value = new_value);
                                     if let Some(ref f) = on_change {
                                         f(state, app, new_value);
                                     }
                                 }
-                                DragState::Completed { .. } => {
+                                DragPhase::Completed { .. } => {
                                     binding.update(state, |s| s.dragging = false);
                                 }
                             }
