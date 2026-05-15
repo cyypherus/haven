@@ -123,7 +123,7 @@ pub struct ScrollDelta {
     pub y: f32,
 }
 pub(crate) type InteractionHandler<T, U> = Rc<dyn Fn(&mut T, &mut U, Interaction)>;
-pub struct GestureHandler<T: ?Sized, U> {
+pub(crate) struct GestureHandler<T: ?Sized, U> {
     pub(crate) interaction_type: InteractionType,
     pub(crate) interaction_handler: Option<InteractionHandler<T, U>>,
 }

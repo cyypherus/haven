@@ -1,4 +1,4 @@
-use crate::gestures::{ClickEvent, ClickLocation, Interaction, ScrollDelta};
+use crate::gestures::{ClickEvent, ClickLocation, GestureHandler, Interaction, ScrollDelta};
 use crate::render::{Frame, RenderItem};
 
 use crate::editor::Editor;
@@ -6,8 +6,7 @@ use crate::primitives::TextLayout;
 use crate::utils::area_contains;
 use crate::view::DrawableType;
 use crate::{
-    ClickPhase, DragPhase, GestureHandler, GestureState, Key, KeyPhase, Modifiers, MouseButton,
-    Point, RUBIK_FONT,
+    ClickPhase, DragPhase, GestureState, Key, KeyPhase, Modifiers, MouseButton, Point, RUBIK_FONT,
 };
 use backer::{Area, Layout};
 use parley::fontique::Blob;
@@ -25,15 +24,15 @@ type FontEntry = (Arc<Vec<u8>>, Option<String>);
 type ViewFn<State> = for<'a> fn(&'a State, &mut PaneState) -> Layout<'a, View<State>, PaneState>;
 
 pub struct PaneBuilder<State> {
-    name: &'static str,
+    pub(crate) name: &'static str,
     view: ViewFn<State>,
-    inner_size: Option<(u32, u32)>,
-    resizable: Option<bool>,
-    title: Option<String>,
-    transparent: Option<bool>,
+    pub(crate) inner_size: Option<(u32, u32)>,
+    pub(crate) resizable: Option<bool>,
+    pub(crate) title: Option<String>,
+    pub(crate) transparent: Option<bool>,
     background: Option<Color>,
-    decorations: Option<bool>,
-    open_at_start: bool,
+    pub(crate) decorations: Option<bool>,
+    pub(crate) open_at_start: bool,
     on_frame: fn(&mut State, &mut PaneState) -> (),
     on_start: fn(&mut State, &mut PaneState) -> (),
     on_wake: fn(&mut State, &mut PaneState) -> (),
@@ -158,43 +157,12 @@ impl<State> PaneBuilder<State> {
         self.on_exit = on_exit;
         self
     }
-    pub fn name(&self) -> &'static str {
-        self.name
-    }
-
-    pub fn inner_size_value(&self) -> Option<(u32, u32)> {
-        self.inner_size
-    }
-
-    pub fn resizable_value(&self) -> Option<bool> {
-        self.resizable
-    }
-
-    pub fn title_value(&self) -> Option<&str> {
-        self.title.as_deref()
-    }
-
-    pub fn transparent_value(&self) -> Option<bool> {
-        self.transparent
-    }
-
-    pub fn background_value(&self) -> Option<Color> {
-        self.background
-    }
 
     pub fn build(self) -> Pane<State>
     where
         State: 'static,
     {
         Pane::new(self)
-    }
-
-    pub fn decorations_value(&self) -> Option<bool> {
-        self.decorations
-    }
-
-    pub fn open_at_start_value(&self) -> bool {
-        self.open_at_start
     }
 }
 
@@ -252,7 +220,9 @@ pub struct PaneState {
     wake: Arc<dyn Fn() + Send + Sync>,
 }
 
-pub enum View<State: ?Sized> {
+pub struct View<State: ?Sized>(pub(crate) ViewKind<State>);
+
+pub(crate) enum ViewKind<State: ?Sized> {
     Draw {
         view: Box<DrawableType>,
         gesture_handlers: Vec<GestureHandler<State, PaneState>>,
@@ -260,6 +230,32 @@ pub enum View<State: ?Sized> {
     },
     EditorArea(u64, Area),
     Empty,
+}
+
+impl<State: ?Sized> View<State> {
+    pub(crate) fn draw(
+        view: Box<DrawableType>,
+        gesture_handlers: Vec<GestureHandler<State, PaneState>>,
+        area: Area,
+    ) -> Self {
+        Self(ViewKind::Draw {
+            view,
+            gesture_handlers,
+            area,
+        })
+    }
+
+    pub(crate) fn editor_area(id: u64, area: Area) -> Self {
+        Self(ViewKind::EditorArea(id, area))
+    }
+
+    pub(crate) fn empty() -> Self {
+        Self(ViewKind::Empty)
+    }
+
+    pub(crate) fn into_kind(self) -> ViewKind<State> {
+        self.0
+    }
 }
 
 pub(crate) struct EditState {
@@ -443,7 +439,7 @@ impl<State: 'static> Pane<State> {
         self.pane_state.wake = wake;
     }
 
-    pub(crate) fn location(&self, id: u64) -> Option<Point> {
+    pub fn location(&self, id: u64) -> Option<Point> {
         let area = *self.elements.get(&id)?;
         Some(Point::new(
             area.x as f64 + area.width as f64 * 0.5,
@@ -451,21 +447,19 @@ impl<State: 'static> Pane<State> {
         ))
     }
 
-    pub fn click(&mut self, state: &mut State, id: u64) -> Option<Vec<PaneEffect>> {
-        let location = self.location(id)?;
+    pub fn click(&mut self, state: &mut State, location: Point) -> Vec<PaneEffect> {
         let mut effects = self.move_to(state, location);
         effects.extend(self.press(state));
         effects.extend(self.release(state));
-        Some(effects)
+        effects
     }
 
-    pub fn drag(&mut self, state: &mut State, id: u64, to: Point) -> Option<Vec<PaneEffect>> {
-        let location = self.location(id)?;
-        let mut effects = self.move_to(state, location);
+    pub fn drag(&mut self, state: &mut State, from: Point, to: Point) -> Vec<PaneEffect> {
+        let mut effects = self.move_to(state, from);
         effects.extend(self.press(state));
         effects.extend(self.move_to(state, to));
         effects.extend(self.release(state));
-        Some(effects)
+        effects
     }
 
     pub(crate) fn close(mut self, state: &mut State) {
@@ -477,7 +471,7 @@ impl<State: 'static> Pane<State> {
         std::mem::take(&mut self.pane_state.effects)
     }
 
-    pub(crate) fn redraw(
+    pub fn redraw(
         &mut self,
         state: &mut State,
         width: u32,
@@ -512,12 +506,12 @@ impl<State: 'static> Pane<State> {
         let mut items = Vec::new();
 
         for item in draw_items {
-            match item {
-                View::EditorArea(id, area) => {
+            match item.into_kind() {
+                ViewKind::EditorArea(id, area) => {
                     self.elements.insert(id, area);
                     self.pane_state.editor_areas.insert(id, area);
                 }
-                View::Draw {
+                ViewKind::Draw {
                     view,
                     gesture_handlers,
                     area,
@@ -567,7 +561,7 @@ impl<State: 'static> Pane<State> {
                     };
                     items.push(render_item);
                 }
-                View::Empty => (),
+                ViewKind::Empty => (),
             }
         }
 
@@ -680,11 +674,7 @@ impl<State: 'static> Pane<State> {
         std::mem::take(&mut self.pane_state.effects)
     }
 
-    pub(crate) fn move_to(&mut self, state: &mut State, pos: Point) -> Vec<PaneEffect> {
-        let pos = Point::new(
-            pos.x / self.pane_state.scale_factor,
-            pos.y / self.pane_state.scale_factor,
-        );
+    pub fn move_to(&mut self, state: &mut State, pos: Point) -> Vec<PaneEffect> {
         let mut needs_redraw = false;
         self.cursor_position = Some(pos);
         self.pane_state.cursor_position = Some(pos);
@@ -756,11 +746,7 @@ impl<State: 'static> Pane<State> {
         self.press_button(state, MouseButton::Left)
     }
 
-    pub(crate) fn press_button(
-        &mut self,
-        state: &mut State,
-        button: MouseButton,
-    ) -> Vec<PaneEffect> {
+    pub fn press_button(&mut self, state: &mut State, button: MouseButton) -> Vec<PaneEffect> {
         let mut needs_redraw = false;
         let cursor_position = self.cursor_position;
         if let Some(location) = cursor_position {
@@ -861,11 +847,7 @@ impl<State: 'static> Pane<State> {
         self.release_button(state, MouseButton::Left)
     }
 
-    pub(crate) fn release_button(
-        &mut self,
-        state: &mut State,
-        button: MouseButton,
-    ) -> Vec<PaneEffect> {
+    pub fn release_button(&mut self, state: &mut State, button: MouseButton) -> Vec<PaneEffect> {
         let mut needs_redraw = false;
         let cursor_position = self.cursor_position;
         let gesture_state = self.gesture_state;

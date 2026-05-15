@@ -101,7 +101,7 @@ impl<'a, State> Button<'a, State> {
                 ))
                 .font_size(DEFAULT_FONT_SIZE)
                 .view()
-                .finish(ctx)
+                .build(ctx)
         };
 
         stack(vec![
@@ -128,7 +128,7 @@ impl<'a, State> Button<'a, State> {
                         }
                     }
                 })
-                .finish(ctx)
+                .build(ctx)
                 .inert(),
         ])
     }

@@ -7,11 +7,11 @@ mod draw_layout;
 mod editor;
 mod gestures;
 mod models;
-pub mod platforms;
+mod platforms;
 mod prebuilts;
 mod primitives;
 pub mod render;
-pub mod renderers;
+mod renderers;
 mod utils;
 mod view;
 
@@ -24,22 +24,21 @@ pub use platforms::winit;
 pub use app::{Pane, PaneBuilder, PaneEffect, PaneState, PaneWaker, View};
 pub use backer::{Area, Layout, nodes::*};
 pub use brush_source::BrushSource;
-pub use bytemuck;
 pub(crate) use gestures::GestureState;
 pub use gestures::{
-    ClickEvent, ClickLocation, ClickPhase, DragPhase, EditInteraction, GestureHandler, KeyPhase,
-    MouseButton, ScrollDelta,
+    ClickEvent, ClickLocation, ClickPhase, DragPhase, EditInteraction, KeyPhase, MouseButton,
+    ScrollDelta,
 };
 pub use parley::{Alignment, FontWeight, StyleProperty};
 use peniko::color::AlphaColor;
 use peniko::color::Srgb;
 pub use prebuilts::*;
 pub use primitives::{
-    ImageSource, Span, Text, circle, image, image_from_bytes, image_from_path, path, rect,
-    rich_text, shadow, span, svg, text,
+    Circle, Image, ImageSource, Path, Rect, Shadow, Span, Svg, Text, circle, image,
+    image_from_bytes, image_from_path, path, rect, rich_text, shadow, span, svg, text,
 };
 pub use view::{
-    BlendMode, Compositing, const_hash, owned_scope, rect_path, rounded_rect_path, scope,
+    BlendMode, Compositing, Drawable, const_hash, owned_scope, rect_path, rounded_rect_path, scope,
 };
 
 pub use kurbo::{BezPath, Cap, Join, Point, Stroke};

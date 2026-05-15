@@ -330,7 +330,7 @@ pub fn scroller<'a, State: 'static>(
                 let entry = app.scrollers.entry(id).or_default();
                 entry.dt += dt.y * 0.5;
             })
-            .finish(ctx),
+            .build(ctx),
     ])
 }
 

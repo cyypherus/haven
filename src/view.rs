@@ -1,7 +1,7 @@
-use crate::app::{PaneState, View};
-use crate::gestures::{ClickEvent, Interaction, InteractionType, ScrollDelta};
+use crate::app::{PaneState, View, ViewKind};
+use crate::gestures::{ClickEvent, GestureHandler, Interaction, InteractionType, ScrollDelta};
 use crate::primitives::{Image, PathData, Shadow, Svg, Text};
-use crate::{Binding, DragPhase, GestureHandler, Key, KeyPhase, MouseButton, OwnedBinding};
+use crate::{Binding, DragPhase, Key, KeyPhase, MouseButton, OwnedBinding};
 use backer::{Area, Layout, nodes::*};
 use kurbo::{Affine, BezPath};
 use parley::Layout as TextLayout;
@@ -146,23 +146,23 @@ fn wrap_layer<'a, State>(
 ) -> Layout<'a, View<State>, PaneState> {
     stack(vec![
         draw(move |area, _| {
-            vec![View::Draw {
-                view: Box::new(DrawableType::PushLayer {
+            vec![View::draw(
+                Box::new(DrawableType::PushLayer {
                     path: path(area),
                     blend,
                     alpha,
                 }),
-                gesture_handlers: Vec::new(),
+                Vec::new(),
                 area,
-            }]
+            )]
         }),
         content,
         draw(|area, _| {
-            vec![View::Draw {
-                view: Box::new(DrawableType::PopLayer),
-                gesture_handlers: Vec::new(),
+            vec![View::draw(
+                Box::new(DrawableType::PopLayer),
+                Vec::new(),
                 area,
-            }]
+            )]
         }),
     ])
 }
@@ -172,7 +172,7 @@ pub struct Drawable<State> {
     pub(crate) gesture_handlers: Vec<GestureHandler<State, PaneState>>,
 }
 
-pub enum DrawableType {
+pub(crate) enum DrawableType {
     Text(Text),
     Layout(Box<(TextLayout<Brush>, Affine)>),
     Path(Box<PathData>),
@@ -328,7 +328,7 @@ impl DrawableType {
 }
 
 impl<State: 'static> Drawable<State> {
-    pub fn finish<'a>(self, ctx: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    pub fn build<'a>(self, ctx: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
         let text_clone = if let DrawableType::Text(t) = &self.view_type {
             Some(t.clone())
         } else {
@@ -336,11 +336,11 @@ impl<State: 'static> Drawable<State> {
         };
 
         let node = draw(move |area, _| {
-            vec![View::Draw {
-                view: Box::new(self.view_type),
-                gesture_handlers: self.gesture_handlers,
+            vec![View::draw(
+                Box::new(self.view_type),
+                self.gesture_handlers,
                 area,
-            }]
+            )]
         });
 
         if let Some(text_view) = text_clone {
@@ -380,14 +380,14 @@ fn map_scope<'a, Parent: 'static, Sub: 'static>(
     ) + Clone
     + 'static,
 ) -> Layout<'a, View<Parent>, PaneState> {
-    layout.map(move |view| match view {
-        View::Draw {
+    layout.map(move |view| match view.into_kind() {
+        ViewKind::Draw {
             view,
             gesture_handlers,
             area,
-        } => View::Draw {
+        } => View::draw(
             view,
-            gesture_handlers: gesture_handlers
+            gesture_handlers
                 .into_iter()
                 .map(|gh| {
                     let handler = gh.interaction_handler.map(|h| {
@@ -408,8 +408,8 @@ fn map_scope<'a, Parent: 'static, Sub: 'static>(
                 })
                 .collect(),
             area,
-        },
-        View::EditorArea(id, area) => View::EditorArea(id, area),
-        View::Empty => View::Empty,
+        ),
+        ViewKind::EditorArea(id, area) => View::editor_area(id, area),
+        ViewKind::Empty => View::empty(),
     })
 }

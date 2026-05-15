@@ -41,6 +41,6 @@ impl Svg {
         self,
         ctx: &mut PaneState,
     ) -> Layout<'static, View<State>, PaneState> {
-        self.view().finish(ctx)
+        self.view().build(ctx)
     }
 }

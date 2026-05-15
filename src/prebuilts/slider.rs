@@ -212,7 +212,7 @@ impl<'a, State> Slider<'a, State> {
                             }
                         }
                     })
-                    .finish(ctx)
+                    .build(ctx)
                     .height(height)
                     .width(width),
             ])

@@ -3,7 +3,9 @@ use crate::MouseButton;
 use crate::{Key, Modifiers, NamedKey};
 
 #[cfg(feature = "vello")]
-use crate::{Pane, PaneBuilder, PaneEffect, ScrollDelta};
+use crate::app::{Pane, PaneEffect};
+#[cfg(feature = "vello")]
+use crate::{PaneBuilder, ScrollDelta};
 #[cfg(feature = "vello")]
 use std::collections::HashMap;
 #[cfg(feature = "vello")]
@@ -24,7 +26,7 @@ use winit::platform::macos::WindowAttributesExtMacOS;
 #[cfg(all(feature = "vello", target_os = "windows"))]
 use winit::platform::windows::WindowAttributesExtWindows;
 
-pub fn key(value: winit::keyboard::Key) -> Option<Key> {
+pub(crate) fn key(value: winit::keyboard::Key) -> Option<Key> {
     match value {
         winit::keyboard::Key::Named(named_key) => named_key_from_winit(named_key).map(Key::Named),
         winit::keyboard::Key::Character(c) => Some(Key::Character(c.to_string())),
@@ -32,7 +34,7 @@ pub fn key(value: winit::keyboard::Key) -> Option<Key> {
     }
 }
 
-pub fn modifiers(value: winit::event::Modifiers) -> Modifiers {
+pub(crate) fn modifiers(value: winit::event::Modifiers) -> Modifiers {
     let state = value.state();
     Modifiers {
         shift: state.shift_key(),
@@ -107,7 +109,7 @@ impl<State: 'static> WinitApp<State> {
     }
 
     pub fn pane(mut self, pane: PaneBuilder<State>) -> Self {
-        self.panes.insert(pane.name(), pane);
+        self.panes.insert(pane.name, pane);
         self
     }
 
@@ -131,10 +133,10 @@ impl<State: 'static> WinitApp<State> {
             return;
         };
 
-        let inner_size = config.inner_size_value().unwrap_or((1044, 800));
-        let resizable = config.resizable_value().unwrap_or(true);
-        let transparent = config.transparent_value().unwrap_or(false);
-        let decorations = config.decorations_value().unwrap_or(true);
+        let inner_size = config.inner_size.unwrap_or((1044, 800));
+        let resizable = config.resizable.unwrap_or(true);
+        let transparent = config.transparent.unwrap_or(false);
+        let decorations = config.decorations.unwrap_or(true);
 
         #[cfg(target_os = "macos")]
         let mut attributes = WinitWindow::default_attributes()
@@ -166,7 +168,7 @@ impl<State: 'static> WinitApp<State> {
             .with_decorations(decorations)
             .with_window_icon(self.window_icon.clone());
 
-        if let Some(title) = config.title_value() {
+        if let Some(ref title) = config.title {
             attributes = attributes.with_title(title.to_string());
         }
 
@@ -180,7 +182,7 @@ impl<State: 'static> WinitApp<State> {
         #[cfg(target_os = "windows")]
         window.set_visible(true);
 
-        let pane_name = config.name();
+        let pane_name = config.name;
         let mut pane = config.build();
         if let Some(proxy) = self.proxy.clone() {
             pane.set_wake_handler(Arc::new(move || {
@@ -264,7 +266,7 @@ impl<State: 'static> ApplicationHandler<WinitEvent> for WinitApp<State> {
         let panes: Vec<_> = self
             .panes
             .iter()
-            .filter_map(|(name, pane)| pane.open_at_start_value().then_some(*name))
+            .filter_map(|(name, pane)| pane.open_at_start.then_some(*name))
             .collect();
         for name in panes {
             self.create_window(event_loop, name);
@@ -315,6 +317,7 @@ impl<State: 'static> ApplicationHandler<WinitEvent> for WinitApp<State> {
             winit::event::WindowEvent::CursorMoved { position, .. } => {
                 if let Some(surface) = self.windows.get_mut(&window_id) {
                     invalidate_all = true;
+                    let position = position.to_logical(surface.window.scale_factor());
                     surface
                         .pane
                         .move_to(&mut self.state, kurbo::Point::new(position.x, position.y))

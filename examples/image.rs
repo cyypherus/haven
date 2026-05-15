@@ -143,7 +143,7 @@ async fn main() {
                                 })
                                 .font_size(16)
                                 .view()
-                                .finish(app)
+                                .build(app)
                                 .pad(10.)
                                 .width_range(..200.),
                                 button(id!(), binding!(state, State, paste_button))
@@ -195,7 +195,7 @@ async fn main() {
                                     image_from_bytes(id!(), bytes.clone())
                                         .image_id(image_id)
                                         .view()
-                                        .finish(app)
+                                        .build(app)
                                         .height_range(100.0..)
                                         .width_range(100.0..),
                                 ],

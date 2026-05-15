@@ -181,7 +181,7 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
                                 });
                             }
                         })
-                        .finish(ctx)
+                        .build(ctx)
                 }
                 .inert(),
                 content,
@@ -239,7 +239,7 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
                     });
                 }
             })
-            .finish(ctx);
+            .build(ctx);
 
         let all_rows: Vec<_> = options
             .iter()

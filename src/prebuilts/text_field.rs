@@ -238,16 +238,16 @@ impl<'a, State> TextField<'a, State> {
                         width: rect.width() as f32,
                         height: rect.height() as f32,
                     };
-                    vec![View::Draw {
-                        view: Box::new(DrawableType::Path(Box::new(PathData {
+                    vec![View::draw(
+                        Box::new(DrawableType::Path(Box::new(PathData {
                             id,
                             builder: rect_path((2., 2., 2., 2.)),
                             fill: Some(highlight.resolve(resolved_area, &ts).into()),
                             stroke: None,
                         }))),
-                        gesture_handlers: Vec::new(),
-                        area: resolved_area,
-                    }]
+                        Vec::new(),
+                        resolved_area,
+                    )]
                 }));
             }
 
@@ -279,16 +279,16 @@ impl<'a, State> TextField<'a, State> {
                             cursor.height() as f32
                         },
                     };
-                    vec![View::<State>::Draw {
-                        view: Box::new(DrawableType::Path(Box::new(PathData {
+                    vec![View::<State>::draw(
+                        Box::new(DrawableType::Path(Box::new(PathData {
                             id,
                             builder: rect_path((rounding, rounding, rounding, rounding)),
                             fill: Some(cursor_fill.resolve(resolved_area, &ts).into()),
                             stroke: None,
                         }))),
-                        gesture_handlers: Vec::new(),
-                        area: resolved_area,
-                    }]
+                        Vec::new(),
+                        resolved_area,
+                    )]
                 }));
             }
 
@@ -297,16 +297,16 @@ impl<'a, State> TextField<'a, State> {
             text_drawables.push(draw(move |area, _| {
                 let transform =
                     Affine::translate((area.x as f64, area.y as f64)).then_scale(scale_factor);
-                vec![View::<State>::Draw {
-                    view: Box::new(DrawableType::Layout(Box::new((layout.clone(), transform)))),
-                    gesture_handlers: Vec::new(),
-                    area: Area {
+                vec![View::<State>::draw(
+                    Box::new(DrawableType::Layout(Box::new((layout.clone(), transform)))),
+                    Vec::new(),
+                    Area {
                         x: area.x,
                         y: area.y,
                         width: area.width,
                         height: area.height,
                     },
-                }]
+                )]
             }));
 
             let stack = stack(
@@ -343,10 +343,10 @@ impl<'a, State> TextField<'a, State> {
                 backgrounds: Vec::new(),
             }
             .view()
-            .finish(ctx)
+            .build(ctx)
         };
         let content = stack(vec![
-            draw(move |area, _| vec![View::EditorArea(root_id, area)]).inert(),
+            draw(move |area, _| vec![View::editor_area(root_id, area)]).inert(),
             text_content,
         ])
         .pad(if editable { self.padding } else { 0. });
@@ -454,7 +454,7 @@ impl<'a, State> TextField<'a, State> {
                             }
                         }
                     })
-                    .finish(ctx),
+                    .build(ctx),
             ])
         }
         .inert();
