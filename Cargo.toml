@@ -25,6 +25,11 @@ path = "examples/image.rs"
 required-features = ["winit", "vello"]
 
 [[example]]
+name = "async_callbacks"
+path = "examples/async_callbacks.rs"
+required-features = ["winit", "vello"]
+
+[[example]]
 name = "productivity"
 path = "examples/productivity.rs"
 required-features = ["winit", "vello"]

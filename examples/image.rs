@@ -38,10 +38,10 @@ impl State {
         }
 
         let download_state = self.download_state.clone();
-        let redraw = app.redraw_trigger();
+        let wake = app.waker();
 
         if input.starts_with("http://") || input.starts_with("https://") {
-            app.spawn(async move {
+            tokio::spawn(async move {
                 {
                     let mut state = download_state.lock().await;
                     *state = DownloadState::Downloading;
@@ -81,10 +81,10 @@ impl State {
                         *state = DownloadState::Error(format!("Request failed: {e}"));
                     }
                 }
-                redraw.trigger();
+                wake.wake();
             });
         } else {
-            app.spawn(async move {
+            tokio::spawn(async move {
                 {
                     let mut state = download_state.lock().await;
                     *state = DownloadState::Downloading;
@@ -100,7 +100,7 @@ impl State {
                         *state = DownloadState::Error(format!("Failed to read file: {e}"));
                     }
                 }
-                redraw.trigger();
+                wake.wake();
             });
         }
     }
@@ -114,7 +114,8 @@ impl State {
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     WinitApp::new(State::new())
         .pane(
             PaneBuilder::new("main", |state: &State, app: &mut PaneState| {
@@ -211,6 +212,7 @@ fn main() {
                 .pad(20.)
                 .pad_top(20.)
             })
+            .on_wake(|_, app| app.redraw())
             .title("Image Loader")
             .inner_size(720, 720),
         )

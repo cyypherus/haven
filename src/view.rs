@@ -3,10 +3,10 @@ use crate::gestures::{ClickLocation, Interaction, InteractionType, ScrollDelta};
 use crate::primitives::{Image, PathData, Svg, Text};
 use crate::{Binding, ClickState, DragState, GestureHandler, Key, KeyState, OwnedBinding};
 use backer::{Area, Layout, nodes::*};
-use parley::Layout as TextLayout;
-use std::rc::Rc;
 use kurbo::{Affine, BezPath};
+use parley::Layout as TextLayout;
 use peniko::{self, Brush};
+use std::rc::Rc;
 
 // A simple const FNV-1a hash for our purposes
 const FNV_OFFSET: u64 = 1469598103934665603;

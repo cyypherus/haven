@@ -19,11 +19,6 @@ use parley::{
 use peniko::{self, Brush, Color};
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
-use tokio::runtime::Runtime;
-use tokio::sync::Notify;
-use tokio_util::sync::CancellationToken;
-use tokio_util::task::TaskTracker;
 
 type FontEntry = (Arc<Vec<u8>>, Option<String>);
 
@@ -41,6 +36,7 @@ pub struct PaneBuilder<State> {
     open_at_start: bool,
     on_frame: fn(&mut State, &mut PaneState) -> (),
     on_start: fn(&mut State, &mut PaneState) -> (),
+    on_wake: fn(&mut State, &mut PaneState) -> (),
     on_exit: fn(&mut State, &mut PaneState) -> (),
     custom_fonts: Vec<FontEntry>,
 }
@@ -59,6 +55,7 @@ impl<State> Clone for PaneBuilder<State> {
             open_at_start: self.open_at_start,
             on_frame: self.on_frame,
             on_start: self.on_start,
+            on_wake: self.on_wake,
             on_exit: self.on_exit,
             custom_fonts: self.custom_fonts.clone(),
         }
@@ -74,9 +71,9 @@ pub struct Pane<State> {
     cursor_position: Option<Point>,
     gesture_state: GestureState,
     pub(crate) pane_state: PaneState,
-    pub state: State,
     on_frame: fn(&mut State, &mut PaneState) -> (),
     on_start: fn(&mut State, &mut PaneState) -> (),
+    on_wake: fn(&mut State, &mut PaneState) -> (),
     on_exit: fn(&mut State, &mut PaneState) -> (),
     started: bool,
 }
@@ -95,6 +92,7 @@ impl<State> PaneBuilder<State> {
             open_at_start: true,
             on_frame: |_, _| {},
             on_start: |_, _| {},
+            on_wake: |_, _| {},
             on_exit: |_, _| {},
             custom_fonts: Vec::new(),
         }
@@ -151,6 +149,11 @@ impl<State> PaneBuilder<State> {
         self
     }
 
+    pub fn on_wake(mut self, on_wake: fn(&mut State, &mut PaneState) -> ()) -> Self {
+        self.on_wake = on_wake;
+        self
+    }
+
     pub fn on_exit(mut self, on_exit: fn(&mut State, &mut PaneState) -> ()) -> Self {
         self.on_exit = on_exit;
         self
@@ -179,11 +182,11 @@ impl<State> PaneBuilder<State> {
         self.background
     }
 
-    pub fn build(self, state: State) -> Pane<State>
+    pub fn build(self) -> Pane<State>
     where
         State: 'static,
     {
-        Pane::new(state, self)
+        Pane::new(self)
     }
 
     pub fn decorations_value(&self) -> Option<bool> {
@@ -216,6 +219,23 @@ pub enum PaneEffect {
     Redraw,
 }
 
+#[derive(Clone)]
+pub struct PaneWaker {
+    wake: Arc<dyn Fn() + Send + Sync>,
+}
+
+impl PaneWaker {
+    pub fn wake(&self) {
+        (self.wake)();
+    }
+}
+
+impl std::fmt::Debug for PaneWaker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PaneWaker").finish()
+    }
+}
+
 pub struct PaneState {
     pub(crate) text_layout: TextLayout,
     pub(crate) font_cx: FontContext,
@@ -225,13 +245,10 @@ pub struct PaneState {
     pub(crate) editor_areas: HashMap<u64, Area>,
     pub(crate) scrollers: HashMap<u64, crate::prebuilts::ScrollerState>,
     pub(crate) needs_redraw: bool,
-    pub(crate) task_runtime: Runtime,
-    pub(crate) cancellation_token: CancellationToken,
-    pub(crate) task_tracker: TaskTracker,
     pub(crate) modifiers: Option<Modifiers>,
-    pub(crate) redraw_notify: Arc<Notify>,
     pub(crate) effects: Vec<PaneEffect>,
     pub(crate) cursor_position: Option<Point>,
+    wake: Arc<dyn Fn() + Send + Sync>,
 }
 
 pub enum View<State: ?Sized> {
@@ -345,45 +362,23 @@ impl PaneState {
         });
     }
 
-    pub fn spawn(&self, task: impl std::future::Future<Output = ()> + Send + 'static) {
-        self.task_tracker.spawn_on(task, self.task_runtime.handle());
+    pub fn redraw(&mut self) {
+        self.effects.push(PaneEffect::Redraw);
     }
 
-    pub fn redraw_trigger(&self) -> RedrawTrigger {
-        RedrawTrigger {
-            notify: self.redraw_notify.clone(),
+    pub fn waker(&self) -> PaneWaker {
+        PaneWaker {
+            wake: self.wake.clone(),
         }
     }
 
-    pub fn redraw(&mut self) {
-        self.effects.push(PaneEffect::Redraw);
-        self.request_redraw();
-    }
-
     pub(crate) fn request_redraw(&mut self) {
-        self.redraw_notify.notify_one();
-    }
-}
-
-#[derive(Clone)]
-pub struct RedrawTrigger {
-    notify: Arc<Notify>,
-}
-
-impl RedrawTrigger {
-    pub fn trigger(&self) {
-        self.notify.notify_one();
-    }
-}
-
-impl std::fmt::Debug for RedrawTrigger {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("RedrawTrigger").finish()
+        self.waker().wake();
     }
 }
 
 impl<State: 'static> Pane<State> {
-    fn new(state: State, config: PaneBuilder<State>) -> Self {
+    fn new(config: PaneBuilder<State>) -> Self {
         let mut font_cx = FontContext::new();
 
         font_cx
@@ -400,7 +395,6 @@ impl<State: 'static> Pane<State> {
             );
         }
 
-        let task_runtime = Runtime::new().expect("Failed to create task runtime");
         let layout_cache = HashMap::new();
         let layout_cx = LayoutContext::new();
         let font_cx_inner = FontContext::new();
@@ -419,9 +413,6 @@ impl<State: 'static> Pane<State> {
             cursor_position: None,
             gesture_state: GestureState::None,
             pane_state: PaneState {
-                task_runtime,
-                cancellation_token: CancellationToken::new(),
-                task_tracker: TaskTracker::new(),
                 text_layout: TextLayout::new(layout_cache, font_cx_inner, layout_cx),
                 font_cx: FontContext::new(),
                 layout_cx: LayoutContext::new(),
@@ -431,13 +422,13 @@ impl<State: 'static> Pane<State> {
                 scrollers: HashMap::new(),
                 needs_redraw: false,
                 modifiers: None,
-                redraw_notify: Arc::new(Notify::new()),
                 effects: Vec::new(),
                 cursor_position: None,
+                wake: Arc::new(|| {}),
             },
-            state,
             on_frame: config.on_frame,
             on_start: config.on_start,
+            on_wake: config.on_wake,
             on_exit: config.on_exit,
             started: false,
         }
@@ -447,8 +438,8 @@ impl<State: 'static> Pane<State> {
         self.name
     }
 
-    pub fn redraw_notified(&self) -> impl std::future::Future<Output = ()> + '_ {
-        self.pane_state.redraw_notify.notified()
+    pub(crate) fn set_wake_handler(&mut self, wake: Arc<dyn Fn() + Send + Sync>) {
+        self.pane_state.wake = wake;
     }
 
     pub(crate) fn location(&self, id: u64) -> Option<Point> {
@@ -459,43 +450,42 @@ impl<State: 'static> Pane<State> {
         ))
     }
 
-    pub fn click(&mut self, id: u64) -> Option<Vec<PaneEffect>> {
+    pub fn click(&mut self, state: &mut State, id: u64) -> Option<Vec<PaneEffect>> {
         let location = self.location(id)?;
-        let mut effects = self.move_to(location);
-        effects.extend(self.press());
-        effects.extend(self.release());
+        let mut effects = self.move_to(state, location);
+        effects.extend(self.press(state));
+        effects.extend(self.release(state));
         Some(effects)
     }
 
-    pub fn drag(&mut self, id: u64, to: Point) -> Option<Vec<PaneEffect>> {
+    pub fn drag(&mut self, state: &mut State, id: u64, to: Point) -> Option<Vec<PaneEffect>> {
         let location = self.location(id)?;
-        let mut effects = self.move_to(location);
-        effects.extend(self.press());
-        effects.extend(self.move_to(to));
-        effects.extend(self.release());
+        let mut effects = self.move_to(state, location);
+        effects.extend(self.press(state));
+        effects.extend(self.move_to(state, to));
+        effects.extend(self.release(state));
         Some(effects)
     }
 
-    pub(crate) fn close(mut self) {
-        (self.on_exit)(&mut self.state, &mut self.pane_state);
-        self.pane_state.cancellation_token.cancel();
-        self.pane_state.task_tracker.close();
-        self.pane_state.task_runtime.block_on(async {
-            tokio::time::timeout(Duration::from_secs(1), self.pane_state.task_tracker.wait())
-                .await
-                .ok();
-        });
+    pub(crate) fn close(mut self, state: &mut State) {
+        (self.on_exit)(state, &mut self.pane_state);
+    }
+
+    pub(crate) fn wake(&mut self, state: &mut State) -> Vec<PaneEffect> {
+        (self.on_wake)(state, &mut self.pane_state);
+        std::mem::take(&mut self.pane_state.effects)
     }
 
     pub(crate) fn redraw(
         &mut self,
+        state: &mut State,
         width: u32,
         height: u32,
         scale_factor: f64,
     ) -> (Frame, Vec<PaneEffect>) {
         if !self.started {
             self.started = true;
-            (self.on_start)(&mut self.state, &mut self.pane_state);
+            (self.on_start)(state, &mut self.pane_state);
         }
 
         self.gesture_handlers.clear();
@@ -504,7 +494,7 @@ impl<State: 'static> Pane<State> {
 
         let view = self.view;
         let draw_items = {
-            let mut layout = view(&self.state, &mut self.pane_state);
+            let mut layout = view(state, &mut self.pane_state);
             layout.draw(
                 Area {
                     x: 0.,
@@ -584,12 +574,12 @@ impl<State: 'static> Pane<State> {
             items,
         };
 
-        (self.on_frame)(&mut self.state, &mut self.pane_state);
+        (self.on_frame)(state, &mut self.pane_state);
 
         if continue_animating {
             self.pane_state.request_redraw();
         }
-        (frame, self.take_effects())
+        (frame, std::mem::take(&mut self.pane_state.effects))
     }
 }
 impl<State: 'static> Pane<State> {
@@ -597,7 +587,7 @@ impl<State: 'static> Pane<State> {
         self.gesture_handlers.clone()
     }
 
-    fn update_hover(&mut self) -> bool {
+    fn update_hover(&mut self, state: &mut State) -> bool {
         let Some(pos) = self.cursor_position else {
             return false;
         };
@@ -614,7 +604,7 @@ impl<State: 'static> Pane<State> {
             {
                 needs_redraw = true;
                 (on_hover)(
-                    &mut self.state,
+                    state,
                     &mut self.pane_state,
                     Interaction::Hover(Some(id) == topmost),
                 );
@@ -623,19 +613,24 @@ impl<State: 'static> Pane<State> {
         needs_redraw
     }
 
-    fn take_effects(&mut self) -> Vec<PaneEffect> {
-        std::mem::take(&mut self.pane_state.effects)
+    pub fn key_pressed(&mut self, state: &mut State, key: impl Into<Key>) -> Vec<PaneEffect> {
+        self.dispatch_key(state, key.into(), KeyState::Pressed)
     }
 
-    pub fn key_pressed(&mut self, key: impl Into<Key>) -> Vec<PaneEffect> {
-        self.dispatch_key(key.into(), KeyState::Pressed)
+    pub fn key_released(
+        &mut self,
+        state: &mut State,
+        key: impl Into<Key>,
+    ) -> Vec<PaneEffect> {
+        self.dispatch_key(state, key.into(), KeyState::Released)
     }
 
-    pub fn key_released(&mut self, key: impl Into<Key>) -> Vec<PaneEffect> {
-        self.dispatch_key(key.into(), KeyState::Released)
-    }
-
-    fn dispatch_key(&mut self, key: Key, key_state: KeyState) -> Vec<PaneEffect> {
+    fn dispatch_key(
+        &mut self,
+        state: &mut State,
+        key: Key,
+        key_state: KeyState,
+    ) -> Vec<PaneEffect> {
         let mut needs_redraw = false;
         for (_id, _area, handler) in self.gesture_handlers() {
             if let Some(ref interaction_handler) = handler.interaction_handler
@@ -643,7 +638,7 @@ impl<State: 'static> Pane<State> {
             {
                 needs_redraw = true;
                 interaction_handler(
-                    &mut self.state,
+                    state,
                     &mut self.pane_state,
                     Interaction::Key(key.clone(), key_state),
                 );
@@ -652,22 +647,22 @@ impl<State: 'static> Pane<State> {
         if needs_redraw {
             self.pane_state.request_redraw();
         }
-        self.take_effects()
+        std::mem::take(&mut self.pane_state.effects)
     }
 
     pub(crate) fn modifiers_changed(&mut self, modifiers: Modifiers) -> Vec<PaneEffect> {
         self.pane_state.modifiers = Some(modifiers);
-        self.take_effects()
+        std::mem::take(&mut self.pane_state.effects)
     }
 
     pub(crate) fn scale_factor_changed(&mut self, scale_factor: f64) -> Vec<PaneEffect> {
         self.pane_state.scale_factor = scale_factor;
         self.pane_state.text_layout.layout_cache.clear();
         self.pane_state.request_redraw();
-        self.take_effects()
+        std::mem::take(&mut self.pane_state.effects)
     }
 
-    pub(crate) fn exit(&mut self) -> Vec<PaneEffect> {
+    pub(crate) fn exit(&mut self, state: &mut State) -> Vec<PaneEffect> {
         self.cursor_position = None;
         let mut needs_redraw = false;
         for (_, _, gh) in self.gesture_handlers() {
@@ -675,20 +670,16 @@ impl<State: 'static> Pane<State> {
                 && let Some(ref on_hover) = gh.interaction_handler
             {
                 needs_redraw = true;
-                on_hover(
-                    &mut self.state,
-                    &mut self.pane_state,
-                    Interaction::Hover(false),
-                );
+                on_hover(state, &mut self.pane_state, Interaction::Hover(false));
             }
         }
         if needs_redraw {
             self.pane_state.request_redraw();
         }
-        self.take_effects()
+        std::mem::take(&mut self.pane_state.effects)
     }
 
-    pub(crate) fn move_to(&mut self, pos: Point) -> Vec<PaneEffect> {
+    pub(crate) fn move_to(&mut self, state: &mut State, pos: Point) -> Vec<PaneEffect> {
         let pos = Point::new(
             pos.x / self.pane_state.scale_factor,
             pos.y / self.pane_state.scale_factor,
@@ -706,7 +697,7 @@ impl<State: 'static> Pane<State> {
                 &mut self.pane_state.font_cx,
             );
         }
-        if self.update_hover() {
+        if self.update_hover(state) {
             needs_redraw = true;
         }
         let gesture_state = self.gesture_state;
@@ -728,7 +719,7 @@ impl<State: 'static> Pane<State> {
                     needs_redraw = true;
                     if let Some(handler) = &gh.interaction_handler {
                         (handler)(
-                            &mut self.state,
+                            state,
                             &mut self.pane_state,
                             Interaction::Drag(DragState::Updated {
                                 start: Point {
@@ -756,9 +747,9 @@ impl<State: 'static> Pane<State> {
         if needs_redraw {
             self.pane_state.request_redraw();
         }
-        self.take_effects()
+        std::mem::take(&mut self.pane_state.effects)
     }
-    pub(crate) fn press(&mut self) -> Vec<PaneEffect> {
+    pub(crate) fn press(&mut self, state: &mut State) -> Vec<PaneEffect> {
         let mut needs_redraw = false;
         let cursor_position = self.cursor_position;
         if let Some(location) = cursor_position {
@@ -791,7 +782,7 @@ impl<State: 'static> Pane<State> {
                     && let Some(ref on_click_outside) = handler.interaction_handler
                 {
                     on_click_outside(
-                        &mut self.state,
+                        state,
                         &mut self.pane_state,
                         Interaction::ClickOutside(
                             ClickState::Started,
@@ -806,7 +797,7 @@ impl<State: 'static> Pane<State> {
                     && let Some(ref on_click) = handler.interaction_handler
                 {
                     on_click(
-                        &mut self.state,
+                        state,
                         &mut self.pane_state,
                         Interaction::Click(
                             ClickState::Started,
@@ -817,7 +808,7 @@ impl<State: 'static> Pane<State> {
                     && let Some(ref on_drag) = handler.interaction_handler
                 {
                     on_drag(
-                        &mut self.state,
+                        state,
                         &mut self.pane_state,
                         Interaction::Drag(DragState::Began {
                             start: Point {
@@ -842,9 +833,9 @@ impl<State: 'static> Pane<State> {
         if needs_redraw {
             self.pane_state.request_redraw();
         }
-        self.take_effects()
+        std::mem::take(&mut self.pane_state.effects)
     }
-    pub(crate) fn release(&mut self) -> Vec<PaneEffect> {
+    pub(crate) fn release(&mut self, state: &mut State) -> Vec<PaneEffect> {
         let mut needs_redraw = false;
         let cursor_position = self.cursor_position;
         let gesture_state = self.gesture_state;
@@ -885,7 +876,7 @@ impl<State: 'static> Pane<State> {
                             needs_redraw = true;
                             if area_contains(area, current) {
                                 on_click(
-                                    &mut self.state,
+                                    state,
                                     &mut self.pane_state,
                                     Interaction::Click(
                                         ClickState::Completed,
@@ -894,7 +885,7 @@ impl<State: 'static> Pane<State> {
                                 );
                             } else {
                                 on_click(
-                                    &mut self.state,
+                                    state,
                                     &mut self.pane_state,
                                     Interaction::Click(
                                         ClickState::Cancelled,
@@ -908,7 +899,7 @@ impl<State: 'static> Pane<State> {
                         {
                             needs_redraw = true;
                             on_drag(
-                                &mut self.state,
+                                state,
                                 &mut self.pane_state,
                                 Interaction::Drag(DragState::Completed {
                                     start: Point {
@@ -942,7 +933,7 @@ impl<State: 'static> Pane<State> {
                 {
                     needs_redraw = true;
                     handler(
-                        &mut self.state,
+                        state,
                         &mut self.pane_state,
                         Interaction::ClickOutside(
                             ClickState::Completed,
@@ -956,10 +947,14 @@ impl<State: 'static> Pane<State> {
         if needs_redraw {
             self.pane_state.request_redraw();
         }
-        self.take_effects()
+        std::mem::take(&mut self.pane_state.effects)
     }
 
-    pub(crate) fn scroll(&mut self, delta: ScrollDelta) -> Vec<PaneEffect> {
+    pub(crate) fn scroll(
+        &mut self,
+        state: &mut State,
+        delta: ScrollDelta,
+    ) -> Vec<PaneEffect> {
         let mut needs_redraw = false;
         let cursor_position = self.cursor_position;
         if let Some(current) = cursor_position
@@ -973,15 +968,11 @@ impl<State: 'static> Pane<State> {
             && let Some(ref on_scroll) = handler.interaction_handler
         {
             needs_redraw = true;
-            on_scroll(
-                &mut self.state,
-                &mut self.pane_state,
-                Interaction::Scroll(delta),
-            );
+            on_scroll(state, &mut self.pane_state, Interaction::Scroll(delta));
         }
         if needs_redraw {
             self.pane_state.request_redraw();
         }
-        self.take_effects()
+        std::mem::take(&mut self.pane_state.effects)
     }
 }

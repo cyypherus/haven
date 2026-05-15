@@ -59,7 +59,7 @@ fn named_key_from_winit(value: winit::keyboard::NamedKey) -> Option<NamedKey> {
 
 #[cfg(feature = "vello")]
 enum WinitEvent {
-    Redraw(WindowId),
+    Wake(WindowId),
 }
 
 #[cfg(feature = "vello")]
@@ -67,7 +67,7 @@ use crate::renderers::vello::{VelloRenderer as Renderer, VelloSurface as Surface
 
 #[cfg(feature = "vello")]
 pub struct WinitApp<State> {
-    state: Option<State>,
+    state: State,
     panes: HashMap<&'static str, PaneBuilder<State>>,
     windows: HashMap<WindowId, WinitSurface<State>>,
     pane_windows: HashMap<&'static str, WindowId>,
@@ -83,10 +83,10 @@ struct WinitSurface<State> {
 }
 
 #[cfg(feature = "vello")]
-impl<State: Clone + 'static> WinitApp<State> {
+impl<State: 'static> WinitApp<State> {
     pub fn new(state: State) -> Self {
         Self {
-            state: Some(state),
+            state,
             panes: HashMap::new(),
             windows: HashMap::new(),
             pane_windows: HashMap::new(),
@@ -158,37 +158,20 @@ impl<State: Clone + 'static> WinitApp<State> {
         let window = Arc::new(event_loop.create_window(attributes).unwrap());
         let size = window.inner_size();
         let window_id = window.id();
-        let surface = self
-            .renderer
-            .create_surface(window.clone(), size.width, size.height, transparent);
+        let surface =
+            self.renderer
+                .create_surface(window.clone(), size.width, size.height, transparent);
 
         #[cfg(target_os = "windows")]
         window.set_visible(true);
 
-        let Some(proxy) = self.proxy.clone() else {
-            return;
-        };
-        let state = self
-            .state
-            .as_ref()
-            .expect("state must exist while creating windows")
-            .clone();
         let pane_name = config.name();
-        let pane = config.build(state);
-        let redraw_notify = pane.pane_state.redraw_notify.clone();
-        let cancellation = pane.pane_state.cancellation_token.clone();
-        pane.pane_state.spawn(async move {
-            loop {
-                tokio::select! {
-                    _ = redraw_notify.notified() => {
-                        if proxy.send_event(WinitEvent::Redraw(window_id)).is_err() {
-                            break;
-                        }
-                    }
-                    _ = cancellation.cancelled() => break,
-                }
-            }
-        });
+        let mut pane = config.build();
+        if let Some(proxy) = self.proxy.clone() {
+            pane.set_wake_handler(Arc::new(move || {
+                let _ = proxy.send_event(WinitEvent::Wake(window_id));
+            }));
+        }
         self.pane_windows.insert(pane_name, window_id);
         self.windows.insert(
             window_id,
@@ -219,11 +202,18 @@ impl<State: Clone + 'static> WinitApp<State> {
         }
     }
 
+    fn request_all_redraws(&self) {
+        for surface in self.windows.values() {
+            surface.window.request_redraw();
+        }
+    }
+
     fn close_window(&mut self, event_loop: &ActiveEventLoop, window_id: WindowId) {
         if let Some(surface) = self.windows.remove(&window_id) {
             let name = surface.pane.name();
-            surface.pane.close();
+            surface.pane.close(&mut self.state);
             self.pane_windows.remove(name);
+            self.request_all_redraws();
         }
         if self.windows.is_empty() {
             event_loop.exit();
@@ -240,9 +230,12 @@ impl<State: Clone + 'static> WinitApp<State> {
         let height = size.height;
         self.renderer.resize(&mut surface.surface, width, height);
 
-        let (frame, effects) = surface
-            .pane
-            .redraw(width, height, surface.window.scale_factor());
+        let (frame, effects) = surface.pane.redraw(
+            &mut self.state,
+            width,
+            height,
+            surface.window.scale_factor(),
+        );
 
         surface.window.pre_present_notify();
         self.renderer.render(&mut surface.surface, &frame);
@@ -251,7 +244,7 @@ impl<State: Clone + 'static> WinitApp<State> {
 }
 
 #[cfg(feature = "vello")]
-impl<State: Clone + 'static> ApplicationHandler<WinitEvent> for WinitApp<State> {
+impl<State: 'static> ApplicationHandler<WinitEvent> for WinitApp<State> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let panes: Vec<_> = self
             .panes
@@ -263,12 +256,16 @@ impl<State: Clone + 'static> ApplicationHandler<WinitEvent> for WinitApp<State> 
         }
     }
 
-    fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: WinitEvent) {
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: WinitEvent) {
         match event {
-            WinitEvent::Redraw(window_id) => {
-                if let Some(surface) = self.windows.get(&window_id) {
+            WinitEvent::Wake(window_id) => {
+                let effects = if let Some(surface) = self.windows.get_mut(&window_id) {
                     surface.window.request_redraw();
-                }
+                    surface.pane.wake(&mut self.state)
+                } else {
+                    Vec::new()
+                };
+                self.apply_effects(event_loop, window_id, effects);
             }
         }
     }
@@ -279,53 +276,72 @@ impl<State: Clone + 'static> ApplicationHandler<WinitEvent> for WinitApp<State> 
         window_id: WindowId,
         event: winit::event::WindowEvent,
     ) {
+        let mut invalidate_all = false;
         let effects = match event {
             winit::event::WindowEvent::Moved(_) => Vec::new(),
             winit::event::WindowEvent::KeyboardInput { event, .. } => {
                 let Some(key) = key(event.logical_key) else {
                     return;
                 };
-                self.windows
-                    .get_mut(&window_id)
-                    .map(|surface| match event.state {
-                        winit::event::ElementState::Pressed => surface.pane.key_pressed(key),
-                        winit::event::ElementState::Released => surface.pane.key_released(key),
-                    })
-                    .unwrap_or_default()
+                if let Some(surface) = self.windows.get_mut(&window_id) {
+                    invalidate_all = true;
+                    match event.state {
+                        winit::event::ElementState::Pressed => {
+                            surface.pane.key_pressed(&mut self.state, key)
+                        }
+                        winit::event::ElementState::Released => {
+                            surface.pane.key_released(&mut self.state, key)
+                        }
+                    }
+                } else {
+                    Vec::new()
+                }
             }
-            winit::event::WindowEvent::CursorMoved { position, .. } => self
-                .windows
-                .get_mut(&window_id)
-                .map(|surface| {
+            winit::event::WindowEvent::CursorMoved { position, .. } => {
+                if let Some(surface) = self.windows.get_mut(&window_id) {
+                    invalidate_all = true;
                     surface
                         .pane
-                        .move_to(kurbo::Point::new(position.x, position.y))
-                })
-                .unwrap_or_default(),
+                        .move_to(&mut self.state, kurbo::Point::new(position.x, position.y))
+                } else {
+                    Vec::new()
+                }
+            }
             winit::event::WindowEvent::MouseInput {
                 state,
                 button: winit::event::MouseButton::Left,
                 ..
-            } => self
-                .windows
-                .get_mut(&window_id)
-                .map(|surface| match state {
-                    winit::event::ElementState::Pressed => surface.pane.press(),
-                    winit::event::ElementState::Released => surface.pane.release(),
-                })
-                .unwrap_or_default(),
+            } => {
+                if let Some(surface) = self.windows.get_mut(&window_id) {
+                    invalidate_all = true;
+                    match state {
+                        winit::event::ElementState::Pressed => surface.pane.press(&mut self.state),
+                        winit::event::ElementState::Released => {
+                            surface.pane.release(&mut self.state)
+                        }
+                    }
+                } else {
+                    Vec::new()
+                }
+            }
             winit::event::WindowEvent::MouseInput { .. } => Vec::new(),
             winit::event::WindowEvent::CursorEntered { .. } => Vec::new(),
-            winit::event::WindowEvent::CursorLeft { .. } => self
-                .windows
-                .get_mut(&window_id)
-                .map(|surface| surface.pane.exit())
-                .unwrap_or_default(),
-            winit::event::WindowEvent::MouseWheel { delta, .. } => self
-                .windows
-                .get_mut(&window_id)
-                .map(|surface| surface.pane.scroll(scroll_delta(delta)))
-                .unwrap_or_default(),
+            winit::event::WindowEvent::CursorLeft { .. } => {
+                if let Some(surface) = self.windows.get_mut(&window_id) {
+                    invalidate_all = true;
+                    surface.pane.exit(&mut self.state)
+                } else {
+                    Vec::new()
+                }
+            }
+            winit::event::WindowEvent::MouseWheel { delta, .. } => {
+                if let Some(surface) = self.windows.get_mut(&window_id) {
+                    invalidate_all = true;
+                    surface.pane.scroll(&mut self.state, scroll_delta(delta))
+                } else {
+                    Vec::new()
+                }
+            }
             winit::event::WindowEvent::Resized(_) => Vec::new(),
             winit::event::WindowEvent::HoveredFile(_) => Vec::new(),
             winit::event::WindowEvent::DroppedFile(_) => Vec::new(),
@@ -363,6 +379,9 @@ impl<State: Clone + 'static> ApplicationHandler<WinitEvent> for WinitApp<State> 
             | winit::event::WindowEvent::DoubleTapGesture { .. }
             | winit::event::WindowEvent::RotationGesture { .. } => Vec::new(),
         };
+        if invalidate_all {
+            self.request_all_redraws();
+        }
         self.apply_effects(event_loop, window_id, effects);
     }
 }

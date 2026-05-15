@@ -1,5 +1,9 @@
 use crate::*;
 
+fn test_pane<State: 'static>(builder: PaneBuilder<State>) -> Pane<State> {
+    builder.build()
+}
+
 #[test]
 fn dropdown_expands_and_selects_an_option() {
     struct State {
@@ -37,22 +41,31 @@ fn dropdown_expands_and_selects_an_option() {
         .height(30.)
     }
 
-    let mut pane = PaneBuilder::new("test", view).build(State::default());
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
 
-    let (_, effects) = pane.redraw(300, 200, 1.0);
+    let (_, effects) = pane.redraw(&mut state, 300, 200, 1.0);
     assert!(effects.is_empty(), "unexpected effects: {effects:?}");
-    assert!(!pane.state.dropdown.expanded);
+    assert!(!state.dropdown.expanded);
 
-    assert!(pane.click(OPTIONS[0].0).expect("dropdown present").is_empty());
-    assert!(pane.state.dropdown.expanded);
+    assert!(
+        pane.click(&mut state, OPTIONS[0].0)
+            .expect("dropdown present")
+            .is_empty()
+    );
+    assert!(state.dropdown.expanded);
 
-    let (_, effects) = pane.redraw(300, 200, 1.0);
+    let (_, effects) = pane.redraw(&mut state, 300, 200, 1.0);
     assert!(effects.is_empty(), "unexpected effects: {effects:?}");
 
-    assert!(pane.click(OPTIONS[1].0).expect("option present").is_empty());
-    assert_eq!(pane.state.dropdown.selected, "two");
-    assert_eq!(pane.state.selected, Some("two"));
-    assert!(!pane.state.dropdown.expanded);
+    assert!(
+        pane.click(&mut state, OPTIONS[1].0)
+            .expect("option present")
+            .is_empty()
+    );
+    assert_eq!(state.dropdown.selected, "two");
+    assert_eq!(state.selected, Some("two"));
+    assert!(!state.dropdown.expanded);
 }
 
 #[test]
@@ -73,20 +86,21 @@ fn toggle_click_updates_state() {
             .height(30.)
     }
 
-    let mut pane = PaneBuilder::new("test", view).build(State::default());
-    let (_, effects) = pane.redraw(300, 200, 1.0);
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    let (_, effects) = pane.redraw(&mut state, 300, 200, 1.0);
     assert!(effects.is_empty(), "unexpected effects: {effects:?}");
 
     let location = pane.location(TOGGLE).expect("toggle present");
-    assert!(pane.move_to(location).is_empty());
-    assert!(pane.state.toggle.hovered);
-    assert!(pane.press().is_empty());
-    assert!(pane.state.toggle.depressed);
-    assert!(pane.release().is_empty());
+    assert!(pane.move_to(&mut state, location).is_empty());
+    assert!(state.toggle.hovered);
+    assert!(pane.press(&mut state).is_empty());
+    assert!(state.toggle.depressed);
+    assert!(pane.release(&mut state).is_empty());
 
-    assert!(pane.state.toggle.on);
-    assert!(!pane.state.toggle.depressed);
-    assert_eq!(pane.state.toggled, Some(true));
+    assert!(state.toggle.on);
+    assert!(!state.toggle.depressed);
+    assert_eq!(state.toggled, Some(true));
 }
 
 #[test]
@@ -107,21 +121,22 @@ fn slider_drag_updates_value() {
             .height(20.)
     }
 
-    let mut pane = PaneBuilder::new("test", view).build(State::default());
-    let (_, effects) = pane.redraw(300, 200, 1.0);
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    let (_, effects) = pane.redraw(&mut state, 300, 200, 1.0);
     assert!(effects.is_empty(), "unexpected effects: {effects:?}");
 
     let location = pane.location(SLIDER).expect("slider present");
-    assert!(pane.move_to(location).is_empty());
-    assert!(pane.state.slider.hovered);
-    assert!(pane.press().is_empty());
-    assert!(pane.state.slider.dragging);
-    assert!(pane.move_to(Point::new(190., 100.)).is_empty());
-    assert!(pane.release().is_empty());
+    assert!(pane.move_to(&mut state, location).is_empty());
+    assert!(state.slider.hovered);
+    assert!(pane.press(&mut state).is_empty());
+    assert!(state.slider.dragging);
+    assert!(pane.move_to(&mut state, Point::new(190., 100.)).is_empty());
+    assert!(pane.release(&mut state).is_empty());
 
-    assert!((pane.state.slider.value - 1.0).abs() < 0.001);
-    assert!(!pane.state.slider.dragging);
-    assert!((pane.state.changed.unwrap() - 1.0).abs() < 0.001);
+    assert!((state.slider.value - 1.0).abs() < 0.001);
+    assert!(!state.slider.dragging);
+    assert!((state.changed.unwrap() - 1.0).abs() < 0.001);
 }
 
 #[test]
@@ -150,21 +165,26 @@ fn text_field_click_and_key_update_state() {
             .height(40.)
     }
 
-    let mut pane = PaneBuilder::new("test", view).build(State::default());
-    let (_, effects) = pane.redraw(300, 200, 1.0);
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    let (_, effects) = pane.redraw(&mut state, 300, 200, 1.0);
     assert!(effects.is_empty(), "unexpected effects: {effects:?}");
 
-    assert!(pane.click(FIELD).expect("field present").is_empty());
-    assert!(pane.state.text.editing);
+    assert!(
+        pane.click(&mut state, FIELD)
+            .expect("field present")
+            .is_empty()
+    );
+    assert!(state.text.editing);
 
-    let (_, effects) = pane.redraw(300, 200, 1.0);
+    let (_, effects) = pane.redraw(&mut state, 300, 200, 1.0);
     assert!(effects.is_empty(), "unexpected effects: {effects:?}");
 
-    assert!(pane.key_pressed("a").is_empty());
+    assert!(pane.key_pressed(&mut state, "a").is_empty());
 
-    assert_eq!(pane.state.text.text, "a");
+    assert_eq!(state.text.text, "a");
     assert!(matches!(
-        pane.state.edits.last(),
+        state.edits.last(),
         Some(EditInteraction::Update(text)) if text == "a"
     ));
 }
@@ -185,17 +205,18 @@ fn text_field_types_multiple_characters() {
             .height(40.)
     }
 
-    let mut pane = PaneBuilder::new("test", view).build(State::default());
-    pane.redraw(300, 200, 1.0);
-    pane.click(FIELD).expect("field present");
-    pane.redraw(300, 200, 1.0);
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+    pane.click(&mut state, FIELD).expect("field present");
+    pane.redraw(&mut state, 300, 200, 1.0);
 
     for ch in ["h", "e", "l", "l", "o"] {
-        pane.key_pressed(ch);
-        pane.redraw(300, 200, 1.0);
+        pane.key_pressed(&mut state, ch);
+        pane.redraw(&mut state, 300, 200, 1.0);
     }
 
-    assert_eq!(pane.state.text.text, "hello");
+    assert_eq!(state.text.text, "hello");
 }
 
 #[test]
@@ -214,23 +235,24 @@ fn text_field_backspace_removes_character() {
             .height(40.)
     }
 
-    let mut pane = PaneBuilder::new("test", view).build(State::default());
-    pane.redraw(300, 200, 1.0);
-    pane.click(FIELD).expect("field present");
-    pane.redraw(300, 200, 1.0);
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+    pane.click(&mut state, FIELD).expect("field present");
+    pane.redraw(&mut state, 300, 200, 1.0);
 
     for ch in ["a", "b", "c"] {
-        pane.key_pressed(ch);
-        pane.redraw(300, 200, 1.0);
+        pane.key_pressed(&mut state, ch);
+        pane.redraw(&mut state, 300, 200, 1.0);
     }
-    assert_eq!(pane.state.text.text, "abc");
+    assert_eq!(state.text.text, "abc");
 
-    pane.key_pressed(NamedKey::Backspace);
-    assert_eq!(pane.state.text.text, "ab");
+    pane.key_pressed(&mut state, NamedKey::Backspace);
+    assert_eq!(state.text.text, "ab");
 
-    pane.key_pressed(NamedKey::Backspace);
-    pane.key_pressed(NamedKey::Backspace);
-    assert_eq!(pane.state.text.text, "");
+    pane.key_pressed(&mut state, NamedKey::Backspace);
+    pane.key_pressed(&mut state, NamedKey::Backspace);
+    assert_eq!(state.text.text, "");
 }
 
 #[test]
@@ -249,19 +271,20 @@ fn text_field_arrow_then_insert_places_caret() {
             .height(40.)
     }
 
-    let mut pane = PaneBuilder::new("test", view).build(State::default());
-    pane.redraw(300, 200, 1.0);
-    pane.click(FIELD).expect("field present");
-    pane.redraw(300, 200, 1.0);
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+    pane.click(&mut state, FIELD).expect("field present");
+    pane.redraw(&mut state, 300, 200, 1.0);
 
     for ch in ["a", "c"] {
-        pane.key_pressed(ch);
-        pane.redraw(300, 200, 1.0);
+        pane.key_pressed(&mut state, ch);
+        pane.redraw(&mut state, 300, 200, 1.0);
     }
-    pane.key_pressed(NamedKey::ArrowLeft);
-    pane.key_pressed("b");
+    pane.key_pressed(&mut state, NamedKey::ArrowLeft);
+    pane.key_pressed(&mut state, "b");
 
-    assert_eq!(pane.state.text.text, "abc");
+    assert_eq!(state.text.text, "abc");
 }
 
 #[test]
@@ -283,19 +306,17 @@ fn text_field_enter_ends_editing_when_configured() {
             .height(40.)
     }
 
-    let mut pane = PaneBuilder::new("test", view).build(State::default());
-    pane.redraw(300, 200, 1.0);
-    pane.click(FIELD).expect("field present");
-    pane.redraw(300, 200, 1.0);
-    assert!(pane.state.text.editing);
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+    pane.click(&mut state, FIELD).expect("field present");
+    pane.redraw(&mut state, 300, 200, 1.0);
+    assert!(state.text.editing);
 
-    pane.key_pressed(NamedKey::Enter);
+    pane.key_pressed(&mut state, NamedKey::Enter);
 
-    assert!(!pane.state.text.editing);
-    assert!(matches!(
-        pane.state.edits.last(),
-        Some(EditInteraction::End)
-    ));
+    assert!(!state.text.editing);
+    assert!(matches!(state.edits.last(), Some(EditInteraction::End)));
 }
 
 #[test]
@@ -315,15 +336,16 @@ fn text_field_escape_ends_editing_when_configured() {
             .height(40.)
     }
 
-    let mut pane = PaneBuilder::new("test", view).build(State::default());
-    pane.redraw(300, 200, 1.0);
-    pane.click(FIELD).expect("field present");
-    pane.redraw(300, 200, 1.0);
-    assert!(pane.state.text.editing);
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+    pane.click(&mut state, FIELD).expect("field present");
+    pane.redraw(&mut state, 300, 200, 1.0);
+    assert!(state.text.editing);
 
-    pane.key_pressed(NamedKey::Escape);
+    pane.key_pressed(&mut state, NamedKey::Escape);
 
-    assert!(!pane.state.text.editing);
+    assert!(!state.text.editing);
 }
 
 #[test]
@@ -342,14 +364,15 @@ fn text_field_enter_does_not_end_editing_by_default() {
             .height(40.)
     }
 
-    let mut pane = PaneBuilder::new("test", view).build(State::default());
-    pane.redraw(300, 200, 1.0);
-    pane.click(FIELD).expect("field present");
-    pane.redraw(300, 200, 1.0);
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+    pane.click(&mut state, FIELD).expect("field present");
+    pane.redraw(&mut state, 300, 200, 1.0);
 
-    pane.key_pressed(NamedKey::Enter);
+    pane.key_pressed(&mut state, NamedKey::Enter);
 
-    assert!(pane.state.text.editing);
+    assert!(state.text.editing);
 }
 
 #[test]
@@ -370,23 +393,21 @@ fn text_field_click_outside_ends_editing() {
             .height(40.)
     }
 
-    let mut pane = PaneBuilder::new("test", view).build(State::default());
-    pane.redraw(300, 200, 1.0);
-    pane.click(FIELD).expect("field present");
-    pane.redraw(300, 200, 1.0);
-    assert!(pane.state.text.editing);
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+    pane.click(&mut state, FIELD).expect("field present");
+    pane.redraw(&mut state, 300, 200, 1.0);
+    assert!(state.text.editing);
 
     let field_location = pane.location(FIELD).expect("field present");
     let outside = Point::new(field_location.x, field_location.y + 200.);
-    pane.move_to(outside);
-    pane.press();
-    pane.release();
+    pane.move_to(&mut state, outside);
+    pane.press(&mut state);
+    pane.release(&mut state);
 
-    assert!(!pane.state.text.editing);
-    assert!(matches!(
-        pane.state.edits.last(),
-        Some(EditInteraction::End)
-    ));
+    assert!(!state.text.editing);
+    assert!(matches!(state.edits.last(), Some(EditInteraction::End)));
 }
 
 #[test]
@@ -416,25 +437,26 @@ fn text_field_focus_switches_between_two_fields() {
         )
     }
 
-    let mut pane = PaneBuilder::new("test", view).build(State::default());
-    pane.redraw(400, 400, 1.0);
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 400, 400, 1.0);
 
-    pane.click(FIELD_A).expect("field a present");
-    pane.redraw(400, 400, 1.0);
-    pane.key_pressed("x");
-    pane.redraw(400, 400, 1.0);
-    assert_eq!(pane.state.a.text, "x");
-    assert!(pane.state.a.editing);
+    pane.click(&mut state, FIELD_A).expect("field a present");
+    pane.redraw(&mut state, 400, 400, 1.0);
+    pane.key_pressed(&mut state, "x");
+    pane.redraw(&mut state, 400, 400, 1.0);
+    assert_eq!(state.a.text, "x");
+    assert!(state.a.editing);
 
-    pane.click(FIELD_B).expect("field b present");
-    pane.redraw(400, 400, 1.0);
-    assert!(!pane.state.a.editing);
-    assert!(pane.state.b.editing);
+    pane.click(&mut state, FIELD_B).expect("field b present");
+    pane.redraw(&mut state, 400, 400, 1.0);
+    assert!(!state.a.editing);
+    assert!(state.b.editing);
 
-    pane.key_pressed("y");
-    pane.redraw(400, 400, 1.0);
-    assert_eq!(pane.state.a.text, "x");
-    assert_eq!(pane.state.b.text, "y");
+    pane.key_pressed(&mut state, "y");
+    pane.redraw(&mut state, 400, 400, 1.0);
+    assert_eq!(state.a.text, "x");
+    assert_eq!(state.b.text, "y");
 }
 
 #[test]
@@ -464,30 +486,31 @@ fn text_field_drag_in_second_field_switches_focus() {
         )
     }
 
-    let mut pane = PaneBuilder::new("test", view).build(State {
+    let mut state = State {
         a: TextState::new("hello"),
         b: TextState::new("world"),
-    });
-    pane.redraw(400, 400, 1.0);
+    };
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 400, 400, 1.0);
 
     let a_location = pane.location(FIELD_A).expect("field a present");
-    pane.move_to(a_location);
-    pane.press();
-    pane.move_to(Point::new(a_location.x + 30., a_location.y));
-    pane.release();
-    pane.redraw(400, 400, 1.0);
-    assert!(pane.state.a.editing);
-    assert!(!pane.state.b.editing);
+    pane.move_to(&mut state, a_location);
+    pane.press(&mut state);
+    pane.move_to(&mut state, Point::new(a_location.x + 30., a_location.y));
+    pane.release(&mut state);
+    pane.redraw(&mut state, 400, 400, 1.0);
+    assert!(state.a.editing);
+    assert!(!state.b.editing);
 
     let b_location = pane.location(FIELD_B).expect("field b present");
-    pane.move_to(b_location);
-    pane.press();
-    pane.move_to(Point::new(b_location.x + 30., b_location.y));
-    pane.release();
-    pane.redraw(400, 400, 1.0);
+    pane.move_to(&mut state, b_location);
+    pane.press(&mut state);
+    pane.move_to(&mut state, Point::new(b_location.x + 30., b_location.y));
+    pane.release(&mut state);
+    pane.redraw(&mut state, 400, 400, 1.0);
 
-    assert!(!pane.state.a.editing);
-    assert!(pane.state.b.editing);
+    assert!(!state.a.editing);
+    assert!(state.b.editing);
 }
 
 #[test]
@@ -520,23 +543,53 @@ fn scroller_scroll_updates_state() {
         .height(90.)
     }
 
-    let mut pane = PaneBuilder::new("test", view).build(State);
-    let (_, effects) = pane.redraw(300, 200, 1.0);
+    let mut state = State;
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    let (_, effects) = pane.redraw(&mut state, 300, 200, 1.0);
     assert!(effects.is_empty(), "unexpected effects: {effects:?}");
 
     assert!(pane.elements.contains_key(&cell_id(0)));
 
     let location = pane.location(SCROLLER).expect("scroller present");
-    assert!(pane.move_to(location).is_empty());
+    assert!(pane.move_to(&mut state, location).is_empty());
     assert!(
-        pane.scroll(ScrollDelta { x: 0., y: -200. })
+        pane.scroll(&mut state, ScrollDelta { x: 0., y: -200. })
             .is_empty()
     );
-    let (_, effects) = pane.redraw(300, 200, 1.0);
+    let (_, effects) = pane.redraw(&mut state, 300, 200, 1.0);
     assert!(effects.is_empty(), "unexpected effects: {effects:?}");
 
     assert!(
         !pane.elements.contains_key(&cell_id(0)),
         "cell 0 should have scrolled out of view"
+    );
+}
+
+#[test]
+fn wake_runs_on_wake_and_returns_pane_effects() {
+    #[derive(Default)]
+    struct State {
+        value: u32,
+    }
+
+    fn view<'a>(_state: &'a State, _app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        empty()
+    }
+
+    fn on_wake(state: &mut State, app: &mut PaneState) {
+        state.value = 42;
+        app.redraw();
+    }
+
+    let mut state = State::default();
+    let mut pane = PaneBuilder::new("test", view).on_wake(on_wake).build();
+
+    let effects = pane.wake(&mut state);
+
+    assert_eq!(state.value, 42);
+    assert!(
+        effects
+            .into_iter()
+            .any(|effect| matches!(effect, PaneEffect::Redraw))
     );
 }
