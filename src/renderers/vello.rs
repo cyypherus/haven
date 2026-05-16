@@ -49,10 +49,17 @@ impl VelloRenderer {
             vello_svg::vello::wgpu::PresentMode::AutoNoVsync,
         ))
         .expect("Error creating surface");
+        self.configure_low_latency(&mut surface);
         if transparent {
             self.configure_transparency(&mut surface);
         }
         surface
+    }
+
+    pub fn configure_low_latency(&mut self, surface: &mut RenderSurface<'static>) {
+        let device = &self.render_context.devices[surface.dev_id].device;
+        surface.config.desired_maximum_frame_latency = 1;
+        surface.surface.configure(device, &surface.config);
     }
 
     pub fn configure_transparency(&mut self, surface: &mut RenderSurface<'static>) {
@@ -73,7 +80,12 @@ impl VelloRenderer {
         self.render_context.resize_surface(surface, width, height);
     }
 
-    pub fn render(&mut self, surface: &mut RenderSurface<'static>, frame: &Frame) {
+    pub(crate) fn render(
+        &mut self,
+        surface: &mut RenderSurface<'static>,
+        frame: &Frame,
+        pre_present_notify: impl FnOnce(),
+    ) {
         self.renderers
             .resize_with(self.render_context.devices.len(), || None);
         let dev_id = surface.dev_id;
@@ -128,6 +140,7 @@ impl VelloRenderer {
                 .create_view(&wgpu::TextureViewDescriptor::default()),
         );
         device_handle.queue.submit([encoder.finish()]);
+        pre_present_notify();
         surface_texture.present();
     }
 

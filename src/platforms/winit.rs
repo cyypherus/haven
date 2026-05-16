@@ -4,12 +4,22 @@ use crate::{Key, Modifiers, NamedKey};
 
 #[cfg(feature = "vello")]
 use crate::app::{Pane, PaneEffect};
+#[cfg(feature = "debug-overlay")]
+use crate::primitives::{PathData, text};
+#[cfg(feature = "debug-overlay")]
+use crate::render::Frame;
+#[cfg(feature = "debug-overlay")]
+use crate::{Area, Color, Stroke};
 #[cfg(feature = "vello")]
 use crate::{PaneBuilder, ScrollDelta};
 #[cfg(feature = "vello")]
 use std::collections::HashMap;
+#[cfg(feature = "debug-overlay")]
+use std::collections::VecDeque;
 #[cfg(feature = "vello")]
 use std::sync::Arc;
+#[cfg(feature = "debug-overlay")]
+use std::time::Instant;
 #[cfg(feature = "vello")]
 use winit::application::ApplicationHandler;
 #[cfg(feature = "vello")]
@@ -87,6 +97,198 @@ struct WinitSurface<State> {
     surface: Surface,
     window: Arc<WinitWindow>,
     pane: Pane<State>,
+    #[cfg(feature = "debug-overlay")]
+    debug_overlay: DebugOverlayState,
+}
+
+#[cfg(feature = "debug-overlay")]
+#[derive(Default)]
+struct DebugOverlayState {
+    last_redraw: Option<Instant>,
+    frame_ms: Option<f64>,
+    smoothed_fps: Option<f64>,
+    frame_times: VecDeque<(Instant, f64)>,
+}
+
+#[cfg(feature = "debug-overlay")]
+impl DebugOverlayState {
+    fn update(&mut self, target_frame_ms: f64) -> DebugOverlayMetrics {
+        let now = Instant::now();
+        let redraw_interval_ms = self.last_redraw.and_then(|last_redraw| {
+            let elapsed = now.duration_since(last_redraw).as_secs_f64();
+            (elapsed > 0.).then_some(elapsed * 1000.)
+        });
+        self.last_redraw = Some(now);
+
+        if let Some(redraw_interval_ms) = redraw_interval_ms {
+            let fps = 1000. / redraw_interval_ms;
+            let smoothed_fps = self
+                .smoothed_fps
+                .map(|previous| previous * 0.85 + fps * 0.15)
+                .unwrap_or(fps);
+            self.smoothed_fps = Some(smoothed_fps);
+        }
+
+        while self
+            .frame_times
+            .front()
+            .is_some_and(|(sample_time, _)| now.duration_since(*sample_time).as_secs_f64() > 1.)
+        {
+            self.frame_times.pop_front();
+        }
+
+        DebugOverlayMetrics {
+            fps: self.smoothed_fps,
+            max_fps: fps_from_frame_ms(self.frame_ms),
+            frame_ms: self.frame_ms,
+            budget_percent: percent_of(self.frame_ms, target_frame_ms),
+            p99_ms: percentile(&self.frame_times, 0.99),
+            max_ms: self
+                .frame_times
+                .iter()
+                .map(|(_, frame_ms)| *frame_ms)
+                .reduce(f64::max),
+        }
+    }
+
+    fn append_to<State>(
+        &mut self,
+        frame: &mut Frame,
+        pane: &mut Pane<State>,
+        target_frame_ms: f64,
+    ) {
+        let label = self.update(target_frame_ms).label();
+        let line_count = label.lines().count() as f32;
+        let max_line_len = label.lines().map(str::len).max().unwrap_or_default() as f32;
+        let width = 16. + max_line_len * 7.;
+        let height = 12. + line_count * 14.;
+        let logical_width = frame.width as f32 / frame.scale_factor as f32;
+        let logical_height = frame.height as f32 / frame.scale_factor as f32;
+        let background_area = Area {
+            x: (logical_width - width - 8.).max(8.),
+            y: (logical_height - height - 8.).max(8.),
+            width,
+            height,
+        };
+        let text_area = Area {
+            x: background_area.x + 6.,
+            y: background_area.y + 5.,
+            width: width - 12.,
+            height: height - 10.,
+        };
+
+        frame.items.push(crate::render::RenderItem::Path {
+            path: Box::new(PathData {
+                id: crate::const_hash(file!(), line!(), column!()),
+                builder: crate::primitives::shape::rect_path((5., 5., 5., 5.)),
+                fill: Some(Color::from_rgb8(0, 0, 0).with_alpha(0.68).into()),
+                stroke: Some((
+                    Color::from_rgb8(255, 255, 255).with_alpha(0.18).into(),
+                    Stroke::new(1.),
+                )),
+            }),
+            area: background_area,
+        });
+        frame.items.push(
+            text(crate::const_hash(file!(), line!(), column!()), label)
+                .font_size(12)
+                .align(parley::Alignment::Start)
+                .fill(Color::from_rgb8(245, 245, 245))
+                .render_item(frame.scale_factor, text_area, &mut pane.pane_state),
+        );
+    }
+
+    fn finish_frame(&mut self, frame_started: Instant) {
+        let now = Instant::now();
+        let frame_ms = now.duration_since(frame_started).as_secs_f64() * 1000.;
+        self.frame_ms = Some(frame_ms);
+        self.frame_times.push_back((now, frame_ms));
+    }
+}
+
+#[cfg(feature = "debug-overlay")]
+struct DebugOverlayMetrics {
+    fps: Option<f64>,
+    max_fps: Option<f64>,
+    frame_ms: Option<f64>,
+    budget_percent: Option<f64>,
+    p99_ms: Option<f64>,
+    max_ms: Option<f64>,
+}
+
+#[cfg(feature = "debug-overlay")]
+impl DebugOverlayMetrics {
+    fn label(&self) -> String {
+        format!(
+            "FPS {}\nmax FPS {}\nframe {}\nbudget {}\n1s p99 {} max {}",
+            format_value(self.fps, 4, 1),
+            format_value(self.max_fps, 4, 1),
+            format_ms(self.frame_ms),
+            format_percent(self.budget_percent),
+            format_ms(self.p99_ms),
+            format_ms(self.max_ms),
+        )
+    }
+}
+
+#[cfg(feature = "debug-overlay")]
+fn target_frame_ms(refresh_rate_millihertz: Option<u32>) -> f64 {
+    let refresh_rate_hz = refresh_rate_millihertz
+        .filter(|refresh_rate| *refresh_rate > 0)
+        .map(|refresh_rate| refresh_rate as f64 / 1000.)
+        .unwrap_or(60.);
+    1000. / refresh_rate_hz
+}
+
+#[cfg(feature = "debug-overlay")]
+fn percent_of(value: Option<f64>, target: f64) -> Option<f64> {
+    value.and_then(|value| (target > 0.).then_some(value / target * 100.))
+}
+
+#[cfg(feature = "debug-overlay")]
+fn fps_from_frame_ms(frame_ms: Option<f64>) -> Option<f64> {
+    frame_ms.and_then(|frame_ms| (frame_ms > 0.).then_some(1000. / frame_ms))
+}
+
+#[cfg(feature = "debug-overlay")]
+fn percentile(samples: &VecDeque<(Instant, f64)>, percentile: f64) -> Option<f64> {
+    if samples.is_empty() {
+        return None;
+    }
+
+    let mut sorted = samples
+        .iter()
+        .map(|(_, frame_ms)| *frame_ms)
+        .collect::<Vec<_>>();
+    sorted.sort_by(f64::total_cmp);
+    let index = ((sorted.len() as f64 * percentile).ceil() as usize)
+        .saturating_sub(1)
+        .min(sorted.len() - 1);
+    Some(sorted[index])
+}
+
+#[cfg(feature = "debug-overlay")]
+fn format_ms(value: Option<f64>) -> String {
+    match value {
+        Some(value) => format!("{value:>4.1}ms"),
+        None => "--.-ms".to_string(),
+    }
+}
+
+#[cfg(feature = "debug-overlay")]
+fn format_percent(value: Option<f64>) -> String {
+    match value {
+        Some(value) => format!("{value:>5.0}%"),
+        None => " ----%".to_string(),
+    }
+}
+
+#[cfg(feature = "debug-overlay")]
+fn format_value(value: Option<f64>, width: usize, precision: usize) -> String {
+    match value {
+        Some(value) => format!("{value:>width$.precision$}"),
+        None => "-".repeat(width + 1 + precision),
+    }
 }
 
 #[cfg(feature = "vello")]
@@ -196,6 +398,8 @@ impl<State: 'static> WinitApp<State> {
                 surface,
                 window,
                 pane,
+                #[cfg(feature = "debug-overlay")]
+                debug_overlay: DebugOverlayState::default(),
             },
         );
     }
@@ -238,6 +442,9 @@ impl<State: 'static> WinitApp<State> {
     }
 
     fn redraw(&mut self, window_id: WindowId) -> Vec<PaneEffect> {
+        #[cfg(feature = "debug-overlay")]
+        let frame_started = Instant::now();
+
         let Some(surface) = self.windows.get_mut(&window_id) else {
             return Vec::new();
         };
@@ -254,8 +461,30 @@ impl<State: 'static> WinitApp<State> {
             surface.window.scale_factor(),
         );
 
-        surface.window.pre_present_notify();
-        self.renderer.render(&mut surface.surface, &frame);
+        #[cfg(feature = "debug-overlay")]
+        let mut frame = frame;
+
+        #[cfg(feature = "debug-overlay")]
+        let target_frame_ms = target_frame_ms(
+            surface
+                .window
+                .current_monitor()
+                .and_then(|monitor| monitor.refresh_rate_millihertz()),
+        );
+
+        #[cfg(feature = "debug-overlay")]
+        surface
+            .debug_overlay
+            .append_to(&mut frame, &mut surface.pane, target_frame_ms);
+
+        let window = surface.window.clone();
+        self.renderer.render(&mut surface.surface, &frame, || {
+            window.pre_present_notify();
+        });
+
+        #[cfg(feature = "debug-overlay")]
+        surface.debug_overlay.finish_frame(frame_started);
+
         effects
     }
 }
@@ -294,6 +523,7 @@ impl<State: 'static> ApplicationHandler<WinitEvent> for WinitApp<State> {
         event: winit::event::WindowEvent,
     ) {
         let mut invalidate_all = false;
+        let mut redraw_all_now = false;
         let effects = match event {
             winit::event::WindowEvent::Moved(_) => Vec::new(),
             winit::event::WindowEvent::KeyboardInput { event, .. } => {
@@ -316,7 +546,7 @@ impl<State: 'static> ApplicationHandler<WinitEvent> for WinitApp<State> {
             }
             winit::event::WindowEvent::CursorMoved { position, .. } => {
                 if let Some(surface) = self.windows.get_mut(&window_id) {
-                    invalidate_all = true;
+                    redraw_all_now = true;
                     let position = position.to_logical(surface.window.scale_factor());
                     surface
                         .pane
@@ -358,7 +588,12 @@ impl<State: 'static> ApplicationHandler<WinitEvent> for WinitApp<State> {
                     Vec::new()
                 }
             }
-            winit::event::WindowEvent::Resized(_) => Vec::new(),
+            winit::event::WindowEvent::Resized(_) => {
+                if let Some(surface) = self.windows.get(&window_id) {
+                    surface.window.request_redraw();
+                }
+                Vec::new()
+            }
             winit::event::WindowEvent::HoveredFile(_) => Vec::new(),
             winit::event::WindowEvent::DroppedFile(_) => Vec::new(),
             winit::event::WindowEvent::HoveredFileCancelled => Vec::new(),
@@ -395,10 +630,16 @@ impl<State: 'static> ApplicationHandler<WinitEvent> for WinitApp<State> {
             | winit::event::WindowEvent::DoubleTapGesture { .. }
             | winit::event::WindowEvent::RotationGesture { .. } => Vec::new(),
         };
-        if invalidate_all {
+        self.apply_effects(event_loop, window_id, effects);
+        if redraw_all_now {
+            let window_ids = self.windows.keys().copied().collect::<Vec<_>>();
+            for window_id in window_ids {
+                let effects = self.redraw(window_id);
+                self.apply_effects(event_loop, window_id, effects);
+            }
+        } else if invalidate_all {
             self.request_all_redraws();
         }
-        self.apply_effects(event_loop, window_id, effects);
     }
 }
 

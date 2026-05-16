@@ -9,6 +9,12 @@ use std::{
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum GestureState {
     None,
+    Pressing {
+        start: Point,
+        capturer: u64,
+        button: MouseButton,
+        click_started: bool,
+    },
     Dragging {
         start: Point,
         last_position: Point,
@@ -103,6 +109,7 @@ pub(crate) enum Interaction {
 
 #[derive(Debug, Clone)]
 pub enum EditInteraction {
+    Start,
     Update(String),
     End,
 }

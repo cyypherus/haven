@@ -1,36 +1,142 @@
-use crate::app::{EditState, PaneState, View};
+use crate::app::{PaneState, View};
 use crate::brush_source::BrushSource;
+use crate::editor::Editor;
 use crate::primitives::{
     Text,
     shape::{PathData, rect_path},
 };
 use crate::view::DrawableType;
 use crate::{
-    Binding, DEFAULT_CORNER_ROUNDING, DEFAULT_FG_COLOR, DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE,
-    DEFAULT_PADDING, DEFAULT_PURP, DEFAULT_STROKE_WIDTH, EditInteraction, Key, KeyPhase,
-    MouseButton, NamedKey, rect,
+    Binding, ClickPhase, DEFAULT_CORNER_ROUNDING, DEFAULT_FG_COLOR, DEFAULT_FONT_FAMILY,
+    DEFAULT_FONT_SIZE, DEFAULT_PADDING, DEFAULT_PURP, DEFAULT_STROKE_WIDTH, DragPhase,
+    EditInteraction, Key, KeyPhase, MouseButton, NamedKey, rect,
 };
 use backer::{Area, Layout, nodes::*};
 use kurbo::{Affine, Rect as KRect, Stroke};
-use parley::{Alignment, FontWeight};
+use parley::{Alignment, FontWeight, LineHeight, StyleProperty};
 use peniko::color::palette::css::TRANSPARENT;
 use peniko::{Brush, Color};
 use std::fmt::Debug;
 use std::rc::Rc;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Clone)]
 pub struct TextState {
     pub text: String,
-    pub editing: bool,
+    pub(crate) editor: Editor,
+    pub(crate) edit_request: TextEditRequest,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct TextEditRequest {
+    editing: Option<bool>,
+}
+
+impl Debug for TextState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TextState")
+            .field("text", &self.text)
+            .finish()
+    }
+}
+
+impl Default for TextState {
+    fn default() -> Self {
+        Self::new("")
+    }
 }
 
 impl TextState {
     pub fn new(text: impl AsRef<str>) -> Self {
+        let text = text.as_ref().to_string();
         Self {
-            text: text.as_ref().to_string(),
-            editing: false,
+            editor: Editor::new(&text),
+            edit_request: TextEditRequest::default(),
+            text,
         }
     }
+
+    pub fn copy_text(&self) -> Option<String> {
+        use clipboard_rs::{Clipboard, ClipboardContext};
+
+        let text = self.editor.editor.selected_text()?.to_owned();
+        let cb = ClipboardContext::new().unwrap();
+        cb.set_text(text.clone()).ok();
+        Some(text)
+    }
+
+    pub fn cut_text(&mut self, app: &mut PaneState) -> Option<String> {
+        let text = self.copy_text()?;
+        self.editor
+            .editor
+            .driver(&mut app.font_cx, &mut app.layout_cx)
+            .delete_selection();
+        self.text = self.editor.text().to_string();
+        app.request_redraw();
+        Some(text)
+    }
+
+    pub fn paste_text(&mut self, app: &mut PaneState) {
+        use clipboard_rs::{Clipboard, ClipboardContext};
+
+        let cb = ClipboardContext::new().unwrap();
+        let text = cb.get_text().unwrap_or_default();
+        self.editor
+            .editor
+            .driver(&mut app.font_cx, &mut app.layout_cx)
+            .insert_or_replace_selection(&text);
+        self.text = self.editor.text().to_string();
+        app.request_redraw();
+    }
+
+    pub fn select_all_text(&mut self, app: &mut PaneState) {
+        self.editor
+            .editor
+            .driver(&mut app.font_cx, &mut app.layout_cx)
+            .select_all();
+        app.request_redraw();
+    }
+
+    pub fn begin_editing(&mut self, app: &mut PaneState) {
+        self.request_editing(true, app);
+    }
+
+    pub fn end_editing(&mut self, app: &mut PaneState) {
+        self.request_editing(false, app);
+    }
+
+    fn request_editing(&mut self, editing: bool, app: &mut PaneState) {
+        self.edit_request = TextEditRequest {
+            editing: Some(editing),
+        };
+        app.request_redraw();
+    }
+}
+
+fn style_text_field_editor(
+    editor: &mut Editor,
+    text: &str,
+    fill: Brush,
+    font_family: String,
+    font_weight: FontWeight,
+    line_height: f32,
+    font_size: f32,
+    alignment: Alignment,
+    width: Option<f32>,
+) {
+    editor.editor.set_text(text);
+    let styles = editor.editor.edit_styles();
+
+    styles.insert(parley::StyleProperty::Brush(fill));
+    styles.insert(parley::FontFamily::Named(font_family.into()).into());
+    styles.insert(StyleProperty::FontWeight(font_weight));
+    styles.insert(StyleProperty::LineHeight(LineHeight::FontSizeRelative(
+        line_height,
+    )));
+    styles.insert(StyleProperty::FontSize(font_size));
+    styles.insert(StyleProperty::OverflowWrap(parley::OverflowWrap::Anywhere));
+
+    editor.editor.set_alignment(alignment);
+    editor.editor.set_width(width);
 }
 
 pub fn text_field<'a, State>(
@@ -200,26 +306,44 @@ impl<'a, State> TextField<'a, State> {
         let wrap = self.wrap;
         let root_id = id;
         let text_id = crate::id!(id);
-        let text_content = if self.state.editing
-            && let Some(ref mut edit_state) = ctx.editor
-        {
+        let edit_request = self.state.edit_request;
+        ctx.sync_text_edit_request(root_id, edit_request.editing);
+        let is_active_editor = ctx.editor.as_ref().is_some_and(|edit| edit.id == root_id);
+        let text_content = if is_active_editor {
+            let editor_area = ctx.editor_areas.get(&root_id).copied().unwrap_or(Area {
+                x: 0.,
+                y: 0.,
+                width: 0.,
+                height: 0.,
+            });
+            let mut editor = self.state.editor.clone();
+            style_text_field_editor(
+                &mut editor,
+                &self.state.text,
+                fill.resolve(editor_area, &text_state),
+                font_family
+                    .clone()
+                    .unwrap_or(DEFAULT_FONT_FAMILY.to_string()),
+                font_weight,
+                line_height,
+                font_size as f32,
+                alignment,
+                if wrap { Some(editor_area.width) } else { None },
+            );
             let cursor_width = 2f64;
             let half_cursor_width = 1f64;
-            let selection_rects: Vec<kurbo::Rect> = edit_state
-                .editor
+            let selection_rects: Vec<kurbo::Rect> = editor
                 .editor
                 .selection_geometry()
                 .iter()
                 .map(|(bb, _i)| KRect::new(bb.x0, bb.y0, bb.x1, bb.y1))
                 .collect();
-            let is_empty = edit_state.editor.text().to_string().is_empty();
-            let cursor = edit_state
-                .editor
+            let is_empty = editor.text().to_string().is_empty();
+            let cursor = editor
                 .editor
                 .cursor_geometry(cursor_width as f32)
                 .map(|bb| KRect::new(bb.x0, bb.y0, bb.x1, bb.y1));
-            let layout = edit_state
-                .editor
+            let layout = editor
                 .editor
                 .layout(&mut ctx.font_cx, &mut ctx.layout_cx)
                 .clone();
@@ -331,7 +455,7 @@ impl<'a, State> TextField<'a, State> {
                 font_family: font_family.clone(),
                 fill: if show_hint {
                     hint_fill.resolve_to_stateless(&text_state)
-                } else if self.state.editing {
+                } else if is_active_editor {
                     BrushSource::Static(Brush::Solid(TRANSPARENT))
                 } else {
                     fill.resolve_to_stateless(&text_state)
@@ -354,6 +478,8 @@ impl<'a, State> TextField<'a, State> {
             let binding = binding.clone();
             let font_family = self.font_family.clone();
             let on_edit = self.on_edit.clone();
+            let edit_fill = fill.clone();
+            let key_font_family = font_family.clone();
             stack(vec![
                 rect(root_id)
                     .fill(TRANSPARENT)
@@ -368,64 +494,14 @@ impl<'a, State> TextField<'a, State> {
                             if (self.enter_end_editing && key == Key::Named(NamedKey::Enter))
                                 || (self.esc_end_editing && key == Key::Named(NamedKey::Escape))
                             {
+                                binding.update(state, |s| s.end_editing(app));
                                 app.end_editing();
-                                binding.update(state, |s| s.editing = false);
                                 if let Some(ref on_edit) = on_edit {
                                     (on_edit)(state, app, EditInteraction::End);
                                 }
                                 return;
                             };
-                            if let PaneState {
-                                editor: Some(EditState { editor, id, .. }),
-                                layout_cx,
-                                font_cx,
-                                modifiers,
-                                ..
-                            } = app
-                                && *id == root_id
-                            {
-                                editor.handle_key(key.clone(), layout_cx, font_cx, *modifiers);
-                            }
-                            let edit_text =
-                                app.editor.as_ref().map(|e| e.editor.text().to_string());
-
-                            if let Some(edit_text) = edit_text
-                                && app.editor.as_ref().map(|e| e.id) == Some(root_id)
-                            {
-                                if let Some(ref on_edit) = on_edit {
-                                    on_edit(state, app, EditInteraction::Update(edit_text.clone()));
-                                }
-                                binding.update(state, |s| {
-                                    s.text = edit_text.clone();
-                                });
-                            }
-                        }
-                    })
-                    .on_click_outside(MouseButton::Left, {
-                        let binding = binding.clone();
-                        let on_edit = on_edit.clone();
-                        move |state: &mut State, app, _event| {
-                            if let PaneState {
-                                editor: Some(EditState { id, .. }),
-                                ..
-                            } = app
-                                && *id == root_id
-                            {
-                                app.end_editing();
-                                binding.update(state, |s| s.editing = false);
-                                if let Some(ref on_edit) = on_edit {
-                                    (on_edit)(state, app, EditInteraction::End);
-                                }
-                            }
-                        }
-                    })
-                    .on_click(MouseButton::Left, {
-                        let binding = binding.clone();
-                        let font_family = font_family.clone();
-                        move |state: &mut State, app, _event| {
-                            let editing = binding.get(state).editing;
-                            if !editing && app.editor.is_none() {
-                                binding.update(state, |s| s.editing = true);
+                            if app.editor.as_ref().map(|e| e.id) == Some(root_id) {
                                 let editor_area =
                                     app.editor_areas.get(&root_id).copied().unwrap_or(Area {
                                         x: 0.,
@@ -433,24 +509,263 @@ impl<'a, State> TextField<'a, State> {
                                         width: 0.,
                                         height: 0.,
                                     });
-                                let ts = binding.get(state);
-                                let text = ts.text.clone();
-                                app.begin_editing(
-                                    root_id,
-                                    text,
-                                    self.text_fill.resolve(editor_area, ts),
+                                let edit_fill = edit_fill.resolve(editor_area, binding.get(state));
+                                let ts = binding.get_mut(state);
+                                style_text_field_editor(
+                                    &mut ts.editor,
+                                    &ts.text,
+                                    edit_fill,
+                                    key_font_family
+                                        .clone()
+                                        .unwrap_or(DEFAULT_FONT_FAMILY.to_string()),
+                                    font_weight,
+                                    line_height,
+                                    font_size as f32,
+                                    alignment,
+                                    if wrap { Some(editor_area.width) } else { None },
+                                );
+                                ts.editor.handle_key(
+                                    key.clone(),
+                                    &mut app.layout_cx,
+                                    &mut app.font_cx,
+                                    app.modifiers,
+                                );
+                                let edit_text = {
+                                    let edit_text = ts.editor.text().to_string();
+                                    ts.text = edit_text.clone();
+                                    edit_text
+                                };
+                                if let Some(ref on_edit) = on_edit {
+                                    on_edit(state, app, EditInteraction::Update(edit_text.clone()));
+                                }
+                            }
+                        }
+                    })
+                    .on_drag({
+                        let binding = binding.clone();
+                        let font_family = font_family.clone();
+                        let on_edit = on_edit.clone();
+                        let edit_fill = self.text_fill.clone();
+                        move |state: &mut State, app, drag| {
+                            let started_editing = if matches!(drag, DragPhase::Began { .. }) {
+                                let started_editing =
+                                    app.editor.as_ref().map(|e| e.id) != Some(root_id);
+                                if started_editing {
+                                    app.begin_editing(root_id);
+                                    app.request_redraw();
+                                }
+                                started_editing
+                            } else {
+                                false
+                            };
+                            if app.editor.as_ref().map(|e| e.id) != Some(root_id) {
+                                return;
+                            }
+                            let editor_area =
+                                app.editor_areas.get(&root_id).copied().unwrap_or(Area {
+                                    x: 0.,
+                                    y: 0.,
+                                    width: 0.,
+                                    height: 0.,
+                                });
+                            let text_fill = edit_fill.resolve(editor_area, binding.get(state));
+                            let local = |point: crate::Point| {
+                                crate::Point::new(
+                                    point.x - editor_area.x as f64,
+                                    point.y - editor_area.y as f64,
+                                )
+                            };
+                            let started_editing = {
+                                let ts = binding.get_mut(state);
+                                style_text_field_editor(
+                                    &mut ts.editor,
+                                    &ts.text,
+                                    text_fill,
                                     font_family
                                         .clone()
                                         .unwrap_or(DEFAULT_FONT_FAMILY.to_string()),
                                     self.font_weight,
                                     self.line_height,
                                     self.font_size as f32,
-                                    parley::OverflowWrap::Anywhere,
                                     self.alignment,
-                                    self.cursor_fill.resolve(editor_area, ts),
-                                    self.highlight_fill.resolve(editor_area, ts),
-                                    self.wrap,
+                                    if self.wrap {
+                                        Some(editor_area.width)
+                                    } else {
+                                        None
+                                    },
                                 );
+                                match drag {
+                                    DragPhase::Began { start_global, .. } => {
+                                        ts.editor.mouse_moved(
+                                            local(start_global),
+                                            &mut app.layout_cx,
+                                            &mut app.font_cx,
+                                        );
+                                        ts.editor
+                                            .mouse_pressed(&mut app.layout_cx, &mut app.font_cx);
+                                        started_editing
+                                    }
+                                    DragPhase::Updated { current_global, .. } => {
+                                        ts.editor.mouse_moved(
+                                            local(current_global),
+                                            &mut app.layout_cx,
+                                            &mut app.font_cx,
+                                        );
+                                        false
+                                    }
+                                    DragPhase::Completed {
+                                        current_global,
+                                        distance,
+                                        ..
+                                    } => {
+                                        if distance > 0.0 {
+                                            ts.editor.mouse_moved(
+                                                local(current_global),
+                                                &mut app.layout_cx,
+                                                &mut app.font_cx,
+                                            );
+                                        }
+                                        ts.editor.mouse_released();
+                                        false
+                                    }
+                                }
+                            };
+                            if started_editing && let Some(ref on_edit) = on_edit {
+                                on_edit(state, app, EditInteraction::Start);
+                            }
+                        }
+                    })
+                    .on_click(MouseButton::Left, {
+                        let binding = binding.clone();
+                        let font_family = font_family.clone();
+                        let on_edit = on_edit.clone();
+                        let edit_fill = self.text_fill.clone();
+                        move |state: &mut State, app, event| match event.state {
+                            ClickPhase::Started => {}
+                            ClickPhase::Completed => {
+                                let editor_area =
+                                    app.editor_areas.get(&root_id).copied().unwrap_or(Area {
+                                        x: 0.,
+                                        y: 0.,
+                                        width: 0.,
+                                        height: 0.,
+                                    });
+                                let text_fill = edit_fill.resolve(editor_area, binding.get(state));
+                                let location = event.location.global();
+                                let local = crate::Point::new(
+                                    location.x - editor_area.x as f64,
+                                    location.y - editor_area.y as f64,
+                                );
+                                let started_editing = {
+                                    let ts = binding.get_mut(state);
+                                    let started_editing =
+                                        app.editor.as_ref().map(|e| e.id) != Some(root_id);
+                                    if started_editing {
+                                        app.begin_editing(root_id);
+                                        app.request_redraw();
+                                    }
+                                    style_text_field_editor(
+                                        &mut ts.editor,
+                                        &ts.text,
+                                        text_fill,
+                                        font_family
+                                            .clone()
+                                            .unwrap_or(DEFAULT_FONT_FAMILY.to_string()),
+                                        font_weight,
+                                        line_height,
+                                        font_size as f32,
+                                        alignment,
+                                        if wrap { Some(editor_area.width) } else { None },
+                                    );
+                                    ts.editor.mouse_moved(
+                                        local,
+                                        &mut app.layout_cx,
+                                        &mut app.font_cx,
+                                    );
+                                    ts.editor
+                                        .mouse_pressed(&mut app.layout_cx, &mut app.font_cx);
+                                    ts.editor.mouse_released();
+                                    started_editing
+                                };
+                                if started_editing && let Some(ref on_edit) = on_edit {
+                                    on_edit(state, app, EditInteraction::Start);
+                                }
+                            }
+                            ClickPhase::Cancelled => {
+                                binding.get_mut(state).editor.mouse_released();
+                            }
+                        }
+                    })
+                    .build(ctx),
+                rect(root_id)
+                    .fill(TRANSPARENT)
+                    .view()
+                    .on_click(MouseButton::Right, {
+                        let binding = binding.clone();
+                        let font_family = font_family.clone();
+                        let on_edit = on_edit.clone();
+                        let edit_fill = self.text_fill.clone();
+                        move |state: &mut State, app, event| match event.state {
+                            ClickPhase::Started => {
+                                let editor_area =
+                                    app.editor_areas.get(&root_id).copied().unwrap_or(Area {
+                                        x: 0.,
+                                        y: 0.,
+                                        width: 0.,
+                                        height: 0.,
+                                    });
+                                let text_fill = edit_fill.resolve(editor_area, binding.get(state));
+                                let location = event.location.global();
+                                let local = crate::Point::new(
+                                    location.x - editor_area.x as f64,
+                                    location.y - editor_area.y as f64,
+                                );
+                                let started_editing = {
+                                    let ts = binding.get_mut(state);
+                                    let started_editing =
+                                        app.editor.as_ref().map(|e| e.id) != Some(root_id);
+                                    if started_editing {
+                                        app.begin_editing(root_id);
+                                        app.request_redraw();
+                                    }
+                                    style_text_field_editor(
+                                        &mut ts.editor,
+                                        &ts.text,
+                                        text_fill,
+                                        font_family
+                                            .clone()
+                                            .unwrap_or(DEFAULT_FONT_FAMILY.to_string()),
+                                        font_weight,
+                                        line_height,
+                                        font_size as f32,
+                                        alignment,
+                                        if wrap { Some(editor_area.width) } else { None },
+                                    );
+                                    if let Some(pos) = app.cursor_position {
+                                        ts.editor.mouse_moved(
+                                            crate::Point::new(
+                                                pos.x - editor_area.x as f64,
+                                                pos.y - editor_area.y as f64,
+                                            ),
+                                            &mut app.layout_cx,
+                                            &mut app.font_cx,
+                                        );
+                                    }
+                                    ts.editor.mouse_moved(
+                                        local,
+                                        &mut app.layout_cx,
+                                        &mut app.font_cx,
+                                    );
+                                    ts.editor
+                                        .mouse_pressed(&mut app.layout_cx, &mut app.font_cx);
+                                    started_editing
+                                };
+                                if started_editing && let Some(ref on_edit) = on_edit {
+                                    on_edit(state, app, EditInteraction::Start);
+                                }
+                            }
+                            ClickPhase::Completed | ClickPhase::Cancelled => {
+                                binding.get_mut(state).editor.mouse_released();
                             }
                         }
                     })

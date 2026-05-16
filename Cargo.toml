@@ -59,6 +59,7 @@ winit = { version = "0.30.12", optional = true }
 
 [features]
 default = ["winit", "vello"]
+debug-overlay = ["vello"]
 winit = ["dep:winit"]
 vello = ["winit", "dep:pollster", "dep:vello_svg", "dep:wgpu"]
 
