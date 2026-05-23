@@ -1,4 +1,4 @@
-use crate::app::{PaneState, View};
+use crate::pane::{PaneState, View};
 
 use crate::DEFAULT_CORNER_ROUNDING;
 use crate::view::{Drawable, DrawableType};
@@ -76,11 +76,8 @@ impl Image {
         self
     }
 
-    pub fn view<State>(self) -> Drawable<State> {
-        Drawable {
-            view_type: DrawableType::Image(self),
-            gesture_handlers: Vec::new(),
-        }
+    pub fn view<State: 'static>(self) -> Drawable<State> {
+        Drawable::new(DrawableType::Image(self))
     }
 
     pub fn finish<State: 'static>(

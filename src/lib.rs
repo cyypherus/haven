@@ -1,12 +1,12 @@
 #![allow(clippy::type_complexity, clippy::too_many_arguments)]
 
-mod app;
 mod brush_source;
 #[cfg(feature = "vello")]
 mod draw_layout;
 mod editor;
 mod gestures;
 mod models;
+mod pane;
 mod platforms;
 mod prebuilts;
 mod primitives;
@@ -21,14 +21,15 @@ mod tests;
 #[cfg(feature = "winit")]
 pub use platforms::winit;
 
-pub use app::{Pane, PaneBuilder, PaneEffect, PaneState, PaneWaker, View};
 pub use backer::{Area, Layout, nodes::*};
 pub use brush_source::BrushSource;
 pub(crate) use gestures::GestureState;
 pub use gestures::{
-    ClickEvent, ClickLocation, ClickPhase, DragPhase, EditInteraction, KeyPhase, MouseButton,
-    ScrollDelta,
+    ButtonPredicate, ClickEvent, ClickLocation, ClickPhase, DragPhase, EditInteraction, Gesture,
+    GestureId, KeyEvent, KeyPhase, KeyPredicate, ModifierPredicate, MouseButton, ScrollDelta,
+    gesture,
 };
+pub use pane::{Pane, PaneBuilder, PaneEffect, PaneState, PaneWaker, View};
 pub use parley::{Alignment, FontWeight, StyleProperty};
 use peniko::color::AlphaColor;
 use peniko::color::Srgb;
@@ -38,7 +39,8 @@ pub use primitives::{
     image_from_bytes, image_from_path, path, rect, rich_text, shadow, span, svg, text,
 };
 pub use view::{
-    BlendMode, Compositing, Drawable, const_hash, owned_scope, rect_path, rounded_rect_path, scope,
+    BlendMode, Compositing, Drawable, combine_id, const_hash, owned_scope, rect_path,
+    rounded_rect_path, scope,
 };
 
 pub use kurbo::{BezPath, Cap, Join, Point, Stroke};

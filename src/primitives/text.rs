@@ -1,5 +1,5 @@
-use crate::app::{LayoutCache, PaneState, View};
 use crate::brush_source::BrushSource;
+use crate::pane::{LayoutCache, PaneState, View};
 use crate::render::{RenderItem, TextRenderLayout};
 use crate::view::{Drawable, DrawableType};
 use crate::{DEFAULT_FG_COLOR, DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE};
@@ -191,11 +191,8 @@ impl Text {
 }
 
 impl Text {
-    pub fn view<State>(self) -> Drawable<State> {
-        Drawable {
-            view_type: DrawableType::Text(self),
-            gesture_handlers: Vec::new(),
-        }
+    pub fn view<State: 'static>(self) -> Drawable<State> {
+        Drawable::new(DrawableType::Text(self))
     }
     pub fn build<State: 'static>(
         self,

@@ -1,8 +1,9 @@
 use crate::utils::adjust_brush;
 use crate::{
-    Binding, DEFAULT_DARK_GRAY, DEFAULT_FG, DEFAULT_GRAY, DEFAULT_PURP, DragPhase, TRANSPARENT,
-    app::{PaneState, View},
-    circle, id, rect,
+    Binding, DEFAULT_DARK_GRAY, DEFAULT_FG, DEFAULT_GRAY, DEFAULT_PURP, DragPhase, MouseButton,
+    TRANSPARENT, circle, gesture, id,
+    pane::{PaneState, View},
+    rect,
 };
 use backer::{
     Area, Layout,
@@ -167,13 +168,13 @@ impl<'a, State> Slider<'a, State> {
                 rect(id)
                     .fill(TRANSPARENT)
                     .view()
-                    .on_hover({
+                    .gesture(gesture::hover(id!(id, 1u64)).run({
                         let binding = self.binding.clone();
                         move |state: &mut State, _app: &mut PaneState, h| {
                             binding.update(state, |s| s.hovered = h)
                         }
-                    })
-                    .on_drag({
+                    }))
+                    .gesture(gesture::drag(id!(id, 2u64)).button(MouseButton::Left).run({
                         let binding = self.binding.clone();
                         let min = self.min;
                         let max = self.max;
@@ -211,7 +212,7 @@ impl<'a, State> Slider<'a, State> {
                                 }
                             }
                         }
-                    })
+                    }))
                     .build(ctx)
                     .height(height)
                     .width(width),

@@ -24,17 +24,60 @@ pub enum NamedKey {
     Tab,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Modifier {
+    Shift,
+    Control,
+    Alt,
+    Super,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Modifiers {
-    pub shift: bool,
-    pub control: bool,
-    pub alt: bool,
-    pub super_key: bool,
+    pressed: u8,
 }
 
 impl Key {
     pub fn character(value: impl Into<String>) -> Self {
         Self::Character(value.into())
+    }
+}
+
+impl Modifier {
+    const fn bit(self) -> u8 {
+        match self {
+            Self::Shift => 1 << 0,
+            Self::Control => 1 << 1,
+            Self::Alt => 1 << 2,
+            Self::Super => 1 << 3,
+        }
+    }
+}
+
+impl Modifiers {
+    pub const fn empty() -> Self {
+        Self { pressed: 0 }
+    }
+
+    pub fn from_pressed(modifiers: impl IntoIterator<Item = Modifier>) -> Self {
+        let mut pressed = 0;
+        for modifier in modifiers {
+            pressed |= modifier.bit();
+        }
+        Self { pressed }
+    }
+
+    pub fn with(mut self, modifier: Modifier, pressed: bool) -> Self {
+        if pressed {
+            self.pressed |= modifier.bit();
+        } else {
+            self.pressed &= !modifier.bit();
+        }
+        self
+    }
+
+    pub fn contains(self, modifier: Modifier) -> bool {
+        self.pressed & modifier.bit() != 0
     }
 }
 

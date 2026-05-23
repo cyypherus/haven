@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
-use crate::app::{PaneState, View};
 use crate::brush_source::BrushSource;
+use crate::pane::{PaneState, View};
 use crate::primitives::shape::PathData;
 use crate::view::{Drawable, DrawableType};
 use backer::{Area, Layout};
@@ -32,16 +32,13 @@ impl Path {
         self.stroke = Some((brush.into(), style));
         self
     }
-    pub fn view<State>(self) -> Drawable<State> {
-        Drawable {
-            view_type: DrawableType::Path(Box::new(PathData {
-                id: self.id,
-                builder: self.builder,
-                fill: self.fill,
-                stroke: self.stroke,
-            })),
-            gesture_handlers: Vec::new(),
-        }
+    pub fn view<State: 'static>(self) -> Drawable<State> {
+        Drawable::new(DrawableType::Path(Box::new(PathData {
+            id: self.id,
+            builder: self.builder,
+            fill: self.fill,
+            stroke: self.stroke,
+        })))
     }
     pub fn build<State: 'static>(
         self,

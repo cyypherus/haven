@@ -291,7 +291,7 @@ fn task_list<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State
     let row_buttons = state.row_buttons.clone();
     let selected_task = state.selected_task;
     stack(vec![
-        card(app),
+        card(id!(), app),
         column_spaced(
             12.,
             vec![
@@ -380,7 +380,7 @@ fn task_row<'a>(
                             .expand_x(),
                     ])
                     .expand_x(),
-                    priority_pill(task.priority, app),
+                    priority_pill(id!(index as u64), task.priority, app),
                 ],
             )
             .expand_x()
@@ -397,15 +397,16 @@ fn task_row<'a>(
 }
 
 fn priority_pill<'a, State: 'static>(
+    id: u64,
     priority: Priority,
     app: &mut PaneState,
 ) -> Layout<'a, View<State>, PaneState> {
     stack(vec![
-        rect(id!())
+        rect(id!(id))
             .fill(priority.color().with_alpha(0.2))
             .corner_rounding(999.)
             .build(app),
-        text(id!(), priority.label())
+        text(id!(id), priority.label())
             .fill(priority.color())
             .font_weight(FontWeight::BOLD)
             .build(app)
@@ -416,15 +417,16 @@ fn priority_pill<'a, State: 'static>(
 }
 
 fn project_pill<'a, State: 'static>(
+    id: u64,
     project: Project,
     app: &mut PaneState,
 ) -> Layout<'a, View<State>, PaneState> {
     stack(vec![
-        rect(id!())
+        rect(id!(id))
             .fill(project.color().with_alpha(0.2))
             .corner_rounding(999.)
             .build(app),
-        text(id!(), project.label())
+        text(id!(id), project.label())
             .fill(project.color())
             .font_weight(FontWeight::BOLD)
             .build(app)
@@ -437,7 +439,7 @@ fn project_pill<'a, State: 'static>(
 fn panel_slot<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
     if let Some(panel) = &state.panel {
         return stack(vec![
-            card(app),
+            card(id!(), app),
             column_spaced(
                 12.,
                 vec![
@@ -484,7 +486,7 @@ fn panel_slot<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<Stat
 
 fn empty_panel<'a>(app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
     stack(vec![
-        card(app),
+        card(id!(), app),
         column_spaced(
             12.,
             vec![
@@ -510,7 +512,7 @@ fn selected_task_panel<'a>(
     app: &mut PaneState,
 ) -> Layout<'a, View<State>, PaneState> {
     stack(vec![
-        card(app),
+        card(id!(index as u64), app),
         column_spaced(
             12.,
             vec![
@@ -526,8 +528,8 @@ fn selected_task_panel<'a>(
                 row_spaced(
                     10.,
                     vec![
-                        project_pill(task.project, app),
-                        priority_pill(task.priority, app),
+                        project_pill(id!(index as u64), task.project, app),
+                        priority_pill(id!(index as u64), task.priority, app),
                     ],
                 ),
                 text(id!(), format!("Canopy route stop {}", index + 1))
@@ -590,7 +592,8 @@ fn panel_form<'a>(
                 .align(Alignment::Start)
                 .enter_end_editing()
                 .build(app)
-                .expand_x(),
+                .width(360.)
+                .height(44.),
             row_spaced(
                 12.,
                 vec![
@@ -604,7 +607,13 @@ fn panel_form<'a>(
                             Project::People,
                         ],
                         |ctx, app| {
-                            dropdown_label(ctx.value.label(), ctx.selected, ctx.hovered, app)
+                            dropdown_label(
+                                id!(ctx.index as u64),
+                                ctx.value.label(),
+                                ctx.selected,
+                                ctx.hovered,
+                                app,
+                            )
                         },
                     )
                     .build(app),
@@ -613,7 +622,13 @@ fn panel_form<'a>(
                         binding!(state, PanelState, priority),
                         vec![Priority::Low, Priority::Medium, Priority::High],
                         |ctx, app| {
-                            dropdown_label(ctx.value.label(), ctx.selected, ctx.hovered, app)
+                            dropdown_label(
+                                id!(ctx.index as u64),
+                                ctx.value.label(),
+                                ctx.selected,
+                                ctx.hovered,
+                                app,
+                            )
                         },
                     )
                     .build(app),
@@ -624,23 +639,13 @@ fn panel_form<'a>(
 }
 
 fn dropdown_label<'a, State: 'static>(
+    id: u64,
     label: &str,
     selected: bool,
     hovered: bool,
     app: &mut PaneState,
 ) -> Layout<'a, View<State>, PaneState> {
-    // stack(vec![
-    // rect(id!())
-    //     .fill(if selected || hovered {
-    //         Color::from_rgb8(44, 44, 58)
-    //     } else {
-    //         Color::from_rgb8(34, 34, 44)
-    //     })
-    //     .stroke(Color::from_rgb8(60, 60, 74), Stroke::new(1.))
-    //     .corner_rounding(10.)
-    //     .build(app)
-    //     .inert(),
-    text(id!(), label)
+    text(id!(id), label)
         .fill(if selected || hovered {
             DEFAULT_FG
         } else {
@@ -649,15 +654,13 @@ fn dropdown_label<'a, State: 'static>(
         .build(app)
         .pad_x(12.)
         .pad_y(8.)
-    // .expand_x()
-    // ,
-    // ])
+        .expand_x()
 }
 
 fn summary_chart<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
     let data = project_counts(&state.tasks);
     stack(vec![
-        card(app),
+        card(id!(), app),
         row_spaced(
             12.,
             vec![
@@ -695,8 +698,8 @@ fn summary_chart<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<S
     ])
 }
 
-fn card<'a, State: 'static>(app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-    rect(id!())
+fn card<'a, State: 'static>(id: u64, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    rect(id)
         .fill(Color::from_rgb8(26, 26, 36))
         .stroke(Color::from_rgb8(48, 48, 62), Stroke::new(1.))
         .corner_rounding(14.)

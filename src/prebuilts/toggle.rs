@@ -1,6 +1,6 @@
-use crate::app::{PaneState, View};
+use crate::pane::{PaneState, View};
 use crate::utils::adjust_brush;
-use crate::{Binding, ClickPhase, MouseButton, id, rect};
+use crate::{Binding, ClickPhase, DragPhase, MouseButton, gesture, id, rect};
 use crate::{DEFAULT_FG, DEFAULT_GRAY, DEFAULT_LIGHT_GRAY, TRANSPARENT, circle};
 use backer::{
     Area, Layout,
@@ -36,6 +36,22 @@ impl ToggleState {
 
 type ViewFn<'a, State> =
     Rc<dyn Fn(ToggleState, Area, &mut PaneState) -> Layout<'a, View<State>, PaneState> + 'a>;
+
+fn set_toggle_on<State>(
+    state: &mut State,
+    app: &mut PaneState,
+    binding: &Binding<State, ToggleState>,
+    on_toggle: Option<fn(&mut State, &mut PaneState, bool)>,
+    on: bool,
+) {
+    if binding.get(state).on == on {
+        return;
+    }
+    if let Some(f) = on_toggle {
+        f(state, app, on);
+    }
+    binding.update(state, |s| s.on = on);
+}
 
 pub struct Toggle<'a, State> {
     id: u64,
@@ -137,28 +153,64 @@ impl<'a, State> Toggle<'a, State> {
                 rect(id)
                     .fill(TRANSPARENT)
                     .view()
-                    .on_hover({
+                    .gesture(gesture::hover(id!(id, 1u64)).run({
                         let binding = self.binding.clone();
                         move |state: &mut State, _app: &mut PaneState, h| {
                             binding.update(state, |s| s.hovered = h)
                         }
-                    })
-                    .on_click(MouseButton::Left, {
-                        let binding = self.binding.clone();
-                        move |state: &mut State, app: &mut PaneState, event| match event.state {
-                            ClickPhase::Started => binding.update(state, |s| s.depressed = true),
-                            ClickPhase::Cancelled => binding.update(state, |s| s.depressed = false),
-                            ClickPhase::Completed => {
-                                if let Some(f) = self.on_toggle {
-                                    f(state, app, !binding.get(state).on);
+                    }))
+                    .gesture(
+                        gesture::click(id!(id, 2u64))
+                            .button(MouseButton::Left | MouseButton::Right)
+                            .run({
+                                let binding = self.binding.clone();
+                                move |state: &mut State, app: &mut PaneState, event| match event
+                                    .state
+                                {
+                                    ClickPhase::Started => {
+                                        binding.update(state, |s| s.depressed = true)
+                                    }
+                                    ClickPhase::Cancelled => {
+                                        binding.update(state, |s| s.depressed = false)
+                                    }
+                                    ClickPhase::Completed => {
+                                        set_toggle_on(
+                                            state,
+                                            app,
+                                            &binding,
+                                            self.on_toggle,
+                                            !binding.get(state).on,
+                                        );
+                                        binding.update(state, |s| s.depressed = false)
+                                    }
                                 }
-                                binding.update(state, |s| {
-                                    s.on = !s.on;
-                                    s.depressed = false
-                                })
-                            }
-                        }
-                    })
+                            }),
+                    )
+                    .gesture(
+                        gesture::drag(id!(id, 3u64))
+                            .button(MouseButton::Left | MouseButton::Right)
+                            .run({
+                                let binding = self.binding.clone();
+                                move |state: &mut State, app: &mut PaneState, drag| {
+                                    let (x, completed) = match drag {
+                                        DragPhase::Began { .. } => {
+                                            binding.update(state, |s| s.depressed = true);
+                                            return;
+                                        }
+                                        DragPhase::Updated { current, .. } => (current.x, false),
+                                        DragPhase::Completed { current, .. } => (current.x, true),
+                                    };
+                                    binding.update(state, |s| s.depressed = !completed);
+                                    set_toggle_on(
+                                        state,
+                                        app,
+                                        &binding,
+                                        self.on_toggle,
+                                        x >= width as f64 * 0.5,
+                                    );
+                                }
+                            }),
+                    )
                     .build(ctx)
                     .height(height)
                     .width(width),

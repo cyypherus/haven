@@ -1,6 +1,6 @@
 use crate::DEFAULT_CORNER_ROUNDING;
-use crate::app::{PaneState, View};
 use crate::brush_source::BrushSource;
+use crate::pane::{PaneState, View};
 use crate::primitives::shape::{PathData, rect_path};
 use crate::view::{Drawable, DrawableType};
 use backer::Layout;
@@ -60,11 +60,8 @@ impl Rect {
             stroke: self.stroke,
         }
     }
-    pub fn view<State>(self) -> Drawable<State> {
-        Drawable {
-            view_type: DrawableType::Path(Box::new(self.into_path_data())),
-            gesture_handlers: Vec::new(),
-        }
+    pub fn view<State: 'static>(self) -> Drawable<State> {
+        Drawable::new(DrawableType::Path(Box::new(self.into_path_data())))
     }
     pub fn build<State: 'static>(
         self,

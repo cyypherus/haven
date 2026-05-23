@@ -2,7 +2,8 @@ use crate::DEFAULT_FG;
 use crate::utils::adjust_brush;
 use crate::{
     Binding, ClickPhase, DEFAULT_CORNER_ROUNDING, DEFAULT_FONT_SIZE, DEFAULT_PURP, MouseButton,
-    app::{PaneState, View},
+    gesture,
+    pane::{PaneState, View},
     rect,
 };
 use backer::{Layout, nodes::stack};
@@ -110,24 +111,32 @@ impl<'a, State> Button<'a, State> {
             rect(id)
                 .fill(TRANSPARENT)
                 .view()
-                .on_hover({
+                .gesture(gesture::hover(crate::id!(id, 1u64)).run({
                     let binding = self.binding.clone();
                     move |state, _app: &mut PaneState, h| binding.update(state, |s| s.hovered = h)
-                })
-                .on_click(MouseButton::Left, {
-                    let binding = self.binding.clone();
-                    let on_click = self.on_click.clone();
-                    move |state: &mut State, app: &mut PaneState, event| match event.state {
-                        ClickPhase::Started => binding.update(state, |s| s.depressed = true),
-                        ClickPhase::Cancelled => binding.update(state, |s| s.depressed = false),
-                        ClickPhase::Completed => {
-                            if let Some(f) = &on_click {
-                                f(state, app);
+                }))
+                .gesture(
+                    gesture::click(crate::id!(id, 2u64))
+                        .button(MouseButton::Left)
+                        .run({
+                            let binding = self.binding.clone();
+                            let on_click = self.on_click.clone();
+                            move |state: &mut State, app: &mut PaneState, event| match event.state {
+                                ClickPhase::Started => {
+                                    binding.update(state, |s| s.depressed = true)
+                                }
+                                ClickPhase::Cancelled => {
+                                    binding.update(state, |s| s.depressed = false)
+                                }
+                                ClickPhase::Completed => {
+                                    if let Some(f) = &on_click {
+                                        f(state, app);
+                                    }
+                                    binding.update(state, |s| s.depressed = false)
+                                }
                             }
-                            binding.update(state, |s| s.depressed = false)
-                        }
-                    }
-                })
+                        }),
+                )
                 .build(ctx)
                 .inert(),
         ])

@@ -1,53 +1,62 @@
-use crate::app::{PaneState, View, ViewKind};
-use crate::gestures::{ClickEvent, GestureHandler, Interaction, InteractionType, ScrollDelta};
+use crate::gestures::{
+    Gesture, GestureHandler, GestureHitRegion, GestureRegion, Interaction,
+};
+use crate::pane::{PaneState, View, ViewKind};
 use crate::primitives::{Image, PathData, Shadow, Svg, Text};
-use crate::{Binding, DragPhase, Key, KeyPhase, MouseButton, OwnedBinding};
+use crate::{Binding, OwnedBinding};
 use backer::{Area, Layout, nodes::*};
 use kurbo::{Affine, BezPath};
 use parley::Layout as TextLayout;
 use peniko::{self, Brush};
 use std::rc::Rc;
 
-// A simple const FNV-1a hash for our purposes
+// A simple const hash for our purposes.
 const FNV_OFFSET: u64 = 1469598103934665603;
-const FNV_PRIME: u64 = 1099511628211;
 
 pub const fn const_hash(s: &str, line: u32, col: u32) -> u64 {
     let mut hash = FNV_OFFSET;
     let bytes = s.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
-        hash ^= bytes[i] as u64;
-        hash = hash.wrapping_mul(FNV_PRIME);
+        hash = combine_id(hash, bytes[i] as u64);
         i += 1;
     }
     // Incorporate the line and column numbers into the hash.
-    hash ^= line as u64;
-    hash = hash.wrapping_mul(FNV_PRIME);
-    hash ^= col as u64;
-    hash = hash.wrapping_mul(FNV_PRIME);
+    hash = combine_id(hash, line as u64);
+    hash = combine_id(hash, col as u64);
     hash
 }
 
+pub const fn combine_id(seed: u64, part: u64) -> u64 {
+    seed.wrapping_add(part)
+        .wrapping_add(0x9e3779b97f4a7c15)
+        .wrapping_mul(0xbf58476d1ce4e5b9)
+        .rotate_left(31)
+}
+
 /// This macro computes a compile-time ID from the file, line, and column
-/// where it's invoked, and at runtime combines it (via XOR) with another id.
+/// where it's invoked, and at runtime combines it with caller-provided parts.
 #[macro_export]
 macro_rules! id {
     // It would be good to explore using a TypeId for uniqueness instead of
     // the caller location. Currently we can't hash TypeId values at
     // compile time / in const contexts so the ids throughout the crate would
-    // have to be changed to some Hashable struct with the unique token.
+    // have to be changed to some Hashable struct with the unique gesture.
     () => {{
         const ID: u64 = $crate::const_hash(file!(), line!(), column!());
         ID
     }};
     ($other:expr) => {{
         const ID: u64 = $crate::const_hash(file!(), line!(), column!());
-        ID ^ ($other)
+        $crate::combine_id(ID, ($other) as u64)
     }};
-    ($other:expr, $other2:expr) => {{
+    ($first:expr, $($rest:expr),+ $(,)?) => {{
         const ID: u64 = $crate::const_hash(file!(), line!(), column!());
-        ID ^ ($other) ^ (($other2).wrapping_mul(1099511628211))
+        let id = $crate::combine_id(ID, ($first) as u64);
+        $(
+            let id = $crate::combine_id(id, ($rest) as u64);
+        )+
+        id
     }};
 }
 
@@ -152,24 +161,17 @@ fn wrap_layer<'a, State>(
                     blend,
                     alpha,
                 }),
-                Vec::new(),
                 area,
             )]
         }),
         content,
-        draw(|area, _| {
-            vec![View::draw(
-                Box::new(DrawableType::PopLayer),
-                Vec::new(),
-                area,
-            )]
-        }),
+        draw(|area, _| vec![View::draw(Box::new(DrawableType::PopLayer), area)]),
     ])
 }
 
 pub struct Drawable<State> {
     pub(crate) view_type: DrawableType,
-    pub(crate) gesture_handlers: Vec<GestureHandler<State, PaneState>>,
+    gestures: Vec<GestureRegion<State>>,
 }
 
 pub(crate) enum DrawableType {
@@ -206,113 +208,6 @@ impl Clone for DrawableType {
     }
 }
 
-impl<State> Drawable<State> {
-    pub fn on_click(
-        mut self,
-        button: MouseButton,
-        f: impl Fn(&mut State, &mut PaneState, ClickEvent) + 'static,
-    ) -> Self {
-        self.gesture_handlers.push(GestureHandler {
-            interaction_type: InteractionType {
-                click: Some(button),
-                ..Default::default()
-            },
-            interaction_handler: Some(Rc::new(move |state, app_state, interaction| {
-                let Interaction::Click(event) = interaction else {
-                    return;
-                };
-                (f)(state, app_state, event);
-            })),
-        });
-        self
-    }
-    pub fn on_click_outside(
-        mut self,
-        button: MouseButton,
-        f: impl Fn(&mut State, &mut PaneState, ClickEvent) + 'static,
-    ) -> Self {
-        self.gesture_handlers.push(GestureHandler {
-            interaction_type: InteractionType {
-                click_outside: Some(button),
-                ..Default::default()
-            },
-            interaction_handler: Some(Rc::new(move |state, app_state, interaction| {
-                let Interaction::ClickOutside(event) = interaction else {
-                    return;
-                };
-                (f)(state, app_state, event);
-            })),
-        });
-        self
-    }
-    pub fn on_drag(mut self, f: impl Fn(&mut State, &mut PaneState, DragPhase) + 'static) -> Self {
-        self.gesture_handlers.push(GestureHandler {
-            interaction_type: InteractionType {
-                drag: true,
-                ..Default::default()
-            },
-            interaction_handler: Some(Rc::new(move |state, app_state, interaction| {
-                let Interaction::Drag(drag) = interaction else {
-                    return;
-                };
-                (f)(state, app_state, drag);
-            })),
-        });
-        self
-    }
-    pub fn on_hover(mut self, f: impl Fn(&mut State, &mut PaneState, bool) + 'static) -> Self {
-        self.gesture_handlers.push(GestureHandler {
-            interaction_type: InteractionType {
-                hover: true,
-                ..Default::default()
-            },
-            interaction_handler: Some(Rc::new(move |state, app_state, interaction| {
-                let Interaction::Hover(hovered) = interaction else {
-                    return;
-                };
-                (f)(state, app_state, hovered);
-            })),
-        });
-        self
-    }
-    pub fn on_key(
-        mut self,
-        f: impl Fn(&mut State, &mut PaneState, Key, KeyPhase) + 'static,
-    ) -> Self {
-        self.gesture_handlers.push(GestureHandler {
-            interaction_type: InteractionType {
-                key: true,
-                ..Default::default()
-            },
-            interaction_handler: Some(Rc::new(move |state, app_state, interaction| {
-                let Interaction::Key(key, key_state) = interaction else {
-                    return;
-                };
-                (f)(state, app_state, key, key_state);
-            })),
-        });
-        self
-    }
-    pub fn on_scroll(
-        mut self,
-        f: impl Fn(&mut State, &mut PaneState, ScrollDelta) + 'static,
-    ) -> Self {
-        self.gesture_handlers.push(GestureHandler {
-            interaction_type: InteractionType {
-                scroll: true,
-                ..Default::default()
-            },
-            interaction_handler: Some(Rc::new(move |state, app_state, interaction| {
-                let Interaction::Scroll(scroll) = interaction else {
-                    return;
-                };
-                (f)(state, app_state, scroll);
-            })),
-        });
-        self
-    }
-}
-
 impl DrawableType {
     pub(crate) fn id(&self) -> Option<u64> {
         match self {
@@ -328,6 +223,13 @@ impl DrawableType {
 }
 
 impl<State: 'static> Drawable<State> {
+    pub(crate) fn new(view_type: DrawableType) -> Self {
+        Self {
+            view_type,
+            gestures: Vec::new(),
+        }
+    }
+
     pub fn build<'a>(self, ctx: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
         let text_clone = if let DrawableType::Text(t) = &self.view_type {
             Some(t.clone())
@@ -336,11 +238,11 @@ impl<State: 'static> Drawable<State> {
         };
 
         let node = draw(move |area, _| {
-            vec![View::draw(
-                Box::new(self.view_type),
-                self.gesture_handlers,
+            vec![View(ViewKind::Draw {
+                view: Box::new(self.view_type.clone()),
                 area,
-            )]
+                gestures: self.gestures.clone(),
+            })]
         });
 
         if let Some(text_view) = text_clone {
@@ -348,6 +250,30 @@ impl<State: 'static> Drawable<State> {
         } else {
             node
         }
+    }
+
+    pub fn capture(mut self, gesture: &Gesture<State>) -> Self {
+        self.gestures.push(GestureRegion {
+            hit_region: GestureHitRegion::Include,
+            gesture: gesture.clone(),
+        });
+        self
+    }
+
+    pub fn ignore(mut self, gesture: &Gesture<State>) -> Self {
+        self.gestures.push(GestureRegion {
+            hit_region: GestureHitRegion::Exclude,
+            gesture: gesture.clone(),
+        });
+        self
+    }
+
+    pub fn gesture(mut self, gesture: Gesture<State>) -> Self {
+        self.gestures.push(GestureRegion {
+            hit_region: GestureHitRegion::Include,
+            gesture,
+        });
+        self
     }
 }
 
@@ -383,33 +309,65 @@ fn map_scope<'a, Parent: 'static, Sub: 'static>(
     layout.map(move |view| match view.into_kind() {
         ViewKind::Draw {
             view,
-            gesture_handlers,
             area,
-        } => View::draw(
+            gestures,
+        } => View(ViewKind::Draw {
             view,
-            gesture_handlers
-                .into_iter()
-                .map(|gh| {
-                    let handler = gh.interaction_handler.map(|h| {
-                        let f = f.clone();
-                        Rc::new(
-                            move |parent: &mut Parent,
-                                  app: &mut PaneState,
-                                  interaction: Interaction| {
-                                f(parent, app, interaction, &h);
-                            },
-                        )
-                            as Rc<dyn Fn(&mut Parent, &mut PaneState, Interaction)>
-                    });
-                    GestureHandler {
-                        interaction_type: gh.interaction_type,
-                        interaction_handler: handler,
-                    }
-                })
-                .collect(),
             area,
-        ),
-        ViewKind::EditorArea(id, area) => View::editor_area(id, area),
+            gestures: gestures
+                .into_iter()
+                .map(|region| map_gesture_region(region, f.clone()))
+                .collect(),
+        }),
+        ViewKind::EditorArea(id, area, gestures) => View(ViewKind::EditorArea(
+            id,
+            area,
+            gestures
+                .into_iter()
+                .map(|region| map_gesture_region(region, f.clone()))
+                .collect(),
+        )),
         ViewKind::Empty => View::empty(),
     })
+}
+
+fn map_gesture_region<Parent: 'static, Sub: 'static>(
+    region: GestureRegion<Sub>,
+    f: impl Fn(
+        &mut Parent,
+        &mut PaneState,
+        Interaction,
+        &Rc<dyn Fn(&mut Sub, &mut PaneState, Interaction)>,
+    ) + Clone
+    + 'static,
+) -> GestureRegion<Parent> {
+    GestureRegion {
+        hit_region: region.hit_region,
+        gesture: region
+            .gesture
+            .map(|handler| map_gesture_handler(handler, f)),
+    }
+}
+
+fn map_gesture_handler<Parent: 'static, Sub: 'static>(
+    gesture: GestureHandler<Sub>,
+    f: impl Fn(
+        &mut Parent,
+        &mut PaneState,
+        Interaction,
+        &Rc<dyn Fn(&mut Sub, &mut PaneState, Interaction)>,
+    ) + Clone
+    + 'static,
+) -> GestureHandler<Parent> {
+    let handler = gesture.interaction_handler.clone();
+    GestureHandler {
+        modifiers: gesture.modifiers,
+        propagation: gesture.propagation,
+        kind: gesture.kind,
+        interaction_handler: Rc::new(
+            move |parent: &mut Parent, app: &mut PaneState, interaction: Interaction| {
+                f(parent, app, interaction, &handler);
+            },
+        ),
+    }
 }

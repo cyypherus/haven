@@ -1,6 +1,6 @@
 use crate::{
-    DEFAULT_CORNER_ROUNDING, TRANSPARENT,
-    app::{PaneState, View},
+    DEFAULT_CORNER_ROUNDING, TRANSPARENT, gesture,
+    pane::{PaneState, View},
     rect,
     view::{BlendMode, Compositing, rounded_rect_path},
 };
@@ -326,10 +326,12 @@ pub fn scroller<'a, State: 'static>(
             .corner_rounding(DEFAULT_CORNER_ROUNDING)
             .fill(TRANSPARENT)
             .view()
-            .on_scroll(move |_s: &mut State, app: &mut PaneState, dt| {
-                let entry = app.scrollers.entry(id).or_default();
-                entry.dt += dt.y * 0.5;
-            })
+            .gesture(gesture::scroll(crate::id!(id, 1u64)).run(
+                move |_s: &mut State, app: &mut PaneState, dt| {
+                    let entry = app.scrollers.entry(id).or_default();
+                    entry.dt += dt.y * 0.5;
+                },
+            ))
             .build(ctx),
     ])
 }

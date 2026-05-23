@@ -1,9 +1,9 @@
 #[cfg(feature = "winit")]
 use crate::MouseButton;
-use crate::{Key, Modifiers, NamedKey};
+use crate::{Key, Modifier, Modifiers, NamedKey};
 
 #[cfg(feature = "vello")]
-use crate::app::{Pane, PaneEffect};
+use crate::pane::{Pane, PaneEffect};
 #[cfg(feature = "debug-overlay")]
 use crate::primitives::{PathData, text};
 #[cfg(feature = "debug-overlay")]
@@ -46,12 +46,11 @@ pub(crate) fn key(value: winit::keyboard::Key) -> Option<Key> {
 
 pub(crate) fn modifiers(value: winit::event::Modifiers) -> Modifiers {
     let state = value.state();
-    Modifiers {
-        shift: state.shift_key(),
-        control: state.control_key(),
-        alt: state.alt_key(),
-        super_key: state.super_key(),
-    }
+    Modifiers::empty()
+        .with(Modifier::Shift, state.shift_key())
+        .with(Modifier::Control, state.control_key())
+        .with(Modifier::Alt, state.alt_key())
+        .with(Modifier::Super, state.super_key())
 }
 
 fn named_key_from_winit(value: winit::keyboard::NamedKey) -> Option<NamedKey> {

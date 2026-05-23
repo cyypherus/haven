@@ -1,4 +1,4 @@
-use crate::app::{PaneState, View};
+use crate::pane::{PaneState, View};
 use crate::view::{Drawable, DrawableType};
 use crate::{Area, Color, DEFAULT_CORNER_ROUNDING};
 use backer::Layout;
@@ -56,11 +56,8 @@ impl Shadow {
         )
     }
 
-    pub fn view<State>(self) -> Drawable<State> {
-        Drawable {
-            view_type: DrawableType::Shadow(self),
-            gesture_handlers: Vec::new(),
-        }
+    pub fn view<State: 'static>(self) -> Drawable<State> {
+        Drawable::new(DrawableType::Shadow(self))
     }
 
     pub fn build<State: 'static>(

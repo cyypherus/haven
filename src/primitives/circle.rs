@@ -1,5 +1,5 @@
-use crate::app::{PaneState, View};
 use crate::brush_source::BrushSource;
+use crate::pane::{PaneState, View};
 use crate::primitives::shape::{PathData, circle_path};
 use crate::view::{Drawable, DrawableType};
 
@@ -37,11 +37,8 @@ impl Circle {
             stroke: self.stroke,
         }
     }
-    pub fn view<State>(self) -> Drawable<State> {
-        Drawable {
-            view_type: DrawableType::Path(Box::new(self.into_path_data())),
-            gesture_handlers: Vec::new(),
-        }
+    pub fn view<State: 'static>(self) -> Drawable<State> {
+        Drawable::new(DrawableType::Path(Box::new(self.into_path_data())))
     }
     pub fn finish<State: 'static>(
         self,

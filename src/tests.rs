@@ -1,7 +1,7 @@
-use crate::app::PaneEffect;
+use crate::pane::PaneEffect;
 use crate::*;
 
-fn test_pane<State: 'static>(builder: PaneBuilder<State>) -> crate::app::Pane<State> {
+fn test_pane<State: 'static>(builder: PaneBuilder<State>) -> crate::pane::Pane<State> {
     builder.build()
 }
 
@@ -64,6 +64,64 @@ fn dropdown_expands_and_selects_an_option() {
 }
 
 #[test]
+fn dropdown_hover_captures_overlapping_button() {
+    struct State {
+        dropdown: DropdownState<&'static str>,
+        button: ButtonState,
+    }
+
+    impl Default for State {
+        fn default() -> Self {
+            Self {
+                dropdown: DropdownState {
+                    selected: "one",
+                    hovered: None,
+                    expanded: true,
+                    depressed: false,
+                },
+                button: ButtonState::default(),
+            }
+        }
+    }
+
+    const BUTTON: u64 = 14;
+    const DROPDOWN: u64 = 15;
+    const OPTIONS: [(u64, &str); 3] = [(16, "one"), (17, "two"), (18, "three")];
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        stack(vec![
+            button(BUTTON, binding!(state, State, button))
+                .text_label("behind")
+                .build(app)
+                .width(120.)
+                .height(90.),
+            dropdown(
+                DROPDOWN,
+                binding!(state, State, dropdown),
+                OPTIONS.iter().map(|(_, value)| *value).collect(),
+                |item, app| text(OPTIONS[item.index].0, *item.value).build(app),
+            )
+            .build(app)
+            .width(120.)
+            .height(30.),
+        ])
+    }
+
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    let (_, effects) = pane.redraw(&mut state, 300, 200, 1.0);
+    assert!(effects.is_empty(), "unexpected effects: {effects:?}");
+
+    let location = pane.location(OPTIONS[1].0).expect("option present");
+    assert!(pane.move_to(&mut state, location).is_empty());
+    let (_, effects) = pane.redraw(&mut state, 300, 200, 1.0);
+    assert!(effects.is_empty(), "unexpected effects: {effects:?}");
+
+    assert_eq!(state.dropdown.hovered, Some(1));
+    assert!(!state.button.hovered);
+}
+
+#[test]
 fn toggle_click_updates_state() {
     #[derive(Default)]
     struct State {
@@ -101,6 +159,56 @@ fn toggle_click_updates_state() {
 }
 
 #[test]
+fn toggle_drag_updates_state_from_position() {
+    #[derive(Default)]
+    struct State {
+        toggle: ToggleState,
+        toggled: Option<bool>,
+    }
+
+    const TOGGLE: u64 = 21;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        toggle(TOGGLE, binding!(state, State, toggle))
+            .on_toggle(|state, _, on| state.toggled = Some(on))
+            .build(app)
+            .width(60.)
+            .height(30.)
+    }
+
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    let (_, effects) = pane.redraw(&mut state, 300, 200, 1.0);
+    assert!(effects.is_empty(), "unexpected effects: {effects:?}");
+
+    let center = pane.location(TOGGLE).expect("toggle present");
+    assert!(
+        pane.drag(
+            &mut state,
+            Point::new(center.x - 20., center.y),
+            Point::new(center.x + 20., center.y),
+        )
+        .is_empty()
+    );
+    assert!(state.toggle.on);
+    assert!(!state.toggle.depressed);
+    assert_eq!(state.toggled, Some(true));
+
+    state.toggled = None;
+    assert!(
+        pane.drag(
+            &mut state,
+            Point::new(center.x + 20., center.y),
+            Point::new(center.x - 20., center.y),
+        )
+        .is_empty()
+    );
+    assert!(!state.toggle.on);
+    assert!(!state.toggle.depressed);
+    assert_eq!(state.toggled, Some(false));
+}
+
+#[test]
 fn drawable_click_event_reports_mouse_button_and_location() {
     #[derive(Default)]
     struct State {
@@ -113,9 +221,13 @@ fn drawable_click_event_reports_mouse_button_and_location() {
         rect(TARGET)
             .fill(TRANSPARENT)
             .view()
-            .on_click(MouseButton::Right, |state: &mut State, _, event| {
-                state.events.push((event.state, event.location.local()));
-            })
+            .gesture(
+                gesture::click(id!(TARGET, 1u64))
+                    .button(MouseButton::Right)
+                    .run(|state: &mut State, _, event| {
+                        state.events.push((event.state, event.location.local()));
+                    }),
+            )
             .build(app)
             .width(80.)
             .height(40.)
@@ -141,6 +253,65 @@ fn drawable_click_event_reports_mouse_button_and_location() {
 }
 
 #[test]
+fn mouse_predicates_cover_all_button_variants() {
+    #[derive(Default)]
+    struct State {
+        completions: usize,
+    }
+
+    const TARGET: u64 = 125;
+
+    fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        rect(TARGET)
+            .fill(TRANSPARENT)
+            .view()
+            .gesture(
+                gesture::click(id!(TARGET, 1u64))
+                    .button(
+                        MouseButton::Left
+                            | MouseButton::Right
+                            | MouseButton::Middle
+                            | MouseButton::Back
+                            | MouseButton::Forward
+                            | MouseButton::Other(9)
+                            | MouseButton::Other(10),
+                    )
+                    .run(|state: &mut State, _, event| {
+                        if event.state == ClickPhase::Completed {
+                            state.completions += 1;
+                        }
+                    }),
+            )
+            .build(app)
+            .width(80.)
+            .height(40.)
+    }
+
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    let (_, effects) = pane.redraw(&mut state, 300, 200, 1.0);
+    assert!(effects.is_empty(), "unexpected effects: {effects:?}");
+
+    let location = pane.location(TARGET).expect("target present");
+    assert!(pane.move_to(&mut state, location).is_empty());
+
+    for button in [
+        MouseButton::Left,
+        MouseButton::Right,
+        MouseButton::Middle,
+        MouseButton::Back,
+        MouseButton::Forward,
+        MouseButton::Other(9),
+        MouseButton::Other(10),
+    ] {
+        assert!(pane.press_button(&mut state, button).is_empty());
+        assert!(pane.release_button(&mut state, button).is_empty());
+    }
+
+    assert_eq!(state.completions, 7);
+}
+
+#[test]
 fn programmatic_click_reports_logical_location_when_scaled() {
     #[derive(Default)]
     struct State {
@@ -153,9 +324,13 @@ fn programmatic_click_reports_logical_location_when_scaled() {
         rect(TARGET)
             .fill(TRANSPARENT)
             .view()
-            .on_click(MouseButton::Left, |state: &mut State, _, event| {
-                state.events.push(event.location.local());
-            })
+            .gesture(
+                gesture::click(id!(TARGET, 1u64))
+                    .button(MouseButton::Left)
+                    .run(|state: &mut State, _, event| {
+                        state.events.push(event.location.local());
+                    }),
+            )
             .build(app)
             .width(80.)
             .height(40.)
@@ -187,22 +362,28 @@ fn click_capture_ignores_handlers_for_other_buttons() {
     const RIGHT_TARGET: u64 = 27;
 
     fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        let left_click = gesture::click(id!(LEFT_TARGET, 1u64))
+            .button(MouseButton::Left)
+            .run(|state: &mut State, _, event| {
+                state.left_events.push(event.state);
+            });
+        let right_click = gesture::click(id!(RIGHT_TARGET, 1u64))
+            .button(MouseButton::Right)
+            .run(|state: &mut State, _, event| {
+                state.right_events.push(event.state);
+            });
         stack(vec![
             rect(LEFT_TARGET)
                 .fill(TRANSPARENT)
                 .view()
-                .on_click(MouseButton::Left, |state: &mut State, _, event| {
-                    state.left_events.push(event.state);
-                })
+                .capture(&left_click)
                 .build(app)
                 .width(80.)
                 .height(40.),
             rect(RIGHT_TARGET)
                 .fill(TRANSPARENT)
                 .view()
-                .on_click(MouseButton::Right, |state: &mut State, _, event| {
-                    state.right_events.push(event.state);
-                })
+                .capture(&right_click)
                 .build(app)
                 .width(80.)
                 .height(40.),
@@ -242,9 +423,13 @@ fn click_capture_waits_for_matching_release_button() {
         rect(TARGET)
             .fill(TRANSPARENT)
             .view()
-            .on_click(MouseButton::Right, |state: &mut State, _, event| {
-                state.events.push(event.state);
-            })
+            .gesture(
+                gesture::click(id!(TARGET, 1u64))
+                    .button(MouseButton::Right)
+                    .run(|state: &mut State, _, event| {
+                        state.events.push(event.state);
+                    }),
+            )
             .build(app)
             .width(80.)
             .height(40.)
@@ -268,6 +453,392 @@ fn click_capture_waits_for_matching_release_button() {
 }
 
 #[test]
+fn scoped_gesture_click_uses_region_and_button_predicates() {
+    #[derive(Default)]
+    struct State {
+        events: Vec<&'static str>,
+    }
+
+    const ROOT: u64 = 2001;
+    const A: u64 = 2002;
+    const B: u64 = 2003;
+
+    fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        let target = gesture::click(id!(A, 1u64))
+            .button(MouseButton::Left | MouseButton::Right)
+            .run(|state: &mut State, _, event| {
+                if event.state == ClickPhase::Completed {
+                    state.events.push("target");
+                }
+            });
+        let empty = gesture::click(id!(ROOT, 1u64))
+            .button(MouseButton::Left)
+            .run(|state: &mut State, _, event| {
+                if event.state == ClickPhase::Completed {
+                    state.events.push("empty");
+                }
+            });
+        stack(vec![
+            rect(ROOT)
+                .fill(TRANSPARENT)
+                .build(app)
+                .width(300.)
+                .height(100.),
+            rect(A)
+                .fill(TRANSPARENT)
+                .view()
+                .capture(&target)
+                .ignore(&empty)
+                .build(app)
+                .width(50.)
+                .height(50.)
+                .offset(-100., 0.),
+            rect(B)
+                .fill(TRANSPARENT)
+                .view()
+                .capture(&target)
+                .ignore(&empty)
+                .build(app)
+                .width(50.)
+                .height(50.)
+                .offset(100., 0.),
+        ])
+    }
+
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 400, 200, 1.0);
+
+    let a = pane.location(A).expect("a present");
+    pane.move_to(&mut state, a);
+    pane.press_button(&mut state, MouseButton::Left);
+    pane.release_button(&mut state, MouseButton::Left);
+
+    let b = pane.location(B).expect("b present");
+    pane.move_to(&mut state, b);
+    pane.press_button(&mut state, MouseButton::Right);
+    pane.release_button(&mut state, MouseButton::Right);
+
+    let root = pane.location(ROOT).expect("root present");
+    pane.move_to(&mut state, root);
+    pane.press_button(&mut state, MouseButton::Left);
+    pane.release_button(&mut state, MouseButton::Left);
+
+    assert_eq!(state.events, vec!["target", "target", "empty"]);
+}
+
+#[test]
+fn scoped_gesture_drag_can_use_right_button() {
+    #[derive(Default)]
+    struct State {
+        phases: Vec<&'static str>,
+    }
+
+    const SURFACE: u64 = 2011;
+
+    fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        rect(SURFACE)
+            .fill(TRANSPARENT)
+            .view()
+            .gesture(
+                gesture::drag(id!(SURFACE, 1u64))
+                    .button(MouseButton::Right)
+                    .run(|state: &mut State, _, event| match event {
+                        DragPhase::Began { .. } => state.phases.push("began"),
+                        DragPhase::Updated { .. } => state.phases.push("updated"),
+                        DragPhase::Completed { .. } => state.phases.push("completed"),
+                    }),
+            )
+            .build(app)
+            .width(100.)
+            .height(100.)
+    }
+
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+
+    let location = pane.location(SURFACE).expect("surface present");
+    pane.move_to(&mut state, location);
+    pane.press_button(&mut state, MouseButton::Right);
+    pane.move_to(&mut state, Point::new(location.x + 10., location.y));
+    pane.release_button(&mut state, MouseButton::Right);
+
+    assert_eq!(state.phases, vec!["began", "updated", "completed"]);
+}
+
+#[test]
+fn scoped_gesture_drag_can_use_button_predicate() {
+    #[derive(Default)]
+    struct State {
+        completed: usize,
+    }
+
+    const SURFACE: u64 = 2012;
+
+    fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        rect(SURFACE)
+            .fill(TRANSPARENT)
+            .view()
+            .gesture(
+                gesture::drag(id!(SURFACE, 1u64))
+                    .button(MouseButton::Left | MouseButton::Right)
+                    .run(|state: &mut State, _, event| {
+                        if matches!(event, DragPhase::Completed { .. }) {
+                            state.completed += 1;
+                        }
+                    }),
+            )
+            .build(app)
+            .width(100.)
+            .height(100.)
+    }
+
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+
+    let location = pane.location(SURFACE).expect("surface present");
+    for button in [MouseButton::Left, MouseButton::Right] {
+        pane.move_to(&mut state, location);
+        pane.press_button(&mut state, button);
+        pane.move_to(&mut state, Point::new(location.x + 10., location.y));
+        pane.release_button(&mut state, button);
+    }
+    pane.move_to(&mut state, location);
+    pane.press_button(&mut state, MouseButton::Middle);
+    pane.move_to(&mut state, Point::new(location.x + 10., location.y));
+    pane.release_button(&mut state, MouseButton::Middle);
+
+    assert_eq!(state.completed, 2);
+}
+
+#[test]
+fn scoped_gesture_click_can_use_modifier_predicate() {
+    let predicate = (Modifier::Shift | Modifier::Control) & !Modifier::Alt;
+    assert!(predicate.matches(Modifiers::from_pressed([Modifier::Shift])));
+    assert!(predicate.matches(Modifiers::from_pressed([Modifier::Control])));
+    assert!(!predicate.matches(Modifiers::from_pressed([Modifier::Shift, Modifier::Alt,])));
+    assert!(!predicate.matches(Modifiers::empty()));
+
+    #[derive(Default)]
+    struct State {
+        clicks: usize,
+    }
+
+    const SURFACE: u64 = 2013;
+
+    fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        rect(SURFACE)
+            .fill(TRANSPARENT)
+            .view()
+            .gesture(
+                gesture::click(id!(SURFACE, 1u64))
+                    .button(MouseButton::Left)
+                    .modifiers((Modifier::Shift | Modifier::Control) & !Modifier::Alt)
+                    .run(|state: &mut State, _, event| {
+                        if event.state == ClickPhase::Completed {
+                            state.clicks += 1;
+                        }
+                    }),
+            )
+            .build(app)
+            .width(100.)
+            .height(100.)
+    }
+
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+    let location = pane.location(SURFACE).expect("surface present");
+    pane.move_to(&mut state, location);
+
+    pane.modifiers_changed(Modifiers::from_pressed([Modifier::Shift]));
+    pane.press_button(&mut state, MouseButton::Left);
+    pane.release_button(&mut state, MouseButton::Left);
+    assert_eq!(state.clicks, 1);
+
+    pane.modifiers_changed(Modifiers::from_pressed([Modifier::Control]));
+    pane.press_button(&mut state, MouseButton::Left);
+    pane.release_button(&mut state, MouseButton::Left);
+    assert_eq!(state.clicks, 2);
+
+    pane.modifiers_changed(Modifiers::from_pressed([Modifier::Shift, Modifier::Alt]));
+    pane.press_button(&mut state, MouseButton::Left);
+    pane.release_button(&mut state, MouseButton::Left);
+    assert_eq!(state.clicks, 2);
+
+    pane.modifiers_changed(Modifiers::empty());
+    pane.press_button(&mut state, MouseButton::Left);
+    pane.release_button(&mut state, MouseButton::Left);
+
+    assert_eq!(state.clicks, 2);
+}
+
+#[test]
+fn scoped_scroll_is_region_gated_but_key_is_not() {
+    #[derive(Default)]
+    struct State {
+        scrolls: usize,
+        keys: usize,
+    }
+
+    const A: u64 = 2021;
+    const B: u64 = 2022;
+
+    fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        let scroll =
+            gesture::scroll(id!(A, 1u64)).run(|state: &mut State, _, _| state.scrolls += 1);
+        let key = gesture::key(id!(A, 2u64))
+            .key(NamedKey::Enter)
+            .modifiers(Modifier::Shift)
+            .run(|state: &mut State, _, _| state.keys += 1);
+        row(vec![
+            rect(A)
+                .fill(TRANSPARENT)
+                .view()
+                .capture(&scroll)
+                .capture(&key)
+                .build(app)
+                .width(100.)
+                .height(100.),
+            rect(B)
+                .fill(TRANSPARENT)
+                .build(app)
+                .width(100.)
+                .height(100.),
+        ])
+    }
+
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+    pane.modifiers_changed(Modifiers::from_pressed([Modifier::Shift]));
+    pane.key_pressed(&mut state, NamedKey::Enter);
+
+    let a = pane.location(A).expect("a present");
+    pane.move_to(&mut state, a);
+    pane.scroll(&mut state, ScrollDelta { x: 0., y: 1. });
+    pane.key_pressed(&mut state, NamedKey::Enter);
+
+    let b = pane.location(B).expect("b present");
+    pane.move_to(&mut state, b);
+    pane.scroll(&mut state, ScrollDelta { x: 0., y: 1. });
+    pane.key_pressed(&mut state, NamedKey::Enter);
+
+    assert_eq!(state.scrolls, 1);
+    assert_eq!(state.keys, 3);
+}
+
+#[test]
+fn key_gestures_default_to_capture() {
+    #[derive(Default)]
+    struct State {
+        bottom: usize,
+        top: usize,
+    }
+
+    const BOTTOM: u64 = 2031;
+    const TOP: u64 = 2032;
+
+    fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        stack(vec![
+            rect(BOTTOM)
+                .fill(TRANSPARENT)
+                .view()
+                .gesture(
+                    gesture::key(id!(BOTTOM, 1u64))
+                        .key(NamedKey::Enter)
+                        .run(|state: &mut State, _, _| state.bottom += 1),
+                )
+                .build(app)
+                .width(100.)
+                .height(100.),
+            rect(TOP)
+                .fill(TRANSPARENT)
+                .view()
+                .gesture(
+                    gesture::key(id!(TOP, 1u64))
+                        .key(NamedKey::Enter)
+                        .run(|state: &mut State, _, _| state.top += 1),
+                )
+                .build(app)
+                .width(100.)
+                .height(100.),
+        ])
+    }
+
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+    pane.key_pressed(&mut state, NamedKey::Enter);
+
+    assert_eq!(state.bottom, 0);
+    assert_eq!(state.top, 1);
+}
+
+#[test]
+fn scoped_shared_token_can_mark_multiple_regions() {
+    #[derive(Default)]
+    struct Child {
+        clicks: usize,
+    }
+
+    #[derive(Default)]
+    struct State {
+        child: Child,
+    }
+
+    const A: u64 = 2031;
+    const B: u64 = 2032;
+    const CLICK: u64 = 2033;
+
+    fn child_view<'a>(_: &'a Child, app: &mut PaneState) -> Layout<'a, View<Child>, PaneState> {
+        let click =
+            gesture::click(CLICK)
+                .button(MouseButton::Left)
+                .run(|state: &mut Child, _, event| {
+                    if event.state == ClickPhase::Completed {
+                        state.clicks += 1;
+                    }
+                });
+
+        row(vec![
+            rect(A)
+                .fill(TRANSPARENT)
+                .view()
+                .capture(&click)
+                .build(app)
+                .width(80.)
+                .height(40.),
+            rect(B)
+                .fill(TRANSPARENT)
+                .view()
+                .capture(&click)
+                .build(app)
+                .width(80.)
+                .height(40.),
+        ])
+    }
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        let (_, child) = binding!(state, State, child);
+        scope(child_view(&state.child, app), child)
+    }
+
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+
+    let a = pane.location(A).expect("a present");
+    pane.click(&mut state, a);
+    let b = pane.location(B).expect("b present");
+    pane.click(&mut state, b);
+
+    assert_eq!(state.child.clicks, 2);
+}
+
+#[test]
 fn click_release_outside_cancels_captured_click() {
     #[derive(Default)]
     struct State {
@@ -280,9 +851,13 @@ fn click_release_outside_cancels_captured_click() {
         rect(TARGET)
             .fill(TRANSPARENT)
             .view()
-            .on_click(MouseButton::Left, |state: &mut State, _, event| {
-                state.events.push(event.state);
-            })
+            .gesture(
+                gesture::click(id!(TARGET, 1u64))
+                    .button(MouseButton::Left)
+                    .run(|state: &mut State, _, event| {
+                        state.events.push(event.state);
+                    }),
+            )
             .build(app)
             .width(80.)
             .height(40.)
@@ -317,18 +892,26 @@ fn drag_starts_after_threshold_and_cancels_click() {
         rect(TARGET)
             .fill(TRANSPARENT)
             .view()
-            .on_drag(|state: &mut State, _, event| match event {
-                DragPhase::Began { .. } => state.events.push("drag-began"),
-                DragPhase::Updated { .. } => state.events.push("drag-updated"),
-                DragPhase::Completed { .. } => state.events.push("drag-completed"),
-            })
-            .on_click(MouseButton::Left, |state: &mut State, _, event| {
-                state.events.push(match event.state {
-                    ClickPhase::Started => "click-started",
-                    ClickPhase::Cancelled => "click-cancelled",
-                    ClickPhase::Completed => "click-completed",
-                });
-            })
+            .gesture(
+                gesture::drag(id!(TARGET, 1u64))
+                    .button(MouseButton::Left)
+                    .run(|state: &mut State, _, event| match event {
+                        DragPhase::Began { .. } => state.events.push("drag-began"),
+                        DragPhase::Updated { .. } => state.events.push("drag-updated"),
+                        DragPhase::Completed { .. } => state.events.push("drag-completed"),
+                    }),
+            )
+            .gesture(
+                gesture::click(id!(TARGET, 2u64))
+                    .button(MouseButton::Left)
+                    .run(|state: &mut State, _, event| {
+                        state.events.push(match event.state {
+                            ClickPhase::Started => "click-started",
+                            ClickPhase::Cancelled => "click-cancelled",
+                            ClickPhase::Completed => "click-completed",
+                        });
+                    }),
+            )
             .build(app)
             .width(80.)
             .height(40.)
@@ -373,22 +956,23 @@ fn click_outside_is_button_specific() {
     const TARGET: u64 = 31;
 
     fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        let outside = gesture::click(id!(LISTENER, 1u64))
+            .button(MouseButton::Right)
+            .run(|state: &mut State, _, event| {
+                state.outside.push(event.state);
+            });
         row_spaced(
             20.,
             vec![
                 rect(LISTENER)
                     .fill(TRANSPARENT)
                     .view()
-                    .on_click_outside(MouseButton::Right, |state: &mut State, _, event| {
-                        state.outside.push(event.state);
-                    })
+                    .ignore(&outside)
                     .build(app)
                     .width(60.)
                     .height(40.),
                 rect(TARGET)
                     .fill(TRANSPARENT)
-                    .view()
-                    .on_click(MouseButton::Right, |_, _, _| {})
                     .build(app)
                     .width(60.)
                     .height(40.),
@@ -914,13 +1498,17 @@ fn text_field_click_outside_can_be_user_handled() {
                 rect(OUTSIDE)
                     .fill(TRANSPARENT)
                     .view()
-                    .on_click(MouseButton::Left, |state: &mut State, app, event| {
-                        if event.state == ClickPhase::Started {
-                            state.text.end_editing(app);
-                            state.outside = true;
-                            state.edits.push(EditInteraction::End);
-                        }
-                    })
+                    .gesture(
+                        gesture::click(id!(OUTSIDE, 1u64))
+                            .button(MouseButton::Left)
+                            .run(|state: &mut State, app, event| {
+                                if event.state == ClickPhase::Started {
+                                    state.text.end_editing(app);
+                                    state.outside = true;
+                                    state.edits.push(EditInteraction::End);
+                                }
+                            }),
+                    )
                     .build(app)
                     .width(140.)
                     .height(40.),

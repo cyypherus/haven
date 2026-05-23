@@ -1,4 +1,4 @@
-use crate::{Key, Modifiers, NamedKey};
+use crate::{Key, Modifier, Modifiers, NamedKey};
 use core::default::Default;
 use kurbo::Point;
 use parley::{GenericFamily, StyleProperty, editing::SplitString};
@@ -109,13 +109,13 @@ impl Editor {
         let (shift, action_mod, alt) = modifiers
             .map(|modifiers| {
                 (
-                    modifiers.shift,
+                    modifiers.contains(Modifier::Shift),
                     if cfg!(target_os = "macos") {
-                        modifiers.super_key
+                        modifiers.contains(Modifier::Super)
                     } else {
-                        modifiers.control
+                        modifiers.contains(Modifier::Control)
                     },
-                    modifiers.alt,
+                    modifiers.contains(Modifier::Alt),
                 )
             })
             .unwrap_or_default();

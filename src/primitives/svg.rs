@@ -1,4 +1,4 @@
-use crate::app::{PaneState, View};
+use crate::pane::{PaneState, View};
 
 use crate::view::{Drawable, DrawableType};
 
@@ -31,11 +31,8 @@ impl Svg {
         self.fill = Some(fill.into());
         self
     }
-    pub fn view<State>(self) -> Drawable<State> {
-        Drawable {
-            view_type: DrawableType::Svg(self),
-            gesture_handlers: Vec::new(),
-        }
+    pub fn view<State: 'static>(self) -> Drawable<State> {
+        Drawable::new(DrawableType::Svg(self))
     }
     pub fn finish<State: 'static>(
         self,
