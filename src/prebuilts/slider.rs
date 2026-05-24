@@ -1,7 +1,7 @@
 use crate::utils::adjust_brush;
 use crate::{
-    Binding, DEFAULT_DARK_GRAY, DEFAULT_FG, DEFAULT_GRAY, DEFAULT_PURP, DragPhase, MouseButton,
-    TRANSPARENT, circle, gesture, id,
+    Binding, ClickPhase, DEFAULT_DARK_GRAY, DEFAULT_FG, DEFAULT_GRAY, DEFAULT_PURP, DragPhase,
+    MouseButton, TRANSPARENT, circle, gesture, id,
     pane::{PaneState, View},
     rect,
 };
@@ -33,6 +33,15 @@ pub struct Slider<'a, State> {
     track: Option<ViewFn<'a, State>>,
     traveled_track: Option<ViewFn<'a, State>>,
     background: Option<ViewFn<'a, State>>,
+}
+
+fn value_at_x(x: f64, width: f32, height: f32, min: f32, max: f32) -> f32 {
+    let gesture_padding = height / width;
+    let padded_start = gesture_padding * width;
+    let padded_end = width - (gesture_padding * width);
+    let padded_width = padded_end - padded_start;
+    let normalized = ((x - padded_start as f64) / padded_width as f64).clamp(0.0, 1.0) as f32;
+    min + normalized * (max - min)
 }
 
 pub fn slider<'a, State>(
@@ -174,42 +183,55 @@ impl<'a, State> Slider<'a, State> {
                             binding.update(state, |s| s.hovered = h)
                         }
                     }))
+                    .gesture(
+                        gesture::click(id!(id, 3u64))
+                            .button(MouseButton::Left)
+                            .run({
+                                let binding = self.binding.clone();
+                                let min = self.min;
+                                let max = self.max;
+                                let on_change = self.on_change.clone();
+                                move |state: &mut State, app: &mut PaneState, event| {
+                                    if event.state != ClickPhase::Completed {
+                                        return;
+                                    }
+                                    let new_value = value_at_x(
+                                        event.location.local().x,
+                                        width,
+                                        height,
+                                        min,
+                                        max,
+                                    );
+                                    binding.update(state, |s| s.value = new_value);
+                                    if let Some(ref f) = on_change {
+                                        f(state, app, new_value);
+                                    }
+                                }
+                            }),
+                    )
                     .gesture(gesture::drag(id!(id, 2u64)).button(MouseButton::Left).run({
                         let binding = self.binding.clone();
                         let min = self.min;
                         let max = self.max;
                         let on_change = self.on_change.clone();
-                        move |state: &mut State, app: &mut PaneState, drag_state| {
-                            let gesture_padding = height / width;
-                            let update_value = |x: f64| {
-                                let padded_start = gesture_padding * width;
-                                let padded_end = width - (gesture_padding * width);
-                                let padded_width = padded_end - padded_start;
-                                let normalized = ((x - padded_start as f64) / padded_width as f64)
-                                    .clamp(0.0, 1.0)
-                                    as f32;
-                                min + normalized * (max - min)
-                            };
-
-                            match drag_state {
-                                DragPhase::Began { start, .. } => {
-                                    binding.update(state, |s| s.dragging = true);
-                                    let new_value = update_value(start.x);
-                                    binding.update(state, |s| s.value = new_value);
-                                    if let Some(ref f) = on_change {
-                                        f(state, app, new_value);
-                                    }
+                        move |state: &mut State, app: &mut PaneState, drag_state| match drag_state {
+                            DragPhase::Began { start, .. } => {
+                                binding.update(state, |s| s.dragging = true);
+                                let new_value = value_at_x(start.x, width, height, min, max);
+                                binding.update(state, |s| s.value = new_value);
+                                if let Some(ref f) = on_change {
+                                    f(state, app, new_value);
                                 }
-                                DragPhase::Updated { current, .. } => {
-                                    let new_value = update_value(current.x);
-                                    binding.update(state, |s| s.value = new_value);
-                                    if let Some(ref f) = on_change {
-                                        f(state, app, new_value);
-                                    }
+                            }
+                            DragPhase::Updated { current, .. } => {
+                                let new_value = value_at_x(current.x, width, height, min, max);
+                                binding.update(state, |s| s.value = new_value);
+                                if let Some(ref f) = on_change {
+                                    f(state, app, new_value);
                                 }
-                                DragPhase::Completed { .. } => {
-                                    binding.update(state, |s| s.dragging = false);
-                                }
+                            }
+                            DragPhase::Completed { .. } => {
+                                binding.update(state, |s| s.dragging = false);
                             }
                         }
                     }))

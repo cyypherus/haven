@@ -129,10 +129,10 @@ impl<'a, State> Button<'a, State> {
                                     binding.update(state, |s| s.depressed = false)
                                 }
                                 ClickPhase::Completed => {
+                                    binding.update(state, |s| s.depressed = false);
                                     if let Some(f) = &on_click {
                                         f(state, app);
                                     }
-                                    binding.update(state, |s| s.depressed = false)
                                 }
                             }
                         }),

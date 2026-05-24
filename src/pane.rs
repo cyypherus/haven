@@ -84,7 +84,7 @@ struct ActiveGesture<State> {
     gesture: Gesture<State>,
     pane_area: Area,
     hit_regions: Vec<Area>,
-    ignored_regions: Vec<Area>,
+    occluded_regions: Vec<Area>,
 }
 
 impl<State> Clone for ActiveGesture<State> {
@@ -93,7 +93,7 @@ impl<State> Clone for ActiveGesture<State> {
             gesture: self.gesture.clone(),
             pane_area: self.pane_area,
             hit_regions: self.hit_regions.clone(),
-            ignored_regions: self.ignored_regions.clone(),
+            occluded_regions: self.occluded_regions.clone(),
         }
     }
 }
@@ -232,7 +232,7 @@ pub struct PaneState {
     pub(crate) layout_cx: LayoutContext<Brush>,
     pub(crate) scale_factor: f64,
     pub(crate) editor: Option<EditState>,
-    text_edit_requests: HashMap<u64, Option<bool>>,
+    text_edit_requests: HashMap<u64, (Option<bool>, u64)>,
     pub(crate) editor_areas: HashMap<u64, Area>,
     pub(crate) scrollers: HashMap<u64, crate::prebuilts::ScrollerState>,
     pub(crate) needs_redraw: bool,
@@ -305,20 +305,20 @@ impl PaneState {
         self.editor = Some(EditState { id });
     }
 
-    pub(crate) fn sync_text_edit_request(&mut self, id: u64, editing: Option<bool>) {
+    pub(crate) fn sync_text_edit_request(&mut self, id: u64, editing: Option<bool>, token: u64) {
         let Some(editing) = editing else {
             return;
         };
-        if self.text_edit_requests.get(&id).copied() == Some(Some(editing)) {
+        if self.text_edit_requests.get(&id).copied() == Some((Some(editing), token)) {
             return;
         }
 
         if editing {
-            self.editor = Some(EditState { id });
+            self.begin_editing(id);
         } else if self.editor.as_ref().map(|editor| editor.id) == Some(id) {
             self.end_editing();
         }
-        self.text_edit_requests.insert(id, Some(editing));
+        self.text_edit_requests.insert(id, (Some(editing), token));
     }
 
     pub fn redraw(&mut self) {
@@ -455,14 +455,14 @@ impl<State: 'static> Pane<State> {
                     gesture: gesture_region.gesture.clone(),
                     pane_area,
                     hit_regions: Vec::new(),
-                    ignored_regions: Vec::new(),
+                    occluded_regions: Vec::new(),
                 });
                 self.gestures.len() - 1
             };
             let active = &mut self.gestures[index];
             match gesture_region.hit_region {
                 GestureHitRegion::Include => active.hit_regions.push(region),
-                GestureHitRegion::Exclude => active.ignored_regions.push(region),
+                GestureHitRegion::Occlude => active.occluded_regions.push(region),
             }
         }
     }
@@ -479,6 +479,17 @@ impl<State: 'static> Pane<State> {
             (self.on_start)(state, &mut self.pane_state);
         }
 
+        let updated_active_drag = if matches!(self.gesture_state, GestureState::Dragging { .. }) {
+            if let Some(current) = self.cursor_position {
+                let effects = self.move_to(state, current);
+                self.pane_state.effects.extend(effects);
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
         self.update_hover(state);
 
         self.gestures.clear();
@@ -497,7 +508,8 @@ impl<State: 'static> Pane<State> {
             layout.draw(pane_area, &mut self.pane_state)
         };
 
-        let continue_animating = std::mem::take(&mut self.pane_state.needs_redraw);
+        let continue_animating =
+            updated_active_drag || std::mem::take(&mut self.pane_state.needs_redraw);
 
         let mut items = Vec::new();
 
@@ -596,21 +608,25 @@ impl<State: 'static> Pane<State> {
             return None;
         }
         if active
-            .ignored_regions
+            .occluded_regions
             .iter()
             .any(|area| area_contains(area, position))
         {
             return None;
         }
-        if active.hit_regions.is_empty() {
-            return Some(active.pane_area);
-        }
-        active
+        if let Some(area) = active
             .hit_regions
             .iter()
             .rev()
             .copied()
             .find(|area| area_contains(area, position))
+        {
+            return Some(area);
+        }
+        if active.gesture.handler().positive_by_default {
+            return Some(active.pane_area);
+        }
+        None
     }
 
     fn pointer_gestures_at(

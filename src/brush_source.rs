@@ -17,20 +17,6 @@ impl<V> BrushSource<V> {
             BrushSource::Dynamic(func) => func(area, state),
         }
     }
-
-    pub(crate) fn resolve_to_stateless(&self, state: &V) -> BrushSource<()>
-    where
-        V: Clone + 'static,
-    {
-        match self {
-            BrushSource::Static(brush) => BrushSource::Static(brush.clone()),
-            BrushSource::Dynamic(func) => {
-                let func = func.clone();
-                let state = state.clone();
-                BrushSource::Dynamic(Rc::new(move |area, _| func(area, &state)))
-            }
-        }
-    }
 }
 
 impl<V> From<Brush> for BrushSource<V> {

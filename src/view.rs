@@ -252,7 +252,7 @@ impl<State: 'static> Drawable<State> {
         }
     }
 
-    pub fn capture(mut self, gesture: &Gesture<State>) -> Self {
+    pub fn include(mut self, gesture: &Gesture<State>) -> Self {
         self.gestures.push(GestureRegion {
             hit_region: GestureHitRegion::Include,
             gesture: gesture.clone(),
@@ -260,9 +260,9 @@ impl<State: 'static> Drawable<State> {
         self
     }
 
-    pub fn ignore(mut self, gesture: &Gesture<State>) -> Self {
+    pub fn occlude(mut self, gesture: &Gesture<State>) -> Self {
         self.gestures.push(GestureRegion {
-            hit_region: GestureHitRegion::Exclude,
+            hit_region: GestureHitRegion::Occlude,
             gesture: gesture.clone(),
         });
         self
@@ -363,6 +363,7 @@ fn map_gesture_handler<Parent: 'static, Sub: 'static>(
     GestureHandler {
         modifiers: gesture.modifiers,
         propagation: gesture.propagation,
+        positive_by_default: gesture.positive_by_default,
         kind: gesture.kind,
         interaction_handler: Rc::new(
             move |parent: &mut Parent, app: &mut PaneState, interaction: Interaction| {

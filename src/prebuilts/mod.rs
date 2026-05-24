@@ -1,5 +1,6 @@
 mod button;
 mod dropdown;
+mod scroll_feedback;
 mod scroller;
 mod slider;
 mod text_field;

@@ -376,14 +376,14 @@ fn click_capture_ignores_handlers_for_other_buttons() {
             rect(LEFT_TARGET)
                 .fill(TRANSPARENT)
                 .view()
-                .capture(&left_click)
+                .include(&left_click)
                 .build(app)
                 .width(80.)
                 .height(40.),
             rect(RIGHT_TARGET)
                 .fill(TRANSPARENT)
                 .view()
-                .capture(&right_click)
+                .include(&right_click)
                 .build(app)
                 .width(80.)
                 .height(40.),
@@ -473,6 +473,7 @@ fn scoped_gesture_click_uses_region_and_button_predicates() {
             });
         let empty = gesture::click(id!(ROOT, 1u64))
             .button(MouseButton::Left)
+            .anywhere()
             .run(|state: &mut State, _, event| {
                 if event.state == ClickPhase::Completed {
                     state.events.push("empty");
@@ -487,8 +488,8 @@ fn scoped_gesture_click_uses_region_and_button_predicates() {
             rect(A)
                 .fill(TRANSPARENT)
                 .view()
-                .capture(&target)
-                .ignore(&empty)
+                .include(&target)
+                .occlude(&empty)
                 .build(app)
                 .width(50.)
                 .height(50.)
@@ -496,8 +497,8 @@ fn scoped_gesture_click_uses_region_and_button_predicates() {
             rect(B)
                 .fill(TRANSPARENT)
                 .view()
-                .capture(&target)
-                .ignore(&empty)
+                .include(&target)
+                .occlude(&empty)
                 .build(app)
                 .width(50.)
                 .height(50.)
@@ -697,8 +698,8 @@ fn scoped_scroll_is_region_gated_but_key_is_not() {
             rect(A)
                 .fill(TRANSPARENT)
                 .view()
-                .capture(&scroll)
-                .capture(&key)
+                .include(&scroll)
+                .include(&key)
                 .build(app)
                 .width(100.)
                 .height(100.),
@@ -807,14 +808,14 @@ fn scoped_shared_token_can_mark_multiple_regions() {
             rect(A)
                 .fill(TRANSPARENT)
                 .view()
-                .capture(&click)
+                .include(&click)
                 .build(app)
                 .width(80.)
                 .height(40.),
             rect(B)
                 .fill(TRANSPARENT)
                 .view()
-                .capture(&click)
+                .include(&click)
                 .build(app)
                 .width(80.)
                 .height(40.),
@@ -958,6 +959,7 @@ fn click_outside_is_button_specific() {
     fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
         let outside = gesture::click(id!(LISTENER, 1u64))
             .button(MouseButton::Right)
+            .anywhere()
             .run(|state: &mut State, _, event| {
                 state.outside.push(event.state);
             });
@@ -967,7 +969,7 @@ fn click_outside_is_button_specific() {
                 rect(LISTENER)
                     .fill(TRANSPARENT)
                     .view()
-                    .ignore(&outside)
+                    .occlude(&outside)
                     .build(app)
                     .width(60.)
                     .height(40.),
@@ -999,6 +1001,51 @@ fn click_outside_is_button_specific() {
 }
 
 #[test]
+fn occluded_gesture_without_anywhere_has_no_default_region() {
+    #[derive(Default)]
+    struct State {
+        outside: usize,
+    }
+
+    const OCCLUDER: u64 = 33;
+    const TARGET: u64 = 34;
+
+    fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        let outside = gesture::click(id!(TARGET, 1u64)).run(|state: &mut State, _, event| {
+            if event.state == ClickPhase::Completed {
+                state.outside += 1;
+            }
+        });
+        row_spaced(
+            20.,
+            vec![
+                rect(OCCLUDER)
+                    .fill(TRANSPARENT)
+                    .view()
+                    .occlude(&outside)
+                    .build(app)
+                    .width(60.)
+                    .height(40.),
+                rect(TARGET)
+                    .fill(TRANSPARENT)
+                    .build(app)
+                    .width(60.)
+                    .height(40.),
+            ],
+        )
+    }
+
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+
+    let location = pane.location(TARGET).expect("target present");
+    pane.click(&mut state, location);
+
+    assert_eq!(state.outside, 0);
+}
+
+#[test]
 fn right_click_does_not_start_left_drag_handler() {
     #[derive(Default)]
     struct State {
@@ -1026,6 +1073,35 @@ fn right_click_does_not_start_left_drag_handler() {
 
     assert!(!state.slider.dragging);
     assert_eq!(state.slider.value, 0.);
+}
+
+#[test]
+fn slider_click_updates_value() {
+    #[derive(Default)]
+    struct State {
+        slider: SliderState,
+        changed: Option<f32>,
+    }
+
+    const SLIDER: u64 = 31;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        slider(SLIDER, binding!(state, State, slider))
+            .on_change(|state, _, value| state.changed = Some(value))
+            .build(app)
+            .width(100.)
+            .height(20.)
+    }
+
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+
+    let location = pane.location(SLIDER).expect("slider present");
+    assert!(pane.click(&mut state, location).is_empty());
+
+    assert!((state.slider.value - 0.5).abs() < 0.001);
+    assert!((state.changed.unwrap() - 0.5).abs() < 0.001);
 }
 
 #[test]
@@ -1184,6 +1260,635 @@ fn text_field_types_multiple_characters() {
     }
 
     assert_eq!(state.text.text, "hello");
+}
+
+#[test]
+fn text_field_keeps_horizontal_cursor_in_view_after_edit() {
+    #[derive(Default)]
+    struct State {
+        text: TextState,
+    }
+
+    const FIELD: u64 = 70;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        text_field(FIELD, binding!(state, State, text))
+            .build(app)
+            .width(60.)
+            .height(32.)
+    }
+
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+    let location = pane.location(FIELD).expect("field present");
+    pane.click(&mut state, location);
+    pane.redraw(&mut state, 300, 200, 1.0);
+
+    for _ in 0..30 {
+        pane.key_pressed(&mut state, "w");
+    }
+
+    let (frame, _) = pane.redraw(&mut state, 300, 200, 1.0);
+
+    assert!(state.text.viewport.x > 0.);
+    assert!(
+        frame
+            .items
+            .iter()
+            .any(|item| matches!(item, crate::render::RenderItem::PushLayer { .. }))
+    );
+}
+
+#[test]
+fn text_field_arrow_navigation_updates_viewport() {
+    struct State {
+        text: TextState,
+    }
+
+    const FIELD: u64 = 77;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        text_field(FIELD, binding!(state, State, text))
+            .build(app)
+            .width(60.)
+            .height(32.)
+    }
+
+    let mut state = State {
+        text: TextState::new("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww"),
+    };
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+    state.text.begin_editing(&mut pane.pane_state);
+    pane.redraw(&mut state, 300, 200, 1.0);
+
+    pane.key_pressed(&mut state, NamedKey::End);
+
+    assert!(state.text.viewport.x > 0.);
+}
+
+#[test]
+fn wrapped_text_field_keeps_vertical_cursor_in_view_after_edit() {
+    #[derive(Default)]
+    struct State {
+        text: TextState,
+    }
+
+    const FIELD: u64 = 71;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        text_field(FIELD, binding!(state, State, text))
+            .wrap()
+            .build(app)
+            .width(60.)
+            .height(32.)
+    }
+
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+    let location = pane.location(FIELD).expect("field present");
+    pane.click(&mut state, location);
+    pane.redraw(&mut state, 300, 200, 1.0);
+
+    for _ in 0..80 {
+        pane.key_pressed(&mut state, "w");
+    }
+
+    pane.redraw(&mut state, 300, 200, 1.0);
+
+    assert!(state.text.viewport.y > 0.);
+}
+
+#[test]
+fn text_field_horizontal_arrows_do_not_jitter_vertical_viewport() {
+    struct State {
+        text: TextState,
+    }
+
+    const FIELD: u64 = 93;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        text_field(FIELD, binding!(state, State, text))
+            .build(app)
+            .width(160.)
+            .height(28.)
+    }
+
+    let mut state = State {
+        text: TextState::new("one\ntwo\nthree"),
+    };
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+    state.text.begin_editing(&mut pane.pane_state);
+    pane.redraw(&mut state, 300, 200, 1.0);
+
+    pane.key_pressed(&mut state, NamedKey::ArrowLeft);
+    let y = state.text.viewport.y;
+
+    for key in [
+        NamedKey::ArrowRight,
+        NamedKey::ArrowLeft,
+        NamedKey::ArrowRight,
+        NamedKey::ArrowLeft,
+    ] {
+        pane.key_pressed(&mut state, key);
+        assert!(
+            (state.text.viewport.y - y).abs() < 0.01,
+            "viewport y changed from {y} to {}",
+            state.text.viewport.y
+        );
+    }
+}
+
+#[test]
+fn inactive_text_field_scrolls_viewport_without_editing() {
+    struct State {
+        text: TextState,
+    }
+
+    const FIELD: u64 = 72;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        text_field(FIELD, binding!(state, State, text))
+            .build(app)
+            .width(60.)
+            .height(32.)
+    }
+
+    let mut state = State {
+        text: TextState::new("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww"),
+    };
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+    let location = pane.location(FIELD).expect("field present");
+    pane.move_to(&mut state, location);
+
+    pane.scroll(&mut state, ScrollDelta { x: -80., y: 0. });
+
+    assert!(pane.pane_state.editor.is_none());
+    assert!(state.text.viewport.x > 0.);
+}
+
+#[test]
+fn inactive_text_field_keeps_non_overflow_text_in_field_width() {
+    struct State {
+        text: TextState,
+    }
+
+    const FIELD: u64 = 80;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        text_field(FIELD, binding!(state, State, text))
+            .build(app)
+            .width(160.)
+            .height(40.)
+    }
+
+    let mut state = State {
+        text: TextState::new("idle hue"),
+    };
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    let (frame, _) = pane.redraw(&mut state, 300, 200, 1.0);
+    let editor_area = pane.pane_state.editor_areas[&FIELD];
+    let layout_width = frame
+        .items
+        .iter()
+        .find_map(|item| match item {
+            crate::render::RenderItem::Layout { layout, .. } => Some(layout.width()),
+            _ => None,
+        })
+        .expect("text layout rendered");
+
+    assert!(
+        layout_width <= editor_area.width,
+        "layout_width={layout_width} editor_width={}",
+        editor_area.width
+    );
+}
+
+#[test]
+fn text_field_without_overflow_does_not_scroll_or_pulse_edges() {
+    struct State {
+        text: TextState,
+    }
+
+    const FIELD: u64 = 81;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        text_field(FIELD, binding!(state, State, text))
+            .build(app)
+            .width(160.)
+            .height(40.)
+    }
+
+    let mut state = State {
+        text: TextState::new("idle hue"),
+    };
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+    let location = pane.location(FIELD).expect("field present");
+    pane.move_to(&mut state, location);
+
+    pane.scroll(&mut state, ScrollDelta { x: -80., y: -80. });
+
+    assert_eq!(state.text.viewport, Default::default());
+    assert!(
+        !state
+            .text
+            .edge_feedback
+            .is_animating(std::time::Instant::now())
+    );
+}
+
+#[test]
+fn text_field_focus_does_not_move_text_layout() {
+    struct State {
+        text: TextState,
+    }
+
+    const FIELD: u64 = 82;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        text_field(FIELD, binding!(state, State, text))
+            .build(app)
+            .width(160.)
+            .height(40.)
+    }
+
+    fn text_origin(frame: &crate::render::Frame) -> (f64, f64) {
+        frame
+            .items
+            .iter()
+            .find_map(|item| match item {
+                crate::render::RenderItem::Layout { transform, .. } => {
+                    let coeffs = transform.as_coeffs();
+                    Some((coeffs[4], coeffs[5]))
+                }
+                _ => None,
+            })
+            .expect("text layout rendered")
+    }
+
+    let mut state = State {
+        text: TextState::new("idle hue"),
+    };
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    let (frame, _) = pane.redraw(&mut state, 300, 200, 1.0);
+    let before = text_origin(&frame);
+    let location = pane.location(FIELD).expect("field present");
+
+    pane.click(&mut state, location);
+    let (frame, _) = pane.redraw(&mut state, 300, 200, 1.0);
+    let after = text_origin(&frame);
+
+    assert!((before.0 - after.0).abs() < 0.01);
+    assert!((before.1 - after.1).abs() < 0.01);
+}
+
+#[test]
+fn text_field_click_uses_rendered_text_origin() {
+    struct State {
+        text: TextState,
+    }
+
+    const FIELD: u64 = 83;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        text_field(FIELD, binding!(state, State, text))
+            .build(app)
+            .width(180.)
+            .height(44.)
+    }
+
+    let mut state = State {
+        text: TextState::new("idle hue"),
+    };
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    let (frame, _) = pane.redraw(&mut state, 300, 200, 1.0);
+    let editor_area = pane.pane_state.editor_areas[&FIELD];
+    let origin = frame
+        .items
+        .iter()
+        .find_map(|item| match item {
+            crate::render::RenderItem::Layout { transform, .. } => {
+                let coeffs = transform.as_coeffs();
+                Some((coeffs[4], coeffs[5]))
+            }
+            _ => None,
+        })
+        .expect("text layout rendered");
+    let click_x = (origin.0 - 5.).max(editor_area.x as f64 + 1.);
+    let click_y = origin.1 + 5.;
+
+    pane.click(&mut state, Point::new(click_x, click_y));
+    pane.key_pressed(&mut state, "x");
+
+    assert_eq!(state.text.text, "xidle hue");
+}
+
+#[test]
+fn text_field_scroll_edge_feedback_pulses_at_limits() {
+    struct State {
+        text: TextState,
+    }
+
+    const FIELD: u64 = 78;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        text_field(FIELD, binding!(state, State, text))
+            .build(app)
+            .width(60.)
+            .height(32.)
+    }
+
+    let mut state = State {
+        text: TextState::new("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww"),
+    };
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+    let location = pane.location(FIELD).expect("field present");
+    pane.move_to(&mut state, location);
+
+    pane.scroll(&mut state, ScrollDelta { x: 80., y: 0. });
+
+    assert!(
+        state
+            .text
+            .edge_feedback
+            .is_animating(std::time::Instant::now())
+    );
+}
+
+#[test]
+fn empty_focused_text_field_cursor_uses_text_metrics() {
+    #[derive(Default)]
+    struct State {
+        text: TextState,
+    }
+
+    const FIELD: u64 = 79;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        text_field(FIELD, binding!(state, State, text))
+            .build(app)
+            .width(120.)
+            .height(100.)
+    }
+
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+    let location = pane.location(FIELD).expect("field present");
+    pane.click(&mut state, location);
+    let (frame, _) = pane.redraw(&mut state, 300, 200, 1.0);
+    let editor_area = pane.pane_state.editor_areas[&FIELD];
+    let cursor_area = frame
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            crate::render::RenderItem::Path { area, .. }
+                if area.width <= 2. && area.height > 1. =>
+            {
+                Some(*area)
+            }
+            _ => None,
+        })
+        .next()
+        .expect("cursor rendered");
+
+    assert!(cursor_area.height < editor_area.height * 0.5);
+}
+
+#[test]
+fn text_field_clicking_cursor_position_does_not_scroll_viewport() {
+    struct State {
+        text: TextState,
+    }
+
+    const FIELD: u64 = 73;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        text_field(FIELD, binding!(state, State, text))
+            .build(app)
+            .width(60.)
+            .height(32.)
+    }
+
+    let mut state = State {
+        text: TextState::new("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww"),
+    };
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+    let location = pane.location(FIELD).expect("field present");
+    pane.move_to(&mut state, location);
+    pane.scroll(&mut state, ScrollDelta { x: -80., y: 0. });
+    let scrolled_x = state.text.viewport.x;
+
+    pane.click(&mut state, location);
+
+    assert_eq!(state.text.viewport.x, scrolled_x);
+}
+
+#[test]
+fn text_field_viewport_allows_end_cursor_width() {
+    #[derive(Default)]
+    struct State {
+        text: TextState,
+    }
+
+    const FIELD: u64 = 74;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        text_field(FIELD, binding!(state, State, text))
+            .build(app)
+            .width(60.)
+            .height(32.)
+    }
+
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+    let location = pane.location(FIELD).expect("field present");
+    pane.click(&mut state, location);
+    pane.redraw(&mut state, 300, 200, 1.0);
+
+    for _ in 0..30 {
+        pane.key_pressed(&mut state, "w");
+    }
+
+    pane.redraw(&mut state, 300, 200, 1.0);
+    let editor_area = pane.pane_state.editor_areas[&FIELD];
+    let layout = state
+        .text
+        .editor
+        .editor
+        .layout(&mut pane.pane_state.font_cx, &mut pane.pane_state.layout_cx)
+        .clone();
+
+    assert!(state.text.viewport.x > (layout.width() - editor_area.width).max(0.));
+}
+
+#[test]
+fn text_field_trailing_spaces_keep_cursor_in_view() {
+    #[derive(Default)]
+    struct State {
+        text: TextState,
+    }
+
+    const FIELD: u64 = 84;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        text_field(FIELD, binding!(state, State, text))
+            .build(app)
+            .width(60.)
+            .height(32.)
+    }
+
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+    let location = pane.location(FIELD).expect("field present");
+    pane.click(&mut state, location);
+    pane.redraw(&mut state, 300, 200, 1.0);
+
+    for ch in ["w", "w", "w", "w", " ", " ", " ", " ", " ", " ", " ", " "] {
+        pane.key_pressed(&mut state, ch);
+    }
+
+    let (frame, _) = pane.redraw(&mut state, 300, 200, 1.0);
+    let editor_area = pane.pane_state.editor_areas[&FIELD];
+    let cursor_area = frame
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            crate::render::RenderItem::Path { area, .. }
+                if area.width <= 2. && area.height > 1. =>
+            {
+                Some(*area)
+            }
+            _ => None,
+        })
+        .next()
+        .expect("cursor rendered");
+
+    assert!(
+        cursor_area.x + cursor_area.width <= editor_area.x + editor_area.width + 0.01,
+        "cursor right={} editor right={} viewport={:?}",
+        cursor_area.x + cursor_area.width,
+        editor_area.x + editor_area.width,
+        state.text.viewport
+    );
+}
+
+#[test]
+fn inactive_centered_text_field_accounts_for_trailing_spaces() {
+    struct State {
+        text: TextState,
+    }
+
+    const FIELD: u64 = 92;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        text_field(FIELD, binding!(state, State, text))
+            .build(app)
+            .width(160.)
+            .height(40.)
+    }
+
+    fn text_metrics(text: &str) -> (f64, f32, f32) {
+        let mut state = State {
+            text: TextState::new(text),
+        };
+        let mut pane = test_pane(PaneBuilder::new("test", view));
+        let (frame, _) = pane.redraw(&mut state, 300, 200, 1.0);
+        frame
+            .items
+            .iter()
+            .find_map(|item| match item {
+                crate::render::RenderItem::Layout { layout, transform } => Some((
+                    transform.as_coeffs()[4],
+                    layout.width(),
+                    layout.full_width(),
+                )),
+                _ => None,
+            })
+            .expect("text layout rendered")
+    }
+
+    let (plain_x, plain_width, plain_full_width) = text_metrics("w");
+    let (padded_x, padded_width, padded_full_width) = text_metrics("w            ");
+
+    assert!(
+        padded_x < plain_x - 1.,
+        "padded_x={padded_x} plain_x={plain_x} padded_width={padded_width} plain_width={plain_width} padded_full_width={padded_full_width} plain_full_width={plain_full_width}"
+    );
+}
+
+#[test]
+fn text_field_drag_select_inside_viewport_does_not_scroll() {
+    struct State {
+        text: TextState,
+    }
+
+    const FIELD: u64 = 75;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        text_field(FIELD, binding!(state, State, text))
+            .build(app)
+            .width(80.)
+            .height(32.)
+    }
+
+    let mut state = State {
+        text: TextState::new("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww"),
+    };
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+    let location = pane.location(FIELD).expect("field present");
+    pane.move_to(&mut state, location);
+    pane.scroll(&mut state, ScrollDelta { x: -80., y: 0. });
+    let scrolled_x = state.text.viewport.x;
+
+    pane.drag(
+        &mut state,
+        location,
+        Point::new(location.x + 20., location.y),
+    );
+
+    assert_eq!(state.text.viewport.x, scrolled_x);
+}
+
+#[test]
+fn text_field_drag_select_past_viewport_edge_scrolls() {
+    struct State {
+        text: TextState,
+    }
+
+    const FIELD: u64 = 76;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        text_field(FIELD, binding!(state, State, text))
+            .build(app)
+            .width(80.)
+            .height(32.)
+    }
+
+    let mut state = State {
+        text: TextState::new("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww"),
+    };
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+    let location = pane.location(FIELD).expect("field present");
+
+    pane.drag(
+        &mut state,
+        location,
+        Point::new(location.x + 100., location.y),
+    );
+
+    assert!(state.text.viewport.x > 0.);
 }
 
 #[test]
@@ -1636,6 +2341,232 @@ fn text_state_begin_editing_focuses_matching_text_field() {
         pane.pane_state.editor.as_ref().map(|edit| edit.id),
         Some(FIELD)
     );
+}
+
+#[test]
+fn text_state_begin_editing_places_cursor_at_end_by_default() {
+    struct State {
+        text: TextState,
+    }
+
+    const FIELD: u64 = 86;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        text_field(FIELD, binding!(state, State, text))
+            .build(app)
+            .width(140.)
+            .height(40.)
+    }
+
+    let mut state = State {
+        text: TextState::new("hello"),
+    };
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+
+    state.text.begin_editing(&mut pane.pane_state);
+    pane.redraw(&mut state, 300, 200, 1.0);
+    pane.key_pressed(&mut state, "x");
+
+    assert_eq!(state.text.text, "hellox");
+}
+
+#[test]
+fn text_state_begin_editing_renders_caret_without_click() {
+    struct State {
+        text: TextState,
+    }
+
+    const FIELD: u64 = 89;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        text_field(FIELD, binding!(state, State, text))
+            .build(app)
+            .width(140.)
+            .height(40.)
+    }
+
+    let mut state = State {
+        text: TextState::new("hello"),
+    };
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+
+    state.text.begin_editing(&mut pane.pane_state);
+    let (frame, _) = pane.redraw(&mut state, 300, 200, 1.0);
+
+    assert!(
+        frame.items.iter().any(|item| matches!(
+            item,
+            crate::render::RenderItem::Path { area, .. }
+                if area.width <= 2. && area.height > 1.
+        )),
+        "programmatic focus should render a caret"
+    );
+}
+
+#[test]
+fn text_state_begin_editing_with_cursor_start_inserts_at_start() {
+    struct State {
+        text: TextState,
+    }
+
+    const FIELD: u64 = 87;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        text_field(FIELD, binding!(state, State, text))
+            .build(app)
+            .width(140.)
+            .height(40.)
+    }
+
+    let mut state = State {
+        text: TextState::new("hello"),
+    };
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+
+    state
+        .text
+        .begin_editing_with(&mut pane.pane_state, InitialSelection::Start);
+    pane.redraw(&mut state, 300, 200, 1.0);
+    pane.key_pressed(&mut state, "x");
+
+    assert_eq!(state.text.text, "xhello");
+}
+
+#[test]
+fn text_state_begin_editing_with_select_all_replaces_text() {
+    struct State {
+        text: TextState,
+    }
+
+    const FIELD: u64 = 88;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        text_field(FIELD, binding!(state, State, text))
+            .build(app)
+            .width(140.)
+            .height(40.)
+    }
+
+    let mut state = State {
+        text: TextState::new("hello"),
+    };
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+
+    state
+        .text
+        .begin_editing_with(&mut pane.pane_state, InitialSelection::All);
+    pane.redraw(&mut state, 300, 200, 1.0);
+    pane.key_pressed(&mut state, "x");
+
+    assert_eq!(state.text.text, "x");
+}
+
+#[test]
+fn text_state_begin_editing_refocuses_after_another_field_takes_focus() {
+    #[derive(Default)]
+    struct State {
+        a: TextState,
+        b: TextState,
+    }
+
+    const FIELD_A: u64 = 84;
+    const FIELD_B: u64 = 85;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        column(vec![
+            text_field(FIELD_A, binding!(state, State, a))
+                .build(app)
+                .width(140.)
+                .height(40.),
+            text_field(FIELD_B, binding!(state, State, b))
+                .build(app)
+                .width(140.)
+                .height(40.),
+        ])
+    }
+
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+
+    state.b.begin_editing(&mut pane.pane_state);
+    pane.redraw(&mut state, 300, 200, 1.0);
+    assert_eq!(
+        pane.pane_state.editor.as_ref().map(|edit| edit.id),
+        Some(FIELD_B)
+    );
+
+    state.a.begin_editing(&mut pane.pane_state);
+    pane.redraw(&mut state, 300, 200, 1.0);
+    assert_eq!(
+        pane.pane_state.editor.as_ref().map(|edit| edit.id),
+        Some(FIELD_A)
+    );
+
+    state.b.begin_editing(&mut pane.pane_state);
+    pane.redraw(&mut state, 300, 200, 1.0);
+    assert_eq!(
+        pane.pane_state.editor.as_ref().map(|edit| edit.id),
+        Some(FIELD_B)
+    );
+}
+
+#[test]
+fn text_state_begin_editing_defocuses_previous_field_in_same_redraw() {
+    #[derive(Default)]
+    struct State {
+        a: TextState,
+        b: TextState,
+    }
+
+    const FIELD_A: u64 = 90;
+    const FIELD_B: u64 = 91;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        column(vec![
+            text_field(FIELD_A, binding!(state, State, a))
+                .build(app)
+                .width(140.)
+                .height(40.),
+            text_field(FIELD_B, binding!(state, State, b))
+                .build(app)
+                .width(140.)
+                .height(40.),
+        ])
+    }
+
+    let mut state = State {
+        a: TextState::new("a"),
+        b: TextState::new("b"),
+    };
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+
+    state.a.begin_editing(&mut pane.pane_state);
+    pane.redraw(&mut state, 300, 200, 1.0);
+    state.b.begin_editing(&mut pane.pane_state);
+    let (frame, _) = pane.redraw(&mut state, 300, 200, 1.0);
+    let b_area = pane.pane_state.editor_areas[&FIELD_B];
+    let cursors: Vec<_> = frame
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            crate::render::RenderItem::Path { area, .. }
+                if area.width <= 2. && area.height > 1. =>
+            {
+                Some(*area)
+            }
+            _ => None,
+        })
+        .collect();
+
+    assert_eq!(cursors.len(), 1);
+    assert!(cursors[0].y >= b_area.y);
+    assert!(cursors[0].y <= b_area.y + b_area.height);
 }
 
 #[test]

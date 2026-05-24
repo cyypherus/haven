@@ -69,6 +69,17 @@ impl Editor {
         self.cursor_visible = true;
     }
 
+    pub(crate) fn focus_without_pointer_selection(
+        &mut self,
+        layout_context: &mut LayoutContext<Brush>,
+        font_context: &mut FontContext,
+    ) {
+        self.cursor_reset();
+        self.editor
+            .driver(font_context, layout_context)
+            .finish_compose();
+    }
+
     pub fn disable_blink(&mut self) {
         self.start_time = None;
     }

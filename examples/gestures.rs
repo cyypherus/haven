@@ -84,7 +84,7 @@ fn shared_regions<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<
                 .stroke(border(), Stroke::new(3.))
                 .corner_rounding(ROUNDING)
                 .view()
-                .capture(&shared)
+                .include(&shared)
                 .build(app)
                 .width(128.)
                 .height(128.)
@@ -94,7 +94,7 @@ fn shared_regions<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<
                 .stroke(border(), Stroke::new(3.))
                 .corner_rounding(ROUNDING)
                 .view()
-                .capture(&shared)
+                .include(&shared)
                 .build(app)
                 .width(128.)
                 .height(128.)
@@ -104,7 +104,7 @@ fn shared_regions<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<
                 .stroke(border(), Stroke::new(3.))
                 .corner_rounding(ROUNDING)
                 .view()
-                .ignore(&shared)
+                .occlude(&shared)
                 .gesture(gesture::click(id!()).button(MouseButton::Left).run(
                     |state: &mut State, _app, event| {
                         if event.state == ClickPhase::Completed {

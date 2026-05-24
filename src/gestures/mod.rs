@@ -161,6 +161,7 @@ pub(crate) enum GesturePropagation {
 pub(crate) struct GestureHandler<State: ?Sized> {
     pub(crate) modifiers: ModifierPredicate,
     pub(crate) propagation: GesturePropagation,
+    pub(crate) positive_by_default: bool,
     pub(crate) kind: GestureKind,
     pub(crate) interaction_handler: InteractionHandler<State, PaneState>,
 }
@@ -170,6 +171,7 @@ impl<State: ?Sized> Clone for GestureHandler<State> {
         Self {
             modifiers: self.modifiers.clone(),
             propagation: self.propagation,
+            positive_by_default: self.positive_by_default,
             kind: self.kind.clone(),
             interaction_handler: self.interaction_handler.clone(),
         }
@@ -181,6 +183,7 @@ impl<State: ?Sized> Debug for GestureHandler<State> {
         f.debug_struct("GestureHandler")
             .field("modifiers", &self.modifiers)
             .field("propagation", &self.propagation)
+            .field("positive_by_default", &self.positive_by_default)
             .field("kind", &self.kind)
             .finish()
     }
@@ -234,7 +237,7 @@ impl<State: ?Sized> Gesture<State> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum GestureHitRegion {
     Include,
-    Exclude,
+    Occlude,
 }
 
 pub(crate) struct GestureRegion<State: ?Sized> {
@@ -260,6 +263,7 @@ pub mod gesture {
             buttons: ButtonPredicate::any(),
             modifiers: ModifierPredicate::any(),
             propagation: GesturePropagation::Stop,
+            positive_by_default: false,
         }
     }
 
@@ -269,6 +273,7 @@ pub mod gesture {
             button: ButtonPredicate::any(),
             modifiers: ModifierPredicate::any(),
             propagation: GesturePropagation::Stop,
+            positive_by_default: false,
         }
     }
 
@@ -277,6 +282,7 @@ pub mod gesture {
             id: GestureId::new(id),
             modifiers: ModifierPredicate::any(),
             propagation: GesturePropagation::Stop,
+            positive_by_default: false,
         }
     }
 
@@ -285,6 +291,7 @@ pub mod gesture {
             id: GestureId::new(id),
             modifiers: ModifierPredicate::any(),
             propagation: GesturePropagation::Stop,
+            positive_by_default: false,
         }
     }
 
@@ -303,6 +310,7 @@ pub struct ClickGesture {
     buttons: ButtonPredicate,
     modifiers: ModifierPredicate,
     propagation: GesturePropagation,
+    positive_by_default: bool,
 }
 
 impl ClickGesture {
@@ -326,6 +334,11 @@ impl ClickGesture {
         self
     }
 
+    pub fn anywhere(mut self) -> Self {
+        self.positive_by_default = true;
+        self
+    }
+
     pub fn run<State: 'static>(
         self,
         f: impl Fn(&mut State, &mut PaneState, ClickEvent) + 'static,
@@ -335,6 +348,7 @@ impl ClickGesture {
             handler: GestureHandler {
                 modifiers: self.modifiers,
                 propagation: self.propagation,
+                positive_by_default: self.positive_by_default,
                 kind: GestureKind::Click {
                     buttons: self.buttons,
                 },
@@ -354,6 +368,7 @@ pub struct DragGesture {
     button: ButtonPredicate,
     modifiers: ModifierPredicate,
     propagation: GesturePropagation,
+    positive_by_default: bool,
 }
 
 impl DragGesture {
@@ -377,6 +392,11 @@ impl DragGesture {
         self
     }
 
+    pub fn anywhere(mut self) -> Self {
+        self.positive_by_default = true;
+        self
+    }
+
     pub fn run<State: 'static>(
         self,
         f: impl Fn(&mut State, &mut PaneState, DragPhase) + 'static,
@@ -386,6 +406,7 @@ impl DragGesture {
             handler: GestureHandler {
                 modifiers: self.modifiers,
                 propagation: self.propagation,
+                positive_by_default: self.positive_by_default,
                 kind: GestureKind::Drag {
                     button: self.button,
                 },
@@ -404,6 +425,7 @@ pub struct ScrollGesture {
     id: GestureId,
     modifiers: ModifierPredicate,
     propagation: GesturePropagation,
+    positive_by_default: bool,
 }
 
 impl ScrollGesture {
@@ -422,6 +444,11 @@ impl ScrollGesture {
         self
     }
 
+    pub fn anywhere(mut self) -> Self {
+        self.positive_by_default = true;
+        self
+    }
+
     pub fn run<State: 'static>(
         self,
         f: impl Fn(&mut State, &mut PaneState, ScrollDelta) + 'static,
@@ -431,6 +458,7 @@ impl ScrollGesture {
             handler: GestureHandler {
                 modifiers: self.modifiers,
                 propagation: self.propagation,
+                positive_by_default: self.positive_by_default,
                 kind: GestureKind::Scroll,
                 interaction_handler: Rc::new(move |state, app, interaction| {
                     let Interaction::Scroll(delta) = interaction else {
@@ -447,6 +475,7 @@ pub struct HoverGesture {
     id: GestureId,
     modifiers: ModifierPredicate,
     propagation: GesturePropagation,
+    positive_by_default: bool,
 }
 
 impl HoverGesture {
@@ -465,6 +494,11 @@ impl HoverGesture {
         self
     }
 
+    pub fn anywhere(mut self) -> Self {
+        self.positive_by_default = true;
+        self
+    }
+
     pub fn run<State: 'static>(
         self,
         f: impl Fn(&mut State, &mut PaneState, bool) + 'static,
@@ -474,6 +508,7 @@ impl HoverGesture {
             handler: GestureHandler {
                 modifiers: self.modifiers,
                 propagation: self.propagation,
+                positive_by_default: self.positive_by_default,
                 kind: GestureKind::Hover,
                 interaction_handler: Rc::new(move |state, app, interaction| {
                     let Interaction::Hover(hovered) = interaction else {
@@ -523,6 +558,7 @@ impl KeyGesture {
             handler: GestureHandler {
                 modifiers: self.modifiers,
                 propagation: self.propagation,
+                positive_by_default: false,
                 kind: GestureKind::Key { keys: self.keys },
                 interaction_handler: Rc::new(move |state, app, interaction| {
                     let Interaction::Key(key, phase) = interaction else {

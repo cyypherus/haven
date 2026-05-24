@@ -2,43 +2,34 @@ use crate::{
     DEFAULT_CORNER_ROUNDING, TRANSPARENT, gesture,
     pane::{PaneState, View},
     rect,
-    view::{BlendMode, Compositing, rounded_rect_path},
+    view::{Compositing, rounded_rect_path},
 };
 use backer::{
     Align, Area, Layout,
-    nodes::{column, draw, empty, stack, stack_aligned},
+    nodes::{column, draw, empty, stack},
 };
-use lilt::{Animated, Easing};
-use peniko::{Brush, Gradient};
 use std::time::Instant;
+
+use super::scroll_feedback::{ScrollEdge, ScrollEdgeFeedback, scroll_edge_glows};
 
 #[derive(Debug, Clone)]
 pub(crate) struct ScrollerState {
     pub(crate) engine: ScrollEngine,
     dt: f32,
     area: Area,
-    top_pulse: Animated<bool, Instant>,
-    bottom_pulse: Animated<bool, Instant>,
+    edge_feedback: ScrollEdgeFeedback,
 }
 
 impl Default for ScrollerState {
     fn default() -> Self {
-        let pulse = || {
-            Animated::new(false)
-                .duration(EDGE_PULSE_MS)
-                .easing(Easing::EaseOut)
-        };
         Self {
             engine: ScrollEngine::default(),
             dt: 0.,
             area: Area::default(),
-            top_pulse: pulse(),
-            bottom_pulse: pulse(),
+            edge_feedback: ScrollEdgeFeedback::default(),
         }
     }
 }
-
-const EDGE_PULSE_MS: f32 = 200.;
 
 impl ScrollerState {
     fn update<'a, State>(
@@ -57,10 +48,12 @@ impl ScrollerState {
             .update(available_area.height, area_changed, dt, &mut height_of);
         self.area = available_area;
         let now = Instant::now();
-        self.top_pulse.transition(edge_hit == EdgeHit::Top, now);
-        self.bottom_pulse
-            .transition(edge_hit == EdgeHit::Bottom, now);
-        self.top_pulse.in_progress(now) || self.bottom_pulse.in_progress(now)
+        match edge_hit {
+            EdgeHit::Top => self.edge_feedback.pulse(ScrollEdge::Top, now),
+            EdgeHit::Bottom => self.edge_feedback.pulse(ScrollEdge::Bottom, now),
+            EdgeHit::None => {}
+        }
+        self.edge_feedback.is_animating(now)
     }
 
     fn offset_total(&self) -> f32 {
@@ -71,12 +64,8 @@ impl ScrollerState {
         &self.engine.visible_window
     }
 
-    fn top_pulse_value(&self, now: Instant) -> f32 {
-        self.top_pulse.animate(|v| if v { 1. } else { 0. }, now)
-    }
-
-    fn bottom_pulse_value(&self, now: Instant) -> f32 {
-        self.bottom_pulse.animate(|v| if v { 1. } else { 0. }, now)
+    fn edge_feedback(&self) -> &ScrollEdgeFeedback {
+        &self.edge_feedback
     }
 }
 
@@ -93,40 +82,6 @@ fn cell_height<'a, State>(
             .unwrap_or(available_area.height)
     })
 }
-
-fn edge_glow<'a, State: 'static>(
-    ctx: &mut PaneState,
-    top: bool,
-    alpha: f32,
-) -> Layout<'a, View<State>, PaneState> {
-    if alpha <= 0.01 {
-        return empty();
-    }
-    let alpha = alpha.clamp(0., 1.) * EDGE_GLOW_MAX_ALPHA;
-    let align = if top { Align::Top } else { Align::Bottom };
-    let r = rect(crate::id!())
-        .fill(move |area: Area, _: &()| {
-            let y0 = area.y as f64;
-            let y1 = y0 + area.height as f64;
-            let (p1, p2) = if top {
-                ((0., y0), (0., y1))
-            } else {
-                ((0., y1), (0., y0))
-            };
-            Brush::Gradient(Gradient::new_linear(p1, p2).with_stops([
-                EDGE_GLOW_COLOR.with_alpha(alpha),
-                EDGE_GLOW_COLOR.with_alpha(0.),
-            ]))
-        })
-        .corner_rounding(0.)
-        .build(ctx)
-        .height(EDGE_GLOW_HEIGHT);
-    stack_aligned(align, vec![r]).expand_y()
-}
-
-const EDGE_GLOW_HEIGHT: f32 = 24.;
-const EDGE_GLOW_MAX_ALPHA: f32 = 0.35;
-const EDGE_GLOW_COLOR: crate::Color = crate::Color::WHITE;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 struct Element {
@@ -297,8 +252,7 @@ pub fn scroller<'a, State: 'static>(
             let offset_total = s.offset_total();
             let visible: Vec<Element> = s.visible_window().to_vec();
             let now = Instant::now();
-            let top_alpha = s.top_pulse_value(now);
-            let bottom_alpha = s.bottom_pulse_value(now);
+            let edge_feedback = s.edge_feedback().clone();
             ctx.scrollers.insert(id, s);
             let mut cells = Vec::new();
             for element in &visible {
@@ -309,12 +263,7 @@ pub fn scroller<'a, State: 'static>(
             let column_layout = column(cells).offset_y(offset_total).inert_y();
             stack(vec![
                 column_layout,
-                stack(vec![
-                    edge_glow::<State>(ctx, true, top_alpha),
-                    edge_glow::<State>(ctx, false, bottom_alpha),
-                ])
-                .expand_y()
-                .blend(BlendMode::Screen),
+                scroll_edge_glows::<State>(ctx, &edge_feedback, now),
             ])
             .align(Align::TopLeading)
             .expand_y()

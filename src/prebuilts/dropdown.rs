@@ -223,6 +223,7 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
 
         let close_click = gesture::click(crate::id!(id, 1u64))
             .button(MouseButton::Left)
+            .anywhere()
             .run({
                 let binding = binding.clone();
                 move |state: &mut State, _app, event| {
@@ -235,7 +236,7 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
                     });
                 }
             });
-        let outside_hover = gesture::hover(crate::id!(id, 2u64)).run({
+        let outside_hover = gesture::hover(crate::id!(id, 2u64)).anywhere().run({
             let binding = binding.clone();
             move |state: &mut State, _app, hovered| {
                 if hovered {
@@ -246,8 +247,8 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
         let interactive_bg = rect(crate::id!(id, 1u64))
             .fill(TRANSPARENT)
             .view()
-            .ignore(&close_click)
-            .ignore(&outside_hover)
+            .occlude(&close_click)
+            .occlude(&outside_hover)
             .build(ctx);
 
         let all_rows: Vec<_> = options

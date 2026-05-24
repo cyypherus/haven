@@ -591,9 +591,7 @@ fn panel_form<'a>(
                 .hint_text("Enter a task title...")
                 .align(Alignment::Start)
                 .enter_end_editing()
-                .build(app)
-                .width(360.)
-                .height(44.),
+                .build(app),
             row_spaced(
                 12.,
                 vec![
