@@ -40,8 +40,13 @@ impl ScrollerState {
         cell: &dyn Fn(usize, u64, &mut PaneState) -> Option<Layout<'a, View<State>, PaneState>>,
     ) -> bool {
         let area_changed = self.area != available_area;
-        let mut height_of =
-            |index: usize| cell_height::<State>(ctx, index, id, available_area, cell);
+        let mut height_of = |index: usize| {
+            cell(index, id, ctx).map(|mut layout| {
+                layout
+                    .min_height(available_area, ctx)
+                    .unwrap_or(available_area.height)
+            })
+        };
         let dt = std::mem::replace(&mut self.dt, 0.);
         let edge_hit = self
             .engine
@@ -55,32 +60,6 @@ impl ScrollerState {
         }
         self.edge_feedback.is_animating(now)
     }
-
-    fn offset_total(&self) -> f32 {
-        self.engine.offset + self.engine.compensated
-    }
-
-    fn visible_window(&self) -> &[Element] {
-        &self.engine.visible_window
-    }
-
-    fn edge_feedback(&self) -> &ScrollEdgeFeedback {
-        &self.edge_feedback
-    }
-}
-
-fn cell_height<'a, State>(
-    ctx: &mut PaneState,
-    index: usize,
-    id: u64,
-    available_area: Area,
-    cell: &dyn Fn(usize, u64, &mut PaneState) -> Option<Layout<'a, View<State>, PaneState>>,
-) -> Option<f32> {
-    cell(index, id, ctx).map(|mut layout| {
-        layout
-            .min_height(available_area, ctx)
-            .unwrap_or(available_area.height)
-    })
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -243,16 +222,27 @@ pub fn scroller<'a, State: 'static>(
 ) -> Layout<'a, View<State>, PaneState> {
     stack(vec![
         backing.unwrap_or(empty()),
+        rect(id)
+            .corner_rounding(DEFAULT_CORNER_ROUNDING)
+            .fill(TRANSPARENT)
+            .view()
+            .gesture(gesture::scroll(crate::id!(id, 1u64)).vertical().run(
+                move |_s: &mut State, app: &mut PaneState, dt| {
+                    let entry = app.scrollers.entry(id).or_default();
+                    entry.dt += dt.y * 0.5;
+                },
+            ))
+            .build(ctx),
         draw(move |area, ctx: &mut PaneState| {
             let mut s = ctx.scrollers.remove(&id).unwrap_or_default();
             let animating = s.update::<State>(area, ctx, id, &cell);
             if animating {
                 ctx.needs_redraw = true;
             }
-            let offset_total = s.offset_total();
-            let visible: Vec<Element> = s.visible_window().to_vec();
+            let offset_total = s.engine.offset + s.engine.compensated;
+            let visible: Vec<Element> = s.engine.visible_window.to_vec();
             let now = Instant::now();
-            let edge_feedback = s.edge_feedback().clone();
+            let edge_feedback = s.edge_feedback.clone();
             ctx.scrollers.insert(id, s);
             let mut cells = Vec::new();
             for element in &visible {
@@ -271,17 +261,6 @@ pub fn scroller<'a, State: 'static>(
         })
         .expand()
         .clipped(|a| rounded_rect_path(a, DEFAULT_CORNER_ROUNDING)),
-        rect(id)
-            .corner_rounding(DEFAULT_CORNER_ROUNDING)
-            .fill(TRANSPARENT)
-            .view()
-            .gesture(gesture::scroll(crate::id!(id, 1u64)).run(
-                move |_s: &mut State, app: &mut PaneState, dt| {
-                    let entry = app.scrollers.entry(id).or_default();
-                    entry.dt += dt.y * 0.5;
-                },
-            ))
-            .build(ctx),
     ])
 }
 
@@ -299,14 +278,6 @@ mod tests {
         engine.update(available, false, dt, &mut height_of);
     }
 
-    fn content_top(engine: &ScrollEngine, available: f32) -> f32 {
-        // In the scroller, cells are drawn via column(cells).offset_y(offset + compensated).
-        // column is center-aligned by default, so content y = area.y + (area.h - sum)/2 + offset_total.
-        // With offset = -(area.h - sum)/2, content y = area.y + compensated.
-        let _ = available;
-        engine.compensated
-    }
-
     #[test]
     fn short_content_does_not_scroll_down() {
         let mut engine = ScrollEngine::default();
@@ -316,7 +287,7 @@ mod tests {
         // scroll down
         step(&mut engine, 100., -50., &hs);
         assert_eq!(engine.compensated, 0., "short content must not scroll down");
-        assert_eq!(content_top(&engine, 100.), 0.);
+        assert_eq!(engine.compensated, 0.);
     }
 
     #[test]

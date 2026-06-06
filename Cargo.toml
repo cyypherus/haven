@@ -39,6 +39,11 @@ name = "gestures"
 path = "examples/gestures.rs"
 required-features = ["winit", "vello"]
 
+[[example]]
+name = "text_fields"
+path = "examples/text_fields.rs"
+required-features = ["winit", "vello"]
+
 [dependencies]
 backer = { git = "https://github.com/cyypherus/backer", branch = "main" }
 # backer = { path = "../backer" }

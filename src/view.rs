@@ -1,7 +1,9 @@
 use crate::gestures::{
-    Gesture, GestureHandler, GestureHitRegion, GestureRegion, Interaction,
+    EditInteraction, Gesture, GestureAreaComponent, GestureAreaOperation, GestureHandler,
+    Interaction,
+    regions::{area_rect, intersect},
 };
-use crate::pane::{PaneState, View, ViewKind};
+use crate::pane::{EditHandler, PaneState, View, ViewKind};
 use crate::primitives::{Image, PathData, Shadow, Svg, Text};
 use crate::{Binding, OwnedBinding};
 use backer::{Area, Layout, nodes::*};
@@ -103,10 +105,20 @@ pub enum BlendMode {
     Multiply,
 }
 
-impl BlendMode {
-    fn to_peniko(self) -> peniko::BlendMode {
+pub trait Compositing<'a, State> {
+    fn clipped(self, path: impl Fn(Area) -> BezPath + 'static) -> Self;
+    fn blend(self, mode: BlendMode) -> Self;
+    fn opacity(self, alpha: f32) -> Self;
+}
+
+impl<'a, State: 'static> Compositing<'a, State> for Layout<'a, View<State>, PaneState> {
+    fn clipped(self, path: impl Fn(Area) -> BezPath + 'static) -> Self {
+        wrap_layer(self, path, peniko::BlendMode::default(), 1.0, true)
+    }
+    fn blend(self, mode: BlendMode) -> Self {
         use peniko::{Compose, Mix};
-        match self {
+
+        let mode = match mode {
             BlendMode::Normal => peniko::BlendMode::default(),
             BlendMode::Additive => peniko::BlendMode {
                 mix: Mix::Normal,
@@ -120,22 +132,8 @@ impl BlendMode {
                 mix: Mix::Multiply,
                 compose: Compose::SrcOver,
             },
-        }
-    }
-}
-
-pub trait Compositing<'a, State> {
-    fn clipped(self, path: impl Fn(Area) -> BezPath + 'static) -> Self;
-    fn blend(self, mode: BlendMode) -> Self;
-    fn opacity(self, alpha: f32) -> Self;
-}
-
-impl<'a, State: 'static> Compositing<'a, State> for Layout<'a, View<State>, PaneState> {
-    fn clipped(self, path: impl Fn(Area) -> BezPath + 'static) -> Self {
-        wrap_layer(self, path, peniko::BlendMode::default(), 1.0)
-    }
-    fn blend(self, mode: BlendMode) -> Self {
-        wrap_layer(self, rect_path, mode.to_peniko(), 1.0)
+        };
+        wrap_layer(self, rect_path, mode, 1.0, false)
     }
     fn opacity(self, alpha: f32) -> Self {
         wrap_layer(
@@ -143,35 +141,86 @@ impl<'a, State: 'static> Compositing<'a, State> for Layout<'a, View<State>, Pane
             rect_path,
             peniko::BlendMode::default(),
             alpha.clamp(0., 1.),
+            false,
         )
     }
 }
 
-fn wrap_layer<'a, State>(
-    content: Layout<'a, View<State>, PaneState>,
+fn wrap_layer<'a, State: 'static>(
+    mut content: Layout<'a, View<State>, PaneState>,
     path: impl Fn(Area) -> BezPath + 'static,
     blend: peniko::BlendMode,
     alpha: f32,
+    clip_gestures: bool,
 ) -> Layout<'a, View<State>, PaneState> {
-    stack(vec![
-        draw(move |area, _| {
-            vec![View::draw(
-                Box::new(DrawableType::PushLayer {
+    draw(move |area, ctx| {
+        let mut views = Vec::new();
+        views.extend(
+            Drawable {
+                view_type: DrawableType::PushLayer {
                     path: path(area),
                     blend,
                     alpha,
-                }),
-                area,
-            )]
-        }),
-        content,
-        draw(|area, _| vec![View::draw(Box::new(DrawableType::PopLayer), area)]),
-    ])
+                },
+                gestures: Vec::new(),
+            }
+            .build(ctx)
+            .draw(area, ctx),
+        );
+        let child_views = content.draw(area, ctx);
+        if clip_gestures {
+            let clip_rect = area_rect(area);
+            views.extend(child_views.into_iter().map(move |view| {
+                match view.into_kind() {
+                    ViewKind::Draw {
+                        view,
+                        area,
+                        gestures,
+                    } => View(ViewKind::Draw {
+                        view,
+                        area,
+                        gestures: gestures
+                            .into_iter()
+                            .filter_map(|component| {
+                                let rect = component.rect.unwrap_or_else(|| area_rect(area));
+                                intersect(rect, clip_rect).map(|rect| GestureAreaComponent {
+                                    operation: component.operation,
+                                    gesture: component.gesture,
+                                    rect: Some(rect),
+                                })
+                            })
+                            .collect(),
+                    }),
+                    ViewKind::EditorArea {
+                        id,
+                        area,
+                        edit_handler,
+                    } => View(ViewKind::EditorArea {
+                        id,
+                        area,
+                        edit_handler,
+                    }),
+                    ViewKind::Empty => View::empty(),
+                }
+            }));
+        } else {
+            views.extend(child_views);
+        }
+        views.extend(
+            Drawable {
+                view_type: DrawableType::PopLayer,
+                gestures: Vec::new(),
+            }
+            .build(ctx)
+            .draw(area, ctx),
+        );
+        views
+    })
 }
 
 pub struct Drawable<State> {
     pub(crate) view_type: DrawableType,
-    gestures: Vec<GestureRegion<State>>,
+    gestures: Vec<GestureAreaComponent<State>>,
 }
 
 pub(crate) enum DrawableType {
@@ -208,20 +257,6 @@ impl Clone for DrawableType {
     }
 }
 
-impl DrawableType {
-    pub(crate) fn id(&self) -> Option<u64> {
-        match self {
-            DrawableType::Text(view) => Some(view.id),
-            DrawableType::Layout(_) => None,
-            DrawableType::Path(view) => Some(view.id),
-            DrawableType::Svg(view) => Some(view.id),
-            DrawableType::Image(view) => Some(view.id),
-            DrawableType::Shadow(view) => Some(view.id),
-            DrawableType::PushLayer { .. } | DrawableType::PopLayer => None,
-        }
-    }
-}
-
 impl<State: 'static> Drawable<State> {
     pub(crate) fn new(view_type: DrawableType) -> Self {
         Self {
@@ -253,25 +288,28 @@ impl<State: 'static> Drawable<State> {
     }
 
     pub fn include(mut self, gesture: &Gesture<State>) -> Self {
-        self.gestures.push(GestureRegion {
-            hit_region: GestureHitRegion::Include,
+        self.gestures.push(GestureAreaComponent {
+            operation: GestureAreaOperation::Include,
             gesture: gesture.clone(),
+            rect: None,
         });
         self
     }
 
     pub fn occlude(mut self, gesture: &Gesture<State>) -> Self {
-        self.gestures.push(GestureRegion {
-            hit_region: GestureHitRegion::Occlude,
+        self.gestures.push(GestureAreaComponent {
+            operation: GestureAreaOperation::Occlude,
             gesture: gesture.clone(),
+            rect: None,
         });
         self
     }
 
     pub fn gesture(mut self, gesture: Gesture<State>) -> Self {
-        self.gestures.push(GestureRegion {
-            hit_region: GestureHitRegion::Include,
+        self.gestures.push(GestureAreaComponent {
+            operation: GestureAreaOperation::Include,
             gesture,
+            rect: None,
         });
         self
     }
@@ -282,18 +320,32 @@ pub fn scope<'a, Parent: 'static, Sub: 'static>(
     binding: Binding<Parent, Sub>,
 ) -> Layout<'a, View<Parent>, PaneState> {
     let binding = Rc::new(binding);
-    map_scope(layout, move |parent, app, interaction, h| {
-        h(binding.get_mut(parent), app, interaction);
-    })
+    let gesture_binding = binding.clone();
+    map_scope(
+        layout,
+        move |parent, app, interaction, h| {
+            h(gesture_binding.get_mut(parent), app, interaction);
+        },
+        move |parent, app, event, h| {
+            h(binding.get_mut(parent), app, event);
+        },
+    )
 }
 
 pub fn owned_scope<'a, Parent: 'static, Sub: 'static>(
     layout: Layout<'a, View<Sub>, PaneState>,
     binding: OwnedBinding<Parent, Sub>,
 ) -> Layout<'a, View<Parent>, PaneState> {
-    map_scope(layout, move |parent, app, interaction, h| {
-        binding.update(parent, |sub| h(sub, app, interaction));
-    })
+    let gesture_binding = binding.clone();
+    map_scope(
+        layout,
+        move |parent, app, interaction, h| {
+            gesture_binding.update(parent, |sub| h(sub, app, interaction));
+        },
+        move |parent, app, event, h| {
+            binding.update(parent, |sub| h(sub, app, event));
+        },
+    )
 }
 
 fn map_scope<'a, Parent: 'static, Sub: 'static>(
@@ -304,6 +356,9 @@ fn map_scope<'a, Parent: 'static, Sub: 'static>(
         Interaction,
         &Rc<dyn Fn(&mut Sub, &mut PaneState, Interaction)>,
     ) + Clone
+    + 'static,
+    callback_f: impl Fn(&mut Parent, &mut PaneState, EditInteraction, &EditHandler<Sub>)
+    + Clone
     + 'static,
 ) -> Layout<'a, View<Parent>, PaneState> {
     layout.map(move |view| match view.into_kind() {
@@ -316,59 +371,49 @@ fn map_scope<'a, Parent: 'static, Sub: 'static>(
             area,
             gestures: gestures
                 .into_iter()
-                .map(|region| map_gesture_region(region, f.clone()))
+                .map(|component| GestureAreaComponent {
+                    operation: component.operation,
+                    rect: component.rect,
+                    gesture: component.gesture.map({
+                        let f = f.clone();
+                        move |gesture| {
+                            let handler = gesture.interaction_handler.clone();
+                            GestureHandler {
+                                modifiers: gesture.modifiers,
+                                propagation: gesture.propagation,
+                                positive_by_default: gesture.positive_by_default,
+                                kind: gesture.kind,
+                                interaction_handler: Rc::new(
+                                    move |parent: &mut Parent,
+                                          app: &mut PaneState,
+                                          interaction: Interaction| {
+                                        f(parent, app, interaction, &handler);
+                                    },
+                                ),
+                            }
+                        }
+                    }),
+                })
                 .collect(),
         }),
-        ViewKind::EditorArea(id, area, gestures) => View(ViewKind::EditorArea(
+        ViewKind::EditorArea {
             id,
             area,
-            gestures
-                .into_iter()
-                .map(|region| map_gesture_region(region, f.clone()))
-                .collect(),
-        )),
+            edit_handler,
+        } => View(ViewKind::EditorArea {
+            id,
+            area,
+            edit_handler: if let Some(edit_handler) = edit_handler {
+                Some(Rc::new({
+                    let callback_f = callback_f.clone();
+                    move |parent, app, edit| {
+                        callback_f(parent, app, edit, &edit_handler);
+                    }
+                }))
+            } else {
+                None
+            },
+        }),
         ViewKind::Empty => View::empty(),
     })
-}
-
-fn map_gesture_region<Parent: 'static, Sub: 'static>(
-    region: GestureRegion<Sub>,
-    f: impl Fn(
-        &mut Parent,
-        &mut PaneState,
-        Interaction,
-        &Rc<dyn Fn(&mut Sub, &mut PaneState, Interaction)>,
-    ) + Clone
-    + 'static,
-) -> GestureRegion<Parent> {
-    GestureRegion {
-        hit_region: region.hit_region,
-        gesture: region
-            .gesture
-            .map(|handler| map_gesture_handler(handler, f)),
-    }
-}
-
-fn map_gesture_handler<Parent: 'static, Sub: 'static>(
-    gesture: GestureHandler<Sub>,
-    f: impl Fn(
-        &mut Parent,
-        &mut PaneState,
-        Interaction,
-        &Rc<dyn Fn(&mut Sub, &mut PaneState, Interaction)>,
-    ) + Clone
-    + 'static,
-) -> GestureHandler<Parent> {
-    let handler = gesture.interaction_handler.clone();
-    GestureHandler {
-        modifiers: gesture.modifiers,
-        propagation: gesture.propagation,
-        positive_by_default: gesture.positive_by_default,
-        kind: gesture.kind,
-        interaction_handler: Rc::new(
-            move |parent: &mut Parent, app: &mut PaneState, interaction: Interaction| {
-                f(parent, app, interaction, &handler);
-            },
-        ),
-    }
 }

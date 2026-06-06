@@ -23,7 +23,6 @@ pub use platforms::winit;
 
 pub use backer::{Area, Layout, nodes::*};
 pub use brush_source::BrushSource;
-pub(crate) use gestures::GestureState;
 pub use gestures::{
     ButtonPredicate, ClickEvent, ClickLocation, ClickPhase, DragPhase, EditInteraction, Gesture,
     GestureId, KeyEvent, KeyPhase, KeyPredicate, ModifierPredicate, MouseButton, ScrollDelta,

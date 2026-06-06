@@ -1,4 +1,5 @@
 use backer::Area;
+use kurbo::Rect;
 
 use crate::{Key, Modifiers, PaneState, Point};
 pub use predicates::{ButtonPredicate, KeyPredicate, ModifierPredicate};
@@ -8,35 +9,7 @@ use std::{
 };
 
 mod predicates;
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct CapturedGesture {
-    pub(crate) id: GestureId,
-    pub(crate) area: Area,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct GestureCapturer {
-    pub(crate) clicks: Vec<CapturedGesture>,
-    pub(crate) drags: Vec<CapturedGesture>,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) enum GestureState {
-    None,
-    Pressing {
-        start: Point,
-        capturer: GestureCapturer,
-        button: MouseButton,
-        click_started: bool,
-    },
-    Dragging {
-        start: Point,
-        last_position: Point,
-        capturer: GestureCapturer,
-        button: MouseButton,
-    },
-}
+pub(crate) mod regions;
 
 #[derive(Debug, Clone, Copy)]
 pub enum DragPhase {
@@ -141,6 +114,19 @@ pub struct ScrollDelta {
     pub x: f32,
     pub y: f32,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ScrollAxes {
+    pub(crate) x: bool,
+    pub(crate) y: bool,
+}
+
+impl ScrollAxes {
+    pub(crate) const BOTH: Self = Self { x: true, y: true };
+    pub(crate) const HORIZONTAL: Self = Self { x: true, y: false };
+    pub(crate) const VERTICAL: Self = Self { x: false, y: true };
+}
+
 pub(crate) type InteractionHandler<T, U> = Rc<dyn Fn(&mut T, &mut U, Interaction)>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -194,7 +180,7 @@ pub(crate) enum GestureKind {
     Click { buttons: ButtonPredicate },
     Drag { button: ButtonPredicate },
     Hover,
-    Scroll,
+    Scroll { axes: ScrollAxes },
     Key { keys: KeyPredicate },
 }
 
@@ -235,21 +221,23 @@ impl<State: ?Sized> Gesture<State> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum GestureHitRegion {
+pub(crate) enum GestureAreaOperation {
     Include,
     Occlude,
 }
 
-pub(crate) struct GestureRegion<State: ?Sized> {
-    pub(crate) hit_region: GestureHitRegion,
+pub(crate) struct GestureAreaComponent<State: ?Sized> {
+    pub(crate) operation: GestureAreaOperation,
     pub(crate) gesture: Gesture<State>,
+    pub(crate) rect: Option<Rect>,
 }
 
-impl<State: ?Sized> Clone for GestureRegion<State> {
+impl<State: ?Sized> Clone for GestureAreaComponent<State> {
     fn clone(&self) -> Self {
         Self {
-            hit_region: self.hit_region,
+            operation: self.operation,
             gesture: self.gesture.clone(),
+            rect: self.rect,
         }
     }
 }
@@ -283,6 +271,7 @@ pub mod gesture {
             modifiers: ModifierPredicate::any(),
             propagation: GesturePropagation::Stop,
             positive_by_default: false,
+            axes: ScrollAxes::BOTH,
         }
     }
 
@@ -426,6 +415,7 @@ pub struct ScrollGesture {
     modifiers: ModifierPredicate,
     propagation: GesturePropagation,
     positive_by_default: bool,
+    axes: ScrollAxes,
 }
 
 impl ScrollGesture {
@@ -449,6 +439,16 @@ impl ScrollGesture {
         self
     }
 
+    pub fn horizontal(mut self) -> Self {
+        self.axes = ScrollAxes::HORIZONTAL;
+        self
+    }
+
+    pub fn vertical(mut self) -> Self {
+        self.axes = ScrollAxes::VERTICAL;
+        self
+    }
+
     pub fn run<State: 'static>(
         self,
         f: impl Fn(&mut State, &mut PaneState, ScrollDelta) + 'static,
@@ -459,7 +459,7 @@ impl ScrollGesture {
                 modifiers: self.modifiers,
                 propagation: self.propagation,
                 positive_by_default: self.positive_by_default,
-                kind: GestureKind::Scroll,
+                kind: GestureKind::Scroll { axes: self.axes },
                 interaction_handler: Rc::new(move |state, app, interaction| {
                     let Interaction::Scroll(delta) = interaction else {
                         return;
@@ -577,5 +577,406 @@ impl KeyGesture {
                 }),
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::*;
+
+    #[derive(Default)]
+    struct State {
+        clicks: usize,
+        other_clicks: usize,
+    }
+
+    const CLICK: u64 = 9010;
+    const OTHER_CLICK: u64 = 9011;
+
+    fn test_pane<State: 'static>(builder: PaneBuilder<State>) -> Pane<State> {
+        builder.build()
+    }
+
+    fn click() -> Gesture<State> {
+        gesture::click(CLICK).run(|state: &mut State, _, event| {
+            if event.state == ClickPhase::Completed {
+                state.clicks += 1;
+            }
+        })
+    }
+
+    fn other_click() -> Gesture<State> {
+        gesture::click(OTHER_CLICK).run(|state: &mut State, _, event| {
+            if event.state == ClickPhase::Completed {
+                state.other_clicks += 1;
+            }
+        })
+    }
+
+    fn click_target(pane: &mut Pane<State>, state: &mut State, id: u64) {
+        let point = pane.location(id).expect("target present");
+        pane.click(state, point);
+    }
+
+    #[test]
+    fn regions_can_be_added() {
+        const A: u64 = 9020;
+        const B: u64 = 9021;
+
+        fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+            let click = click();
+            row(vec![
+                rect(A)
+                    .fill(TRANSPARENT)
+                    .view()
+                    .include(&click)
+                    .build(app)
+                    .width(80.)
+                    .height(40.),
+                rect(B)
+                    .fill(TRANSPARENT)
+                    .view()
+                    .include(&click)
+                    .build(app)
+                    .width(80.)
+                    .height(40.),
+            ])
+        }
+
+        let mut state = State::default();
+        let mut pane = test_pane(PaneBuilder::new("test", view));
+        pane.redraw(&mut state, 300, 200, 1.0);
+
+        click_target(&mut pane, &mut state, A);
+        click_target(&mut pane, &mut state, B);
+
+        assert_eq!(state.clicks, 2);
+    }
+
+    #[test]
+    fn added_regions_can_be_occluded() {
+        const A: u64 = 9030;
+        const B: u64 = 9031;
+        const C: u64 = 9032;
+
+        fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+            let click = click();
+            stack_aligned(
+                Align::TopLeading,
+                vec![
+                    rect(A)
+                        .fill(TRANSPARENT)
+                        .view()
+                        .include(&click)
+                        .build(app)
+                        .width(100.)
+                        .height(60.),
+                    rect(B)
+                        .fill(TRANSPARENT)
+                        .view()
+                        .include(&click)
+                        .build(app)
+                        .width(100.)
+                        .height(60.)
+                        .offset_x(100.),
+                    rect(C)
+                        .fill(TRANSPARENT)
+                        .view()
+                        .occlude(&click)
+                        .build(app)
+                        .width(40.)
+                        .height(60.)
+                        .offset_x(130.),
+                ],
+            )
+            .width(200.)
+            .height(60.)
+        }
+
+        let mut state = State::default();
+        let mut pane = test_pane(PaneBuilder::new("test", view));
+        pane.redraw(&mut state, 300, 200, 1.0);
+
+        click_target(&mut pane, &mut state, A);
+        let b = pane.location(B).expect("b present");
+        pane.click(&mut state, Point::new(b.x - 45., b.y));
+        click_target(&mut pane, &mut state, C);
+
+        assert_eq!(state.clicks, 2);
+    }
+
+    #[test]
+    fn region_can_have_multiple_occlusions() {
+        const A: u64 = 9040;
+        const B: u64 = 9041;
+        const C: u64 = 9042;
+
+        fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+            let click = click();
+            stack_aligned(
+                Align::TopLeading,
+                vec![
+                    rect(A)
+                        .fill(TRANSPARENT)
+                        .view()
+                        .include(&click)
+                        .build(app)
+                        .width(180.)
+                        .height(60.),
+                    rect(B)
+                        .fill(TRANSPARENT)
+                        .view()
+                        .occlude(&click)
+                        .build(app)
+                        .width(30.)
+                        .height(60.)
+                        .offset_x(20.),
+                    rect(C)
+                        .fill(TRANSPARENT)
+                        .view()
+                        .occlude(&click)
+                        .build(app)
+                        .width(30.)
+                        .height(60.)
+                        .offset_x(130.),
+                ],
+            )
+            .width(180.)
+            .height(60.)
+        }
+
+        let mut state = State::default();
+        let mut pane = test_pane(PaneBuilder::new("test", view));
+        pane.redraw(&mut state, 300, 200, 1.0);
+
+        click_target(&mut pane, &mut state, A);
+        click_target(&mut pane, &mut state, B);
+        click_target(&mut pane, &mut state, C);
+
+        assert_eq!(state.clicks, 1);
+    }
+
+    #[test]
+    fn added_regions_can_be_clipped() {
+        const A: u64 = 9050;
+        const B: u64 = 9051;
+
+        fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+            let click = click();
+            row(vec![
+                rect(A)
+                    .fill(TRANSPARENT)
+                    .view()
+                    .include(&click)
+                    .build(app)
+                    .width(80.)
+                    .height(100.),
+                rect(B)
+                    .fill(TRANSPARENT)
+                    .view()
+                    .include(&click)
+                    .build(app)
+                    .width(80.)
+                    .height(100.),
+            ])
+            .clipped(rect_path)
+            .width(160.)
+            .height(50.)
+        }
+
+        let mut state = State::default();
+        let mut pane = test_pane(PaneBuilder::new("test", view));
+        pane.redraw(&mut state, 300, 200, 1.0);
+
+        let a = pane.location(A).expect("a present");
+        let b = pane.location(B).expect("b present");
+        pane.click(&mut state, Point::new(a.x, a.y - 25.));
+        pane.click(&mut state, Point::new(b.x, b.y - 25.));
+        pane.click(&mut state, Point::new(a.x, a.y + 25.));
+
+        assert_eq!(state.clicks, 2);
+    }
+
+    #[test]
+    fn added_and_occluded_regions_can_be_clipped() {
+        const A: u64 = 9060;
+        const B: u64 = 9061;
+        const C: u64 = 9062;
+
+        fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+            let click = click();
+            stack_aligned(
+                Align::TopLeading,
+                vec![
+                    rect(A)
+                        .fill(TRANSPARENT)
+                        .view()
+                        .include(&click)
+                        .build(app)
+                        .width(100.)
+                        .height(100.),
+                    rect(B)
+                        .fill(TRANSPARENT)
+                        .view()
+                        .include(&click)
+                        .build(app)
+                        .width(100.)
+                        .height(100.)
+                        .offset_x(100.),
+                    rect(C)
+                        .fill(TRANSPARENT)
+                        .view()
+                        .occlude(&click)
+                        .build(app)
+                        .width(40.)
+                        .height(100.)
+                        .offset_x(130.),
+                ],
+            )
+            .clipped(rect_path)
+            .width(200.)
+            .height(50.)
+        }
+
+        let mut state = State::default();
+        let mut pane = test_pane(PaneBuilder::new("test", view));
+        pane.redraw(&mut state, 300, 200, 1.0);
+
+        let a = pane.location(A).expect("a present");
+        let b = pane.location(B).expect("b present");
+        let c = pane.location(C).expect("c present");
+        pane.click(&mut state, Point::new(a.x, a.y - 25.));
+        pane.click(&mut state, Point::new(b.x - 45., b.y - 25.));
+        pane.click(&mut state, Point::new(c.x, c.y - 25.));
+        pane.click(&mut state, Point::new(a.x, a.y + 25.));
+
+        assert_eq!(state.clicks, 2);
+    }
+
+    #[test]
+    fn multiply_occluded_region_can_be_clipped() {
+        const A: u64 = 9070;
+        const B: u64 = 9071;
+        const C: u64 = 9072;
+
+        fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+            let click = click();
+            stack_aligned(
+                Align::TopLeading,
+                vec![
+                    rect(A)
+                        .fill(TRANSPARENT)
+                        .view()
+                        .include(&click)
+                        .build(app)
+                        .width(180.)
+                        .height(100.),
+                    rect(B)
+                        .fill(TRANSPARENT)
+                        .view()
+                        .occlude(&click)
+                        .build(app)
+                        .width(30.)
+                        .height(100.)
+                        .offset_x(20.),
+                    rect(C)
+                        .fill(TRANSPARENT)
+                        .view()
+                        .occlude(&click)
+                        .build(app)
+                        .width(30.)
+                        .height(100.)
+                        .offset_x(130.),
+                ],
+            )
+            .clipped(rect_path)
+            .width(180.)
+            .height(50.)
+        }
+
+        let mut state = State::default();
+        let mut pane = test_pane(PaneBuilder::new("test", view));
+        pane.redraw(&mut state, 300, 200, 1.0);
+
+        let a = pane.location(A).expect("a present");
+        let b = pane.location(B).expect("b present");
+        let c = pane.location(C).expect("c present");
+        pane.click(&mut state, Point::new(a.x, a.y - 25.));
+        pane.click(&mut state, Point::new(b.x, b.y - 25.));
+        pane.click(&mut state, Point::new(c.x, c.y - 25.));
+        pane.click(&mut state, Point::new(a.x, a.y + 25.));
+
+        assert_eq!(state.clicks, 1);
+    }
+
+    #[test]
+    fn overlapping_includes_for_one_gesture_fire_once() {
+        const A: u64 = 9080;
+        const B: u64 = 9081;
+
+        fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+            let click = click();
+            stack(vec![
+                rect(A)
+                    .fill(TRANSPARENT)
+                    .view()
+                    .include(&click)
+                    .build(app)
+                    .width(80.)
+                    .height(80.),
+                rect(B)
+                    .fill(TRANSPARENT)
+                    .view()
+                    .include(&click)
+                    .build(app)
+                    .width(80.)
+                    .height(80.),
+            ])
+        }
+
+        let mut state = State::default();
+        let mut pane = test_pane(PaneBuilder::new("test", view));
+        pane.redraw(&mut state, 300, 200, 1.0);
+
+        click_target(&mut pane, &mut state, A);
+
+        assert_eq!(state.clicks, 1);
+    }
+
+    #[test]
+    fn occlusion_only_affects_the_matching_gesture() {
+        const A: u64 = 9090;
+        const B: u64 = 9091;
+
+        fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+            let click = click();
+            let other_click = other_click();
+            stack(vec![
+                rect(A)
+                    .fill(TRANSPARENT)
+                    .view()
+                    .include(&click)
+                    .include(&other_click)
+                    .build(app)
+                    .width(80.)
+                    .height(80.),
+                rect(B)
+                    .fill(TRANSPARENT)
+                    .view()
+                    .occlude(&click)
+                    .build(app)
+                    .width(80.)
+                    .height(80.),
+            ])
+        }
+
+        let mut state = State::default();
+        let mut pane = test_pane(PaneBuilder::new("test", view));
+        pane.redraw(&mut state, 300, 200, 1.0);
+
+        click_target(&mut pane, &mut state, B);
+
+        assert_eq!(state.clicks, 0);
+        assert_eq!(state.other_clicks, 1);
     }
 }

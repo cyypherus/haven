@@ -1,24 +1,26 @@
 use crate::gestures::{
-    CapturedGesture, ClickEvent, ClickLocation, Gesture, GestureCapturer, GestureHitRegion,
-    GestureId, GestureKind, GesturePropagation, GestureRegion, Interaction, ScrollDelta,
+    ClickEvent, ClickLocation, EditInteraction, Gesture, GestureAreaComponent,
+    GestureAreaOperation, GestureId, GestureKind, GesturePropagation, Interaction, ScrollDelta,
+    regions::{area_rect, subtract, valid_rect},
 };
+use crate::prebuilts::TextEditCommand;
 use crate::render::{Frame, RenderItem};
 
 use crate::primitives::TextLayout;
-use crate::utils::area_contains;
 use crate::view::DrawableType;
-use crate::{
-    ClickPhase, DragPhase, GestureState, Key, KeyPhase, Modifiers, MouseButton, Point, RUBIK_FONT,
-};
+use crate::{ClickPhase, DragPhase, Key, KeyPhase, Modifiers, MouseButton, Point, RUBIK_FONT};
 use backer::{Area, Layout};
+use kurbo::Rect;
 use parley::fontique::Blob;
 use parley::fontique::FontInfoOverride;
 use parley::{FontContext, LayoutContext};
 use peniko::{self, Brush, Color};
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 use std::sync::Arc;
 
 type FontEntry = (Arc<Vec<u8>>, Option<String>);
+pub(crate) type EditHandler<State> = Rc<dyn Fn(&mut State, &mut PaneState, EditInteraction)>;
 
 type ViewFn<State> = for<'a> fn(&'a State, &mut PaneState) -> Layout<'a, View<State>, PaneState>;
 
@@ -69,6 +71,7 @@ pub struct Pane<State> {
     gestures: Vec<ActiveGesture<State>>,
     pressed_buttons: Vec<MouseButton>,
     pub(crate) elements: HashMap<u64, Area>,
+    edit_handlers: HashMap<u64, EditHandler<State>>,
     hovered: HashSet<GestureId>,
     cursor_position: Option<Point>,
     gesture_state: GestureState,
@@ -82,18 +85,46 @@ pub struct Pane<State> {
 
 struct ActiveGesture<State> {
     gesture: Gesture<State>,
-    pane_area: Area,
-    hit_regions: Vec<Area>,
-    occluded_regions: Vec<Area>,
+    hit_rect: Rect,
+    local_area: Area,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CapturedGesture {
+    id: GestureId,
+    local_area: Area,
+    hit_rect: Rect,
+}
+
+#[derive(Debug, Clone)]
+struct GestureCapturer {
+    clicks: Vec<CapturedGesture>,
+    drags: Vec<CapturedGesture>,
+}
+
+#[derive(Debug, Clone)]
+enum GestureState {
+    None,
+    Pressing {
+        start: Point,
+        capturer: GestureCapturer,
+        button: MouseButton,
+        click_started: bool,
+    },
+    Dragging {
+        start: Point,
+        last_position: Point,
+        capturer: GestureCapturer,
+        button: MouseButton,
+    },
 }
 
 impl<State> Clone for ActiveGesture<State> {
     fn clone(&self) -> Self {
         Self {
             gesture: self.gesture.clone(),
-            pane_area: self.pane_area,
-            hit_regions: self.hit_regions.clone(),
-            occluded_regions: self.occluded_regions.clone(),
+            hit_rect: self.hit_rect,
+            local_area: self.local_area,
         }
     }
 }
@@ -231,8 +262,7 @@ pub struct PaneState {
     pub(crate) font_cx: FontContext,
     pub(crate) layout_cx: LayoutContext<Brush>,
     pub(crate) scale_factor: f64,
-    pub(crate) editor: Option<EditState>,
-    text_edit_requests: HashMap<u64, (Option<bool>, u64)>,
+    text_editing: TextEditing,
     pub(crate) editor_areas: HashMap<u64, Area>,
     pub(crate) scrollers: HashMap<u64, crate::prebuilts::ScrollerState>,
     pub(crate) needs_redraw: bool,
@@ -248,9 +278,13 @@ pub(crate) enum ViewKind<State: ?Sized> {
     Draw {
         view: Box<DrawableType>,
         area: Area,
-        gestures: Vec<GestureRegion<State>>,
+        gestures: Vec<GestureAreaComponent<State>>,
     },
-    EditorArea(u64, Area, Vec<GestureRegion<State>>),
+    EditorArea {
+        id: u64,
+        area: Area,
+        edit_handler: Option<EditHandler<State>>,
+    },
     Empty,
 }
 
@@ -263,8 +297,16 @@ impl<State: ?Sized> View<State> {
         })
     }
 
-    pub(crate) fn editor_area(id: u64, area: Area) -> Self {
-        Self(ViewKind::EditorArea(id, area, Vec::new()))
+    pub(crate) fn editor_area(
+        id: u64,
+        area: Area,
+        edit_handler: Option<EditHandler<State>>,
+    ) -> Self {
+        Self(ViewKind::EditorArea {
+            id,
+            area,
+            edit_handler,
+        })
     }
 
     pub(crate) fn empty() -> Self {
@@ -276,13 +318,28 @@ impl<State: ?Sized> View<State> {
     }
 }
 
-pub(crate) struct EditState {
-    pub(crate) id: u64,
+#[derive(Default)]
+struct TextEditing {
+    focused_field: Option<u64>,
+    text_edit_command_revision: u64,
+    applied_text_edit_command_revision: u64,
+    lifecycle_events: Vec<(u64, EditInteraction)>,
 }
 
-impl Clone for EditState {
-    fn clone(&self) -> Self {
-        EditState { id: self.id }
+impl TextEditing {
+    fn focus_field(&mut self, field: Option<u64>) -> bool {
+        if self.focused_field == field {
+            return false;
+        }
+        if let Some(focused_field) = self.focused_field {
+            self.lifecycle_events
+                .push((focused_field, EditInteraction::End));
+        }
+        self.focused_field = field;
+        if let Some(field) = field {
+            self.lifecycle_events.push((field, EditInteraction::Start));
+        }
+        true
     }
 }
 
@@ -296,29 +353,49 @@ impl PaneState {
     }
 
     pub fn end_editing(&mut self) {
-        if self.editor.is_some() {
-            self.editor = None;
+        self.text_editing.focus_field(None);
+    }
+
+    pub(crate) fn begin_editing(&mut self, id: u64) -> bool {
+        self.text_editing.focus_field(Some(id))
+    }
+
+    pub(crate) fn next_text_edit_command_revision(&mut self) -> u64 {
+        self.text_editing.text_edit_command_revision =
+            self.text_editing.text_edit_command_revision.wrapping_add(1);
+        if self.text_editing.text_edit_command_revision == 0 {
+            self.text_editing.text_edit_command_revision = 1;
         }
+        self.text_editing.text_edit_command_revision
     }
 
-    pub(crate) fn begin_editing(&mut self, id: u64) {
-        self.editor = Some(EditState { id });
-    }
-
-    pub(crate) fn sync_text_edit_request(&mut self, id: u64, editing: Option<bool>, token: u64) {
-        let Some(editing) = editing else {
+    pub(crate) fn apply_text_edit_command(&mut self, id: u64, command: Option<TextEditCommand>) {
+        let Some(command) = command else {
             return;
         };
-        if self.text_edit_requests.get(&id).copied() == Some((Some(editing), token)) {
+        let revision = match command {
+            TextEditCommand::Focus(revision) | TextEditCommand::End(revision) => revision,
+        };
+        if revision != self.text_editing.text_edit_command_revision
+            || revision == self.text_editing.applied_text_edit_command_revision
+        {
             return;
         }
-
-        if editing {
-            self.begin_editing(id);
-        } else if self.editor.as_ref().map(|editor| editor.id) == Some(id) {
-            self.end_editing();
+        match command {
+            TextEditCommand::Focus(_) => {
+                self.text_editing.focus_field(Some(id));
+            }
+            TextEditCommand::End(_) => {
+                if self.text_editing.focused_field == Some(id) {
+                    self.text_editing.focus_field(None);
+                }
+            }
         }
-        self.text_edit_requests.insert(id, (Some(editing), token));
+        self.text_editing.applied_text_edit_command_revision = revision;
+    }
+
+    pub(crate) fn text_field_is_focused(&self, id: u64) -> bool {
+        self.text_editing.focused_field == Some(id)
     }
 
     pub fn redraw(&mut self) {
@@ -370,6 +447,7 @@ impl<State: 'static> Pane<State> {
             gestures: Vec::new(),
             pressed_buttons: Vec::new(),
             elements: HashMap::new(),
+            edit_handlers: HashMap::new(),
             hovered: HashSet::new(),
             cursor_position: None,
             gesture_state: GestureState::None,
@@ -378,8 +456,7 @@ impl<State: 'static> Pane<State> {
                 font_cx: FontContext::new(),
                 layout_cx: LayoutContext::new(),
                 scale_factor: 1.,
-                editor: None,
-                text_edit_requests: HashMap::new(),
+                text_editing: TextEditing::default(),
                 editor_areas: HashMap::new(),
                 scrollers: HashMap::new(),
                 needs_redraw: false,
@@ -433,38 +510,26 @@ impl<State: 'static> Pane<State> {
 
     pub(crate) fn wake(&mut self, state: &mut State) -> Vec<PaneEffect> {
         (self.on_wake)(state, &mut self.pane_state);
-        std::mem::take(&mut self.pane_state.effects)
+        self.dispatch_text_edit_lifecycle_events(state);
+        self.take_effects()
     }
 
-    fn register_gesture_regions(
-        &mut self,
-        pane_area: Area,
-        region: Area,
-        regions: Vec<GestureRegion<State>>,
-    ) {
-        for gesture_region in regions {
-            let id = gesture_region.gesture.id();
-            let index = if let Some(index) = self
-                .gestures
-                .iter()
-                .position(|active| active.gesture.id() == id)
-            {
-                index
-            } else {
-                self.gestures.push(ActiveGesture {
-                    gesture: gesture_region.gesture.clone(),
-                    pane_area,
-                    hit_regions: Vec::new(),
-                    occluded_regions: Vec::new(),
-                });
-                self.gestures.len() - 1
-            };
-            let active = &mut self.gestures[index];
-            match gesture_region.hit_region {
-                GestureHitRegion::Include => active.hit_regions.push(region),
-                GestureHitRegion::Occlude => active.occluded_regions.push(region),
+    fn dispatch_text_edit_lifecycle_events(&mut self, state: &mut State) {
+        loop {
+            let edits = std::mem::take(&mut self.pane_state.text_editing.lifecycle_events);
+            if edits.is_empty() {
+                return;
+            }
+            for (id, edit) in edits {
+                if let Some(handler) = self.edit_handlers.get(&id).cloned() {
+                    handler(state, &mut self.pane_state, edit);
+                }
             }
         }
+    }
+
+    fn take_effects(&mut self) -> Vec<PaneEffect> {
+        std::mem::take(&mut self.pane_state.effects)
     }
 
     pub fn redraw(
@@ -494,6 +559,7 @@ impl<State: 'static> Pane<State> {
 
         self.gestures.clear();
         self.elements.clear();
+        self.edit_handlers.clear();
         self.pane_state.scale_factor = scale_factor;
 
         let view = self.view;
@@ -512,25 +578,41 @@ impl<State: 'static> Pane<State> {
             updated_active_drag || std::mem::take(&mut self.pane_state.needs_redraw);
 
         let mut items = Vec::new();
+        let mut gesture_area_components = Vec::new();
 
         for item in draw_items {
             match item.into_kind() {
-                ViewKind::EditorArea(id, area, gestures) => {
+                ViewKind::EditorArea {
+                    id,
+                    area,
+                    edit_handler,
+                } => {
                     self.elements.insert(id, area);
                     self.pane_state.editor_areas.insert(id, area);
-                    self.register_gesture_regions(pane_area, area, gestures);
+                    if let Some(edit_handler) = edit_handler {
+                        self.edit_handlers.insert(id, edit_handler);
+                    }
                 }
                 ViewKind::Draw {
                     view,
                     area,
                     gestures,
                 } => {
-                    let id = view.id();
+                    let id = match &*view {
+                        DrawableType::Text(view) => Some(view.id),
+                        DrawableType::Layout(_) => None,
+                        DrawableType::Path(view) => Some(view.id),
+                        DrawableType::Svg(view) => Some(view.id),
+                        DrawableType::Image(view) => Some(view.id),
+                        DrawableType::Shadow(view) => Some(view.id),
+                        DrawableType::PushLayer { .. } | DrawableType::PopLayer => None,
+                    };
                     let draw_area = area;
                     if let Some(id) = id {
                         self.elements.insert(id, draw_area);
                     }
-                    self.register_gesture_regions(pane_area, draw_area, gestures);
+                    gesture_area_components
+                        .extend(gestures.into_iter().map(|gesture| (draw_area, gesture)));
 
                     let render_item = match *view {
                         DrawableType::Text(text) => text.render_item(
@@ -568,15 +650,56 @@ impl<State: 'static> Pane<State> {
                 ViewKind::Empty => (),
             }
         }
+        let mut seen_gestures = HashSet::new();
+        for (area, component) in gesture_area_components {
+            let rect = component.rect.unwrap_or_else(|| area_rect(area));
+            let Some(rect) = valid_rect(rect) else {
+                continue;
+            };
+            let gesture = component.gesture;
+            if gesture.handler().positive_by_default && seen_gestures.insert(gesture.id()) {
+                self.gestures.push(ActiveGesture {
+                    gesture: gesture.clone(),
+                    hit_rect: area_rect(pane_area),
+                    local_area: pane_area,
+                });
+            }
+            let id = gesture.id();
+            match component.operation {
+                GestureAreaOperation::Include => {
+                    self.gestures.push(ActiveGesture {
+                        gesture,
+                        hit_rect: rect,
+                        local_area: area,
+                    });
+                }
+                GestureAreaOperation::Occlude => {
+                    self.gestures = std::mem::take(&mut self.gestures)
+                        .into_iter()
+                        .flat_map(|active| {
+                            if active.gesture.id() == id {
+                                subtract(active.hit_rect, rect)
+                                    .into_iter()
+                                    .map(|hit_rect| ActiveGesture {
+                                        gesture: active.gesture.clone(),
+                                        hit_rect,
+                                        local_area: active.local_area,
+                                    })
+                                    .collect()
+                            } else {
+                                vec![active]
+                            }
+                        })
+                        .collect();
+                }
+            }
+        }
 
-        self.pane_state
-            .text_edit_requests
-            .retain(|id, _| self.elements.contains_key(id));
         if self
             .pane_state
-            .editor
-            .as_ref()
-            .is_some_and(|editor| !self.elements.contains_key(&editor.id))
+            .text_editing
+            .focused_field
+            .is_some_and(|id| !self.elements.contains_key(&id))
         {
             self.pane_state.end_editing();
         }
@@ -594,9 +717,11 @@ impl<State: 'static> Pane<State> {
         if continue_animating {
             self.pane_state.request_redraw();
         }
-        (frame, std::mem::take(&mut self.pane_state.effects))
+        self.dispatch_text_edit_lifecycle_events(state);
+        (frame, self.take_effects())
     }
 }
+
 impl<State: 'static> Pane<State> {
     fn hit_area(&self, active: &ActiveGesture<State>, position: Point) -> Option<Area> {
         if !active
@@ -607,26 +732,10 @@ impl<State: 'static> Pane<State> {
         {
             return None;
         }
-        if active
-            .occluded_regions
-            .iter()
-            .any(|area| area_contains(area, position))
-        {
-            return None;
-        }
-        if let Some(area) = active
-            .hit_regions
-            .iter()
-            .rev()
-            .copied()
-            .find(|area| area_contains(area, position))
-        {
-            return Some(area);
-        }
-        if active.gesture.handler().positive_by_default {
-            return Some(active.pane_area);
-        }
-        None
+        active
+            .hit_rect
+            .contains(position)
+            .then_some(active.local_area)
     }
 
     fn pointer_gestures_at(
@@ -635,13 +744,19 @@ impl<State: 'static> Pane<State> {
         predicate: impl Fn(&GestureKind) -> bool,
     ) -> Vec<(ActiveGesture<State>, Area)> {
         let mut matched = Vec::new();
+        let mut seen = HashSet::new();
         for active in self.gestures.iter().rev() {
+            let id = active.gesture.id();
+            if seen.contains(&id) {
+                continue;
+            }
             if !predicate(&active.gesture.handler().kind) {
                 continue;
             }
             let Some(area) = self.hit_area(active, position) else {
                 continue;
             };
+            seen.insert(id);
             let stops_propagation =
                 active.gesture.handler().propagation == GesturePropagation::Stop;
             matched.push((active.clone(), area));
@@ -676,6 +791,9 @@ impl<State: 'static> Pane<State> {
                 continue;
             }
             let id = active.gesture.id();
+            if hoverable_ids.contains(&id) {
+                continue;
+            }
             hoverable_ids.insert(id);
             let hovered = hovered_ids.contains(&id);
             if self.hovered.contains(&id) == hovered {
@@ -712,7 +830,12 @@ impl<State: 'static> Pane<State> {
         key_state: KeyPhase,
     ) -> Vec<PaneEffect> {
         let mut needs_redraw = false;
+        let mut seen = HashSet::new();
         for active in self.gestures.iter().rev() {
+            let id = active.gesture.id();
+            if seen.contains(&id) {
+                continue;
+            }
             let GestureKind::Key { keys } = &active.gesture.handler().kind else {
                 continue;
             };
@@ -725,6 +848,7 @@ impl<State: 'static> Pane<State> {
             {
                 continue;
             }
+            seen.insert(id);
             needs_redraw = true;
             let stops_propagation =
                 active.gesture.handler().propagation == GesturePropagation::Stop;
@@ -740,25 +864,32 @@ impl<State: 'static> Pane<State> {
         if needs_redraw {
             self.pane_state.request_redraw();
         }
-        std::mem::take(&mut self.pane_state.effects)
+        self.dispatch_text_edit_lifecycle_events(state);
+        self.take_effects()
     }
 
     pub(crate) fn modifiers_changed(&mut self, modifiers: Modifiers) -> Vec<PaneEffect> {
         self.pane_state.modifiers = Some(modifiers);
-        std::mem::take(&mut self.pane_state.effects)
+        self.take_effects()
     }
 
     pub(crate) fn scale_factor_changed(&mut self, scale_factor: f64) -> Vec<PaneEffect> {
         self.pane_state.scale_factor = scale_factor;
         self.pane_state.text_layout.layout_cache.clear();
         self.pane_state.request_redraw();
-        std::mem::take(&mut self.pane_state.effects)
+        self.take_effects()
     }
 
     pub(crate) fn exit(&mut self, state: &mut State) -> Vec<PaneEffect> {
         self.cursor_position = None;
         let mut needs_redraw = false;
+        let mut seen = HashSet::new();
         for active in self.gestures.iter() {
+            let id = active.gesture.id();
+            if seen.contains(&id) {
+                continue;
+            }
+            seen.insert(id);
             if matches!(active.gesture.handler().kind, GestureKind::Hover) {
                 needs_redraw = true;
                 (active.gesture.handler().interaction_handler)(
@@ -772,7 +903,8 @@ impl<State: 'static> Pane<State> {
         if needs_redraw {
             self.pane_state.request_redraw();
         }
-        std::mem::take(&mut self.pane_state.effects)
+        self.dispatch_text_edit_lifecycle_events(state);
+        self.take_effects()
     }
 
     pub fn move_to(&mut self, state: &mut State, pos: Point) -> Vec<PaneEffect> {
@@ -813,7 +945,7 @@ impl<State: 'static> Pane<State> {
                                 Interaction::Click(ClickEvent {
                                     state: ClickPhase::Cancelled,
                                     button,
-                                    location: ClickLocation::new(pos, captured.area),
+                                    location: ClickLocation::new(pos, captured.local_area),
                                 }),
                             );
                         }
@@ -834,7 +966,7 @@ impl<State: 'static> Pane<State> {
                             state,
                             &mut self.pane_state,
                             Interaction::Drag(DragPhase::Began {
-                                start: Self::point_in_area(captured.area, start),
+                                start: Self::point_in_area(captured.local_area, start),
                                 start_global: start,
                             }),
                         );
@@ -842,8 +974,8 @@ impl<State: 'static> Pane<State> {
                             state,
                             &mut self.pane_state,
                             Interaction::Drag(DragPhase::Updated {
-                                start: Self::point_in_area(captured.area, start),
-                                current: Self::point_in_area(captured.area, pos),
+                                start: Self::point_in_area(captured.local_area, start),
+                                current: Self::point_in_area(captured.local_area, pos),
                                 start_global: start,
                                 current_global: pos,
                                 delta,
@@ -893,8 +1025,8 @@ impl<State: 'static> Pane<State> {
                         state,
                         &mut self.pane_state,
                         Interaction::Drag(DragPhase::Updated {
-                            start: Self::point_in_area(captured.area, start),
-                            current: Self::point_in_area(captured.area, pos),
+                            start: Self::point_in_area(captured.local_area, start),
+                            current: Self::point_in_area(captured.local_area, pos),
                             start_global: start,
                             current_global: pos,
                             delta,
@@ -911,7 +1043,8 @@ impl<State: 'static> Pane<State> {
             }
             GestureState::None => {}
         }
-        std::mem::take(&mut self.pane_state.effects)
+        self.dispatch_text_edit_lifecycle_events(state);
+        self.take_effects()
     }
 
     pub(crate) fn press(&mut self, state: &mut State) -> Vec<PaneEffect> {
@@ -952,14 +1085,16 @@ impl<State: 'static> Pane<State> {
                             .into_iter()
                             .map(|(active, area)| CapturedGesture {
                                 id: active.gesture.id(),
-                                area,
+                                local_area: area,
+                                hit_rect: active.hit_rect,
                             })
                             .collect(),
                         drags: drag_matches
                             .into_iter()
                             .map(|(active, area)| CapturedGesture {
                                 id: active.gesture.id(),
-                                area,
+                                local_area: area,
+                                hit_rect: active.hit_rect,
                             })
                             .collect(),
                     },
@@ -972,7 +1107,8 @@ impl<State: 'static> Pane<State> {
         if needs_redraw {
             self.pane_state.request_redraw();
         }
-        std::mem::take(&mut self.pane_state.effects)
+        self.dispatch_text_edit_lifecycle_events(state);
+        self.take_effects()
     }
 
     pub(crate) fn release(&mut self, state: &mut State) -> Vec<PaneEffect> {
@@ -993,7 +1129,8 @@ impl<State: 'static> Pane<State> {
                 } => {
                     if button != press_button {
                         self.pressed_buttons.retain(|pressed| *pressed != button);
-                        return std::mem::take(&mut self.pane_state.effects);
+                        self.dispatch_text_edit_lifecycle_events(state);
+                        return self.take_effects();
                     }
                     if click_started {
                         for captured in &capturer.clicks {
@@ -1008,7 +1145,7 @@ impl<State: 'static> Pane<State> {
                             if !matches!(active.gesture.handler().kind, GestureKind::Click { .. }) {
                                 continue;
                             }
-                            let phase = if self.hit_area(&active, current).is_some() {
+                            let phase = if captured.hit_rect.contains(current) {
                                 ClickPhase::Completed
                             } else {
                                 ClickPhase::Cancelled
@@ -1020,7 +1157,7 @@ impl<State: 'static> Pane<State> {
                                 Interaction::Click(ClickEvent {
                                     state: phase,
                                     button: press_button,
-                                    location: ClickLocation::new(current, captured.area),
+                                    location: ClickLocation::new(current, captured.local_area),
                                 }),
                             );
                         }
@@ -1034,7 +1171,8 @@ impl<State: 'static> Pane<State> {
                 } => {
                     if button != press_button {
                         self.pressed_buttons.retain(|pressed| *pressed != button);
-                        return std::mem::take(&mut self.pane_state.effects);
+                        self.dispatch_text_edit_lifecycle_events(state);
+                        return self.take_effects();
                     }
                     let distance = start.distance(current);
                     let delta = Point {
@@ -1058,8 +1196,8 @@ impl<State: 'static> Pane<State> {
                             state,
                             &mut self.pane_state,
                             Interaction::Drag(DragPhase::Completed {
-                                start: Self::point_in_area(captured.area, start),
-                                current: Self::point_in_area(captured.area, current),
+                                start: Self::point_in_area(captured.local_area, start),
+                                current: Self::point_in_area(captured.local_area, current),
                                 start_global: start,
                                 current_global: current,
                                 delta,
@@ -1076,18 +1214,56 @@ impl<State: 'static> Pane<State> {
         if needs_redraw {
             self.pane_state.request_redraw();
         }
-        std::mem::take(&mut self.pane_state.effects)
+        self.dispatch_text_edit_lifecycle_events(state);
+        self.take_effects()
     }
 
     pub(crate) fn scroll(&mut self, state: &mut State, delta: ScrollDelta) -> Vec<PaneEffect> {
         let mut needs_redraw = false;
         let cursor_position = self.cursor_position;
         if let Some(current) = cursor_position {
-            let matches =
-                self.pointer_gestures_at(current, |kind| matches!(kind, GestureKind::Scroll));
+            let mut remaining_x = delta.x != 0.;
+            let mut remaining_y = delta.y != 0.;
+            let mut matches = Vec::new();
+            let mut seen = HashSet::new();
+            for active in self.gestures.iter().rev() {
+                let id = active.gesture.id();
+                if seen.contains(&id) {
+                    continue;
+                }
+                let GestureKind::Scroll { axes } = &active.gesture.handler().kind else {
+                    continue;
+                };
+                if (!remaining_x || !axes.x) && (!remaining_y || !axes.y) {
+                    continue;
+                }
+                if self.hit_area(active, current).is_none() {
+                    continue;
+                }
+                seen.insert(id);
+                matches.push((
+                    active.clone(),
+                    ScrollDelta {
+                        x: if remaining_x && axes.x { delta.x } else { 0. },
+                        y: if remaining_y && axes.y { delta.y } else { 0. },
+                    },
+                ));
+                if active.gesture.handler().propagation == GesturePropagation::Stop {
+                    if axes.x {
+                        remaining_x = false;
+                    }
+                    if axes.y {
+                        remaining_y = false;
+                    }
+                    if !remaining_x && !remaining_y {
+                        break;
+                    }
+                }
+            }
             if !matches.is_empty() {
                 needs_redraw = true;
-                for (active, _) in matches {
+                matches.reverse();
+                for (active, delta) in matches {
                     (active.gesture.handler().interaction_handler)(
                         state,
                         &mut self.pane_state,
@@ -1099,6 +1275,7 @@ impl<State: 'static> Pane<State> {
         if needs_redraw {
             self.pane_state.request_redraw();
         }
-        std::mem::take(&mut self.pane_state.effects)
+        self.dispatch_text_edit_lifecycle_events(state);
+        self.take_effects()
     }
 }
