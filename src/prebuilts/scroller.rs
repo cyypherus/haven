@@ -128,10 +128,7 @@ impl ScrollEngine {
 
         if dt > 0. {
             // Scrolling up: prepend earlier cells as they come into view.
-            loop {
-                let Some(first) = self.visible_window.first().copied() else {
-                    break;
-                };
+            while let Some(first) = self.visible_window.first().copied() {
                 if first.index == 0 || self.compensated < 0. {
                     break;
                 }
