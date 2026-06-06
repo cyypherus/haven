@@ -342,7 +342,7 @@ fn text_field_scroll_gesture<State: 'static>(
         );
         let ts = binding.get_mut(state);
         let (content_width, content_height) =
-            bound_text_field_scroll_size(&mut ts.editor, app, 1.5);
+            bound_text_field_scroll_size(&mut ts.editor, app, 1.5, wrap.then_some(editor_area.width));
         update_text_field_viewport(
             ts,
             TextFieldViewport {
@@ -727,7 +727,8 @@ impl<'a, State> TextField<'a, State> {
             };
             let height = layout.height();
             let empty_cursor_height = height.max(font_size as f32 * line_height);
-            let (content_width, content_height) = text_field_scroll_size(&layout, cursor);
+            let (content_width, content_height) =
+                text_field_scroll_size(&layout, cursor, wrap.then_some(area.width));
             let placement = text_field_placement(
                 area,
                 viewport,
@@ -874,7 +875,12 @@ impl<'a, State> TextField<'a, State> {
                     if wrap { Some(editor_area.width) } else { None },
                 );
                 let (content_width, content_height) =
-                    bound_text_field_scroll_size(&mut editor, ctx, 1.5);
+                    bound_text_field_scroll_size(
+                        &mut editor,
+                        ctx,
+                        1.5,
+                        wrap.then_some(editor_area.width),
+                    );
                 let mut views = Vec::new();
                 if content_width > editor_area.width {
                     views.extend(
@@ -989,32 +995,40 @@ impl<'a, State> TextField<'a, State> {
                                 .clone();
                             let cursor = text_field_cursor(&mut ts.editor, 1.5);
                             let (content_width, content_height) =
-                                text_field_scroll_size(&layout, cursor);
+                                text_field_scroll_size(
+                                    &layout,
+                                    cursor,
+                                    wrap.then_some(editor_area.width),
+                                );
                             let mut visible = ts.viewport;
                             let mut content_width = content_width;
                             let mut content_height = content_height;
                             if let Some(cursor) = cursor {
-                                content_width = content_width.max(cursor.x1 as f32);
+                                if !wrap {
+                                    content_width = content_width.max(cursor.x1 as f32);
+                                }
                                 content_height = content_height.max(cursor.y1 as f32);
 
-                                let cursor_x0 = cursor.x0 as f32;
-                                let cursor_x1 = cursor.x1 as f32;
-                                let inset = editor_area.width / 3.;
-                                let min = cursor_x1 - editor_area.width + inset;
-                                let max = cursor_x0 - inset;
-                                visible.x = if min <= max {
-                                    ts.viewport.x.clamp(min, max)
-                                } else {
-                                    let min = cursor_x1 - editor_area.width;
-                                    let max = cursor_x0;
-                                    if min <= max {
+                                if !wrap {
+                                    let cursor_x0 = cursor.x0 as f32;
+                                    let cursor_x1 = cursor.x1 as f32;
+                                    let inset = editor_area.width / 3.;
+                                    let min = cursor_x1 - editor_area.width + inset;
+                                    let max = cursor_x0 - inset;
+                                    visible.x = if min <= max {
                                         ts.viewport.x.clamp(min, max)
                                     } else {
-                                        ts.viewport
-                                            .x
-                                            .clamp(cursor_x0 - editor_area.width, cursor_x0)
-                                    }
-                                };
+                                        let min = cursor_x1 - editor_area.width;
+                                        let max = cursor_x0;
+                                        if min <= max {
+                                            ts.viewport.x.clamp(min, max)
+                                        } else {
+                                            ts.viewport
+                                                .x
+                                                .clamp(cursor_x0 - editor_area.width, cursor_x0)
+                                        }
+                                    };
+                                }
 
                                 let cursor_y0 = cursor.y0 as f32;
                                 let cursor_y1 = cursor.y1 as f32;
@@ -1101,6 +1115,7 @@ impl<'a, State> TextField<'a, State> {
                                                 start_global,
                                                 alignment,
                                                 vertical_alignment,
+                                                wrap,
                                                 app,
                                             );
                                             ts.editor.mouse_moved(
@@ -1135,6 +1150,7 @@ impl<'a, State> TextField<'a, State> {
                                                     &mut ts.editor,
                                                     app,
                                                     1.5,
+                                                    wrap.then_some(editor_area.width),
                                                 );
                                             update_text_field_viewport(
                                                 ts,
@@ -1151,6 +1167,7 @@ impl<'a, State> TextField<'a, State> {
                                                 current_global,
                                                 alignment,
                                                 vertical_alignment,
+                                                wrap,
                                                 app,
                                             );
                                             ts.editor.mouse_moved(
@@ -1172,6 +1189,7 @@ impl<'a, State> TextField<'a, State> {
                                                     current_global,
                                                     alignment,
                                                     vertical_alignment,
+                                                    wrap,
                                                     app,
                                                 );
                                                 ts.editor.mouse_moved(
@@ -1225,6 +1243,7 @@ impl<'a, State> TextField<'a, State> {
                                                 event.location.global(),
                                                 alignment,
                                                 vertical_alignment,
+                                                wrap,
                                                 app,
                                             );
                                             ts.editor.mouse_moved(
@@ -1252,6 +1271,7 @@ impl<'a, State> TextField<'a, State> {
                                                     pos,
                                                     alignment,
                                                     vertical_alignment,
+                                                    wrap,
                                                     app,
                                                 );
                                                 ts.editor.mouse_moved(
@@ -1267,6 +1287,7 @@ impl<'a, State> TextField<'a, State> {
                                                 event.location.global(),
                                                 alignment,
                                                 vertical_alignment,
+                                                wrap,
                                                 app,
                                             );
                                             ts.editor.mouse_moved(
@@ -1426,6 +1447,43 @@ mod tests {
         pane.key_pressed(&mut state, NamedKey::Enter);
         pane.key_pressed(&mut state, "a\nb");
         assert_eq!(state.multi.text, "\na\nb");
+    }
+
+    #[test]
+    fn wrapped_multiline_does_not_scroll_horizontally_for_cursor_width() {
+        struct State {
+            text: TextState,
+        }
+
+        const FIELD: u64 = 9011;
+
+        fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+            text_field(FIELD, binding!(state, State, text))
+                .multiline()
+                .wrap()
+                .build(app)
+                .width(80.)
+                .height(70.)
+        }
+
+        let mut state = State {
+            text: TextState::new(""),
+        };
+        let mut pane = test_pane(PaneBuilder::new("test", view));
+        pane.redraw(&mut state, 200, 120, 1.0);
+
+        let location = pane.location(FIELD).expect("field present");
+        pane.click(&mut state, location);
+        pane.redraw(&mut state, 200, 120, 1.0);
+        for _ in 0..30 {
+            pane.key_pressed(&mut state, "w");
+        }
+        pane.redraw(&mut state, 200, 120, 1.0);
+
+        pane.move_to(&mut state, location);
+        pane.scroll(&mut state, ScrollDelta { x: -30., y: 0. });
+
+        assert_eq!(state.text.viewport.x, 0.);
     }
 
     #[test]
