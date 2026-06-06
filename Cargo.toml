@@ -1,28 +1,54 @@
 [package]
-name = "haven"
+name = "haven-ui"
 version = "0.1.0"
 edition = "2024"
-publish = false
 
-[[example]]
-name = "basic"
-path = "examples/basic/src/main.rs"
+[lib]
+name = "haven"
 
 [[example]]
 name = "buttons"
-path = "examples/buttons/src/main.rs"
+path = "examples/buttons.rs"
+required-features = ["platform-winit"]
 
 [[example]]
 name = "scroller"
-path = "examples/scroller/src/main.rs"
+path = "examples/scroller.rs"
+required-features = ["platform-winit"]
 
 [[example]]
 name = "image"
-path = "examples/image/src/main.rs"
+path = "examples/image.rs"
+required-features = ["platform-winit"]
+
+[[example]]
+name = "async"
+path = "examples/async.rs"
+required-features = ["platform-winit"]
+
+[[example]]
+name = "productivity"
+path = "examples/productivity.rs"
+required-features = ["platform-winit"]
+
+[[example]]
+name = "gestures"
+path = "examples/gestures.rs"
+required-features = ["platform-winit"]
+
+[[example]]
+name = "text_fields"
+path = "examples/text_fields.rs"
+required-features = ["platform-winit"]
 
 [dependencies]
-backer = { git = "https://github.com/cyypherus/backer", branch = "experiment" }
+backer = "0.12.0"
 # backer = { path = "../backer" }
+anyrender = { version = "0.11.0", optional = true }
+anyrender_skia = { version = "0.9.0", optional = true }
+anyrender_svg = { version = "0.12.0", optional = true }
+anyrender_vello = { version = "0.11.0", optional = true }
+anyrender_vello_cpu = { version = "0.14.0", optional = true }
 bytemuck = { version = "1", features = ["derive"] }
 clipboard-rs = "0.3.0"
 image = { version = "0.25", default-features = false, features = [
@@ -31,15 +57,26 @@ image = { version = "0.25", default-features = false, features = [
     "gif",
     "webp",
 ] }
+kurbo = "0.13.0"
 lilt = "0.8"
 parley = "0.7.0"
-pollster = "0.4.0"
+peniko = "0.6.0"
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 tokio-util = { version = "0.7", features = ["rt"] }
-vello_svg = { version = "0.9.0", features = ["wgpu"] }
-wgpu = "27.0.1"
-winit = "0.30.12"
+winit = { version = "0.30.12", optional = true }
+
+[features]
+default = ["renderer-vello"]
+debug-overlay = ["platform-winit"]
+renderer-skia = ["platform-winit", "dep:anyrender_skia"]
+renderer-vello = ["platform-winit", "dep:anyrender_vello"]
+renderer-vello-cpu = [
+    "platform-winit",
+    "dep:anyrender_vello_cpu",
+    "anyrender_vello_cpu/pixels_window_renderer",
+]
+platform-winit = ["dep:winit", "dep:anyrender", "dep:anyrender_svg"]
 
 [dev-dependencies]
 arboard = "3.4"

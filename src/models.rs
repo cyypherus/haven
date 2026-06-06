@@ -1,75 +1,147 @@
 use std::{fmt::Debug, rc::Rc};
-use vello_svg::vello::kurbo::Point;
-use winit::keyboard::{NamedKey, SmolStr};
 
-pub use backer::{Align, Area};
-
-pub(crate) fn area_contains(area: &Area, point: Point) -> bool {
-    let x = point.x;
-    let y = point.y;
-    if x > area.x as f64
-        && y > area.y as f64
-        && y < area.y as f64 + area.height as f64
-        && x < area.x as f64 + area.width as f64
-    {
-        return true;
-    }
-    false
-}
+pub use backer::Align;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum Key<Str = SmolStr> {
+pub enum Key {
     Named(NamedKey),
-    Character(Str),
+    Character(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum NamedKey {
+    Enter,
+    Escape,
+    Space,
+    Backspace,
+    Delete,
+    ArrowLeft,
+    ArrowRight,
+    ArrowUp,
+    ArrowDown,
+    Home,
+    End,
+    Tab,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Modifier {
+    Shift,
+    Control,
+    Alt,
+    Super,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Modifiers {
+    pressed: u8,
 }
 
 impl Key {
-    pub(crate) fn from(value: winit::keyboard::Key) -> Option<Key> {
-        match value {
-            winit::keyboard::Key::Named(named_key) => Some(Key::Named(named_key)),
-            winit::keyboard::Key::Character(c) => Some(Key::Character(c)),
-            winit::keyboard::Key::Unidentified(_) => None,
-            winit::keyboard::Key::Dead(_) => None,
+    pub fn character(value: impl Into<String>) -> Self {
+        Self::Character(value.into())
+    }
+}
+
+impl Modifier {
+    const fn bit(self) -> u8 {
+        match self {
+            Self::Shift => 1 << 0,
+            Self::Control => 1 << 1,
+            Self::Alt => 1 << 2,
+            Self::Super => 1 << 3,
         }
     }
 }
 
-type Getter<State, T> = Rc<dyn Fn(&State) -> T>;
-type Setter<State, T> = Rc<dyn Fn(&mut State, T)>;
+impl Modifiers {
+    pub const fn empty() -> Self {
+        Self { pressed: 0 }
+    }
 
-pub struct Binding<State, T> {
-    pub get: Getter<State, T>,
-    pub set: Setter<State, T>,
-}
+    pub fn from_pressed(modifiers: impl IntoIterator<Item = Modifier>) -> Self {
+        let mut pressed = 0;
+        for modifier in modifiers {
+            pressed |= modifier.bit();
+        }
+        Self { pressed }
+    }
 
-impl<State, T> Debug for Binding<State, T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Binding")
-            .field("get", &"<function>")
-            .field("set", &"<function>")
-            .finish()
+    pub fn with(mut self, modifier: Modifier, pressed: bool) -> Self {
+        if pressed {
+            self.pressed |= modifier.bit();
+        } else {
+            self.pressed &= !modifier.bit();
+        }
+        self
+    }
+
+    pub fn contains(self, modifier: Modifier) -> bool {
+        self.pressed & modifier.bit() != 0
     }
 }
 
-impl<State, T> Binding<State, T> {
-    pub fn new(get: impl Fn(&State) -> T + 'static, set: impl Fn(&mut State, T) + 'static) -> Self {
+impl From<&str> for Key {
+    fn from(value: &str) -> Self {
+        Self::Character(value.to_string())
+    }
+}
+
+impl From<String> for Key {
+    fn from(value: String) -> Self {
+        Self::Character(value)
+    }
+}
+
+impl From<NamedKey> for Key {
+    fn from(value: NamedKey) -> Self {
+        Self::Named(value)
+    }
+}
+
+type Getter<State, T> = Rc<dyn for<'a> Fn(&'a State) -> &'a T>;
+type GetterMut<State, T> = Rc<dyn for<'a> Fn(&'a mut State) -> &'a mut T>;
+type OwnedGetter<State, T> = Rc<dyn Fn(&State) -> Option<T>>;
+type OwnedSetter<State, T> = Rc<dyn Fn(&mut State, T)>;
+
+pub struct Binding<State, T> {
+    get: Getter<State, T>,
+    get_mut: GetterMut<State, T>,
+}
+
+pub struct OwnedBinding<State, T> {
+    get: OwnedGetter<State, T>,
+    set: OwnedSetter<State, T>,
+}
+
+impl<State, T> OwnedBinding<State, T> {
+    pub fn new(
+        get: impl Fn(&State) -> Option<T> + 'static,
+        set: impl Fn(&mut State, T) + 'static,
+    ) -> Self {
         Self {
             get: Rc::new(get),
             set: Rc::new(set),
         }
     }
-    pub fn constant(value: T) -> Self
-    where
-        T: Clone + 'static,
-    {
-        Self {
-            get: Rc::new(move |_| value.clone()),
-            set: Rc::new(move |_, _| {}),
+
+    pub fn get(&self, state: &State) -> Option<T> {
+        (self.get)(state)
+    }
+
+    pub fn set(&self, state: &mut State, value: T) {
+        (self.set)(state, value);
+    }
+
+    pub fn update(&self, state: &mut State, f: impl FnOnce(&mut T)) {
+        if let Some(mut value) = self.get(state) {
+            f(&mut value);
+            self.set(state, value);
         }
     }
 }
 
-impl<State, T> Clone for Binding<State, T> {
+impl<State, T> Clone for OwnedBinding<State, T> {
     fn clone(&self) -> Self {
         Self {
             get: self.get.clone(),
@@ -78,16 +150,53 @@ impl<State, T> Clone for Binding<State, T> {
     }
 }
 
+impl<State, T> Debug for OwnedBinding<State, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OwnedBinding").finish_non_exhaustive()
+    }
+}
+
+impl<State, T> Debug for Binding<State, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Binding").finish_non_exhaustive()
+    }
+}
+
 impl<State, T> Binding<State, T> {
-    pub fn get(&self, state: &State) -> T {
+    pub fn new(
+        get: impl for<'a> Fn(&'a State) -> &'a T + 'static,
+        get_mut: impl for<'a> Fn(&'a mut State) -> &'a mut T + 'static,
+    ) -> Self {
+        Self {
+            get: Rc::new(get),
+            get_mut: Rc::new(get_mut),
+        }
+    }
+}
+
+impl<State, T> Clone for Binding<State, T> {
+    fn clone(&self) -> Self {
+        Self {
+            get: self.get.clone(),
+            get_mut: self.get_mut.clone(),
+        }
+    }
+}
+
+impl<State, T> Binding<State, T> {
+    pub fn get<'a>(&'a self, state: &'a State) -> &'a T {
         (self.get)(state)
     }
-    pub fn set(&self, state: &mut State, value: T) {
-        (self.set)(state, value)
+
+    pub fn get_mut<'a>(&'a self, state: &'a mut State) -> &'a mut T {
+        (self.get_mut)(state)
     }
-    pub fn update(&self, state: &mut State, f: impl Fn(&mut T)) {
-        let mut temp = (self.get)(state);
-        f(&mut temp);
-        (self.set)(state, temp)
+
+    pub fn set(&self, state: &mut State, value: T) {
+        *(self.get_mut)(state) = value;
+    }
+
+    pub fn update(&self, state: &mut State, f: impl FnOnce(&mut T)) {
+        f((self.get_mut)(state));
     }
 }

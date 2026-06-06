@@ -1,16 +1,12 @@
+use crate::{Key, Modifier, Modifiers, NamedKey};
 use core::default::Default;
+use kurbo::Point;
 use parley::{GenericFamily, StyleProperty, editing::SplitString};
+use peniko::{Brush, color::palette};
 use std::time::{Duration, Instant};
-use vello_svg::vello::{
-    kurbo::Point,
-    peniko::{Brush, color::palette},
-};
-use winit::{event::Modifiers, keyboard::NamedKey};
 
 pub(crate) use parley::editing::Generation;
 use parley::{FontContext, LayoutContext, PlainEditor, PlainEditorDriver};
-
-use crate::Key;
 
 #[derive(Clone)]
 pub(crate) struct Editor {
@@ -73,6 +69,17 @@ impl Editor {
         self.cursor_visible = true;
     }
 
+    pub(crate) fn focus_without_pointer_selection(
+        &mut self,
+        layout_context: &mut LayoutContext<Brush>,
+        font_context: &mut FontContext,
+    ) {
+        self.cursor_reset();
+        self.editor
+            .driver(font_context, layout_context)
+            .finish_compose();
+    }
+
     pub fn disable_blink(&mut self) {
         self.start_time = None;
     }
@@ -110,17 +117,16 @@ impl Editor {
     ) {
         self.modifiers = modifiers;
         #[allow(unused)]
-        let (shift, action_mod, alt) = self
-            .modifiers
-            .map(|mods| {
+        let (shift, action_mod, alt) = modifiers
+            .map(|modifiers| {
                 (
-                    mods.state().shift_key(),
+                    modifiers.contains(Modifier::Shift),
                     if cfg!(target_os = "macos") {
-                        mods.state().super_key()
+                        modifiers.contains(Modifier::Super)
                     } else {
-                        mods.state().control_key()
+                        modifiers.contains(Modifier::Control)
                     },
-                    mods.state().alt_key(),
+                    modifiers.contains(Modifier::Alt),
                 )
             })
             .unwrap_or_default();

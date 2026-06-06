@@ -1,0 +1,49 @@
+use crate::brush_source::BrushSource;
+use crate::pane::{PaneElement, PaneState};
+use crate::primitives::shape::{PathData, circle_path};
+use crate::view::{Drawable, DrawableType};
+
+use backer::Layout;
+use kurbo::Stroke;
+
+pub struct Circle {
+    id: u64,
+    fill: Option<BrushSource<()>>,
+    stroke: Option<(BrushSource<()>, Stroke)>,
+}
+
+pub fn circle(id: u64) -> Circle {
+    Circle {
+        id,
+        fill: None,
+        stroke: None,
+    }
+}
+
+impl Circle {
+    pub fn fill(mut self, brush: impl Into<BrushSource<()>>) -> Self {
+        self.fill = Some(brush.into());
+        self
+    }
+    pub fn stroke(mut self, brush: impl Into<BrushSource<()>>, style: Stroke) -> Self {
+        self.stroke = Some((brush.into(), style));
+        self
+    }
+    pub(crate) fn into_path_data(self) -> PathData {
+        PathData {
+            id: self.id,
+            builder: circle_path(),
+            fill: self.fill,
+            stroke: self.stroke,
+        }
+    }
+    pub fn view<State: 'static>(self) -> Drawable<State> {
+        Drawable::new(DrawableType::Path(Box::new(self.into_path_data())))
+    }
+    pub fn finish<State: 'static>(
+        self,
+        ctx: &mut PaneState,
+    ) -> Layout<'static, PaneElement<State>, PaneState> {
+        self.view().build(ctx)
+    }
+}

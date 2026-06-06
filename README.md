@@ -1,86 +1,89 @@
-# Haven UI
+<div align="center">
 
-A WIP declarative UI crate for building native applications with smooth animations & fluid layout. This crate handles windowing, layout, rendering, animations, and user interaction.
+# Haven
 
-Built with [winit](https://github.com/rust-windowing/winit), [vello](https://github.com/linebender/vello), [backer](https://github.com/cyypherus/backer), and [lilt](https://github.com/cyypherus/lilt) for simple, beautiful apps.
+**A WIP declarative UI crate for native applications.**
+
+</div>
+
+Haven handles windowing, layout, rendering, state, and user interaction for native Rust apps.
+
+Built with [winit](https://github.com/rust-windowing/winit), [backer](https://github.com/cyypherus/backer), and [anyrender](https://github.com/cyypherus/anyrender).
+
+_This library is functional but very experimental. API stability is not a goal at this stage & it is likely you will encounter bugs._
+
+### Features
+
+- Declarative API: The code should look like the structure it defines
+- Flexible layout: Constraint-based layout powered by backer
+- App runtime: Winit integration for running panes
+- Rendering: Anyrender with Vello by default
+- Interaction: Gestures, text editing, scrolling, buttons, toggles, sliders, and dropdowns
 
 > [!WARNING]
 > **Limitations**:
 >
-> - No video / gif support
-> - No rotation
-> - Incomplete widgets
-> - Limited effects (blur/shadow)
-> - No accessibility
-> - Unknown RTL support
-> - Untested on platforms besides macOS
-> - This library is functional but very experimental. API stability is not a goal at all at this stage & it is likely you will encounter bugs.
+> Haven is probably not a good choice right now if you need:
+>
+> - Accessibility
+> - Video or gif support
+> - Rotation
+> - Robust effects like blur and shadow
+> - A stable, mature library which will rarely have bugs
 
-## Features
+# Quick Start
 
-Leverages specialized crates:
-
-- **Declarative API**: Code structure mirrors UI hierarchy
-- **Flexible layout**: Constraint-based system powered by backer
-<!--- **Smooth animations**: Frame-rate independent transitions using lilt-->
-- **GPU rendering**: Compute shader-based vector graphics using vello
-- **Probably Cross-platform**: Might work on Windows, macOS, and Linux?
-
-## Getting Started
-
-### Define your state
-
-Create a state struct with the data your UI needs to track & state for views as necessary.
-Certain views (like toggles) require bindings to state & will render based on that state.
+Define some state, write a view function, and pass that view into a pane.
 
 ```rust
+use haven::winit::WinitApp;
+use haven::*;
+
 #[derive(Clone, Default)]
-struct AppState {
-    text: TextState,
-    toggle: ToggleState,
+struct State {
     count: i32,
+    button: ButtonState,
 }
-```
 
-### Build your layout
-
-Use the declarative layout API to define your interface structure.
-
-```rust
-fn main() {
-    App::start(
-        State::default(),
-        Window::new("main", |state, app| {
-            column_spaced(
-                20.,
-                vec![
-                    text_field(id!(), binding!(state, AppState, text))
-                        .font_size(40)
-                        .finish(),
-                    toggle(id!(), binding!(state, AppState, toggle)).build(app.ctx()),
-                    button(id!(), binding!(state, AppState, button))
-                        .text_label(format!("Count: {}", state.count))
-                        .on_click(|s, _| s.count += 1)
-                        .build(app.ctx()),
-                ],
-            )
-        }),
+fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+    column_spaced(
+        20.,
+        vec![
+            text(id!(), format!("Count: {}", state.count))
+                .fill(Color::WHITE)
+                .build(app),
+            button(id!(), binding!(state.button))
+                .text_label("Increment")
+                .on_click(|state, _app| state.count += 1)
+                .build(app),
+        ],
     )
+    .pad(20.)
+}
+
+fn main() {
+    WinitApp::new(State::default())
+        .pane(
+            PaneBuilder::new("main", view)
+                .title("Counter")
+                .inner_size(320, 180),
+        )
+        .run();
 }
 ```
 
-## [Examples](examples/)
+## Examples
 
-Examples demonstrate various UI patterns & can be run directly with `cargo run --example <name>`.
+Examples can be run directly with `cargo run --example <name>`.
 
-### buttons
+- `buttons`: Button styling, labels, and click handlers
+- `text_fields`: Text editing, wrapping, alignment, filtering, and focus
+- `scroller`: Scrollable content with gesture handling
+- `gestures`: Click, hover, drag, predicates, and gesture regions
+- `image`: Loading and drawing image content
+- `async`: Waking panes from async callbacks
+- `productivity`: A larger app-shaped example
 
-Interactive button examples with custom styling and click handlers.
+## Status
 
-### basic
-
-Simple text field and toggle examples to get started.
-
-### scroller
-
-Scrollable content with gesture handling.
+Haven is usable but new! Breaking changes may be relatively frequent as the crate matures.
