@@ -20,14 +20,16 @@ _This library is functional but very experimental. API stability is not a goal a
 - Rendering: Anyrender with Vello by default
 - Interaction: Gestures, text editing, scrolling, buttons, toggles, sliders, and dropdowns
 
-## Missing Features
-
-Haven is probably not a good choice right now if you need:
-
-- Accessibility
-- Video or gif support
-- Rotation
-- Robust effects like blur and shadow
+> [!WARNING]
+> **Limitations**:
+>
+> Haven is probably not a good choice right now if you need:
+>
+> - Accessibility
+> - Video or gif support
+> - Rotation
+> - Robust effects like blur and shadow
+> - A stable, mature library which will rarely have bugs
 
 # Quick Start
 
