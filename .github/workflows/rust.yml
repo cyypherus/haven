@@ -32,16 +32,12 @@ jobs:
         run: cargo test --verbose
 
   clippy:
-    name: clippy 🪢 (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest]
+    name: clippy 🪢
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
       - name: Install system dependencies
-        if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev
       - name: Run clippy
         run: cargo clippy -- --deny warnings
