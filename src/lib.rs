@@ -1,7 +1,7 @@
 #![allow(clippy::type_complexity, clippy::too_many_arguments)]
 
 mod brush_source;
-#[cfg(feature = "vello")]
+#[cfg(feature = "platform-winit")]
 mod draw_layout;
 mod editor;
 mod gestures;
@@ -18,7 +18,7 @@ mod view;
 #[cfg(test)]
 mod tests;
 
-#[cfg(feature = "winit")]
+#[cfg(feature = "platform-winit")]
 pub use platforms::winit;
 
 pub use backer::{Area, Layout, nodes::*};

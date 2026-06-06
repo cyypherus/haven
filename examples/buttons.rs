@@ -1,6 +1,6 @@
 use haven::winit::WinitApp;
 use haven::*;
-use vello_svg::vello::peniko::color::AlphaColor;
+use peniko::color::AlphaColor;
 
 #[derive(Clone, Default, Debug)]
 struct State {

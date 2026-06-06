@@ -1,9 +1,9 @@
+use anyrender::{Glyph, PaintScene};
 use kurbo::{Affine, Line, Stroke};
 use parley::{Layout, PositionedLayoutItem};
-use peniko::{Brush, Fill};
-use vello_svg::vello::Scene;
+use peniko::{Brush, BrushRef, Fill};
 
-pub(crate) fn draw_layout(transform: Affine, layout: &Layout<Brush>, scene: &mut Scene) {
+pub(crate) fn draw_layout<S: PaintScene>(transform: Affine, layout: &Layout<Brush>, scene: &mut S) {
     for line in layout.lines() {
         for item in line.items() {
             let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
@@ -37,7 +37,7 @@ pub(crate) fn draw_layout(transform: Affine, layout: &Layout<Brush>, scene: &mut
                 scene.stroke(
                     &Stroke::new(width.into()),
                     transform,
-                    underline_brush,
+                    BrushRef::from(underline_brush),
                     None,
                     &line,
                 );
@@ -54,27 +54,32 @@ pub(crate) fn draw_layout(transform: Affine, layout: &Layout<Brush>, scene: &mut
 
             let brush = &style.brush;
 
-            scene
-                .draw_glyphs(font)
-                .brush(brush)
-                .hint(true)
-                .transform(transform)
-                .glyph_transform(glyph_xform)
-                .font_size(font_size)
-                .normalized_coords(run.normalized_coords())
-                .draw(
-                    Fill::NonZero,
-                    glyph_run.glyphs().map(|glyph| {
-                        let gx = x + glyph.x;
-                        let gy = y - glyph.y;
-                        x += glyph.advance;
-                        vello_svg::vello::Glyph {
-                            id: glyph.id as _,
-                            x: gx,
-                            y: gy,
-                        }
-                    }),
-                );
+            let glyphs: Vec<_> = glyph_run
+                .glyphs()
+                .map(|glyph| {
+                    let gx = x + glyph.x;
+                    let gy = y - glyph.y;
+                    x += glyph.advance;
+                    Glyph {
+                        id: glyph.id as _,
+                        x: gx,
+                        y: gy,
+                    }
+                })
+                .collect();
+            scene.draw_glyphs(
+                font,
+                font_size,
+                true,
+                run.normalized_coords(),
+                kurbo::Vec2::ZERO,
+                Fill::NonZero,
+                BrushRef::from(brush),
+                1.0,
+                transform,
+                glyph_xform,
+                glyphs.into_iter(),
+            );
             if let Some(strikethrough) = &style.strikethrough {
                 let strikethrough_brush = &style.brush;
                 let run_metrics = glyph_run.run().metrics();
@@ -99,7 +104,7 @@ pub(crate) fn draw_layout(transform: Affine, layout: &Layout<Brush>, scene: &mut
                 scene.stroke(
                     &Stroke::new(width.into()),
                     transform,
-                    strikethrough_brush,
+                    BrushRef::from(strikethrough_brush),
                     None,
                     &line,
                 );

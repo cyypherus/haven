@@ -11,9 +11,14 @@ struct State {
     enter_done: TextState,
     escape_done: TextState,
     password: TextState,
-    password_value: String,
     digits: TextState,
     styled: TextState,
+    aligned_start: TextState,
+    aligned_center: TextState,
+    aligned_end: TextState,
+    vertical_top: TextState,
+    vertical_center: TextState,
+    vertical_bottom: TextState,
     focus_target: TextState,
     focus_button: ButtonState,
     end_button: ButtonState,
@@ -35,9 +40,14 @@ impl Default for State {
             enter_done: TextState::new("Enter ends editing"),
             escape_done: TextState::new("Escape ends editing"),
             password: TextState::new(""),
-            password_value: String::new(),
             digits: TextState::new(""),
             styled: TextState::new("Styled text field"),
+            aligned_start: TextState::new("Start aligned"),
+            aligned_center: TextState::new("Center aligned"),
+            aligned_end: TextState::new("End aligned"),
+            vertical_top: TextState::new("Top"),
+            vertical_center: TextState::new("Center"),
+            vertical_bottom: TextState::new("Bottom"),
             focus_target: TextState::new("Programmatic focus target"),
             focus_button: ButtonState::default(),
             end_button: ButtonState::default(),
@@ -51,7 +61,7 @@ fn main() {
         .pane(
             PaneBuilder::new("main", view)
                 .title("Text Fields")
-                .inner_size(960, 800),
+                .inner_size(960, 960),
         )
         .run();
 }
@@ -191,14 +201,7 @@ fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, Pa
                             text_field(id!(), binding!(state, State, password))
                                 .hint_text("Type a secret")
                                 .align(Alignment::Start)
-                                .on_edit(|state, _, edit| {
-                                    if let EditInteraction::Update(text) = edit {
-                                        let input = text.trim_matches('*');
-                                        state.password_value.push_str(input);
-                                        state.password =
-                                            TextState::new("*".repeat(state.password_value.len()));
-                                    }
-                                })
+                                .display(|state| "*".repeat(state.text.chars().count()))
                                 .build(app)
                                 .height(42.),
                             app,
@@ -241,16 +244,13 @@ fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, Pa
                                         10.,
                                         vec![
                                             button(id!(), binding!(state, State, focus_button))
-                                                .text_label("Focus all")
+                                                .text_label("Focus")
                                                 .on_click(|state, app| {
-                                                    state.focus_target.begin_editing_with(
-                                                        app,
-                                                        InitialSelection::All,
-                                                    );
+                                                    state.focus_target.begin_editing(app);
                                                 })
                                                 .build(app)
                                                 .height(34.)
-                                                .width(94.),
+                                                .width(68.),
                                             button(id!(), binding!(state, State, end_button))
                                                 .text_label("End")
                                                 .on_click(|state, app| {
@@ -260,7 +260,7 @@ fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, Pa
                                                 .height(34.)
                                                 .width(58.),
                                             button(id!(), binding!(state, State, select_button))
-                                                .text_label("Select")
+                                                .text_label("Select all")
                                                 .on_click(|state, app| {
                                                     state.focus_target.begin_editing_with(
                                                         app,
@@ -269,7 +269,7 @@ fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, Pa
                                                 })
                                                 .build(app)
                                                 .height(34.)
-                                                .width(78.),
+                                                .width(94.),
                                         ],
                                     )
                                     .height(34.),
@@ -277,6 +277,63 @@ fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, Pa
                             ),
                             app,
                         ),
+                        field_panel(
+                            "Horizontal align",
+                            state.aligned_start.editing
+                                || state.aligned_center.editing
+                                || state.aligned_end.editing,
+                            column_spaced(
+                                8.,
+                                vec![
+                                    text_field(id!(), binding!(state, State, aligned_start))
+                                        .align(Alignment::Start)
+                                        .build(app)
+                                        .height(30.),
+                                    text_field(id!(), binding!(state, State, aligned_center))
+                                        .align(Alignment::Center)
+                                        .build(app)
+                                        .height(30.),
+                                    text_field(id!(), binding!(state, State, aligned_end))
+                                        .align(Alignment::End)
+                                        .build(app)
+                                        .height(30.),
+                                ],
+                            ),
+                            app,
+                        ),
+                    ],
+                ),
+                row_spaced(
+                    14.,
+                    vec![
+                        field_panel(
+                            "Vertical align",
+                            state.vertical_top.editing
+                                || state.vertical_center.editing
+                                || state.vertical_bottom.editing,
+                            row_spaced(
+                                8.,
+                                vec![
+                                    text_field(id!(), binding!(state, State, vertical_top))
+                                        .align(Alignment::Center)
+                                        .vertical_align(TextFieldVerticalAlignment::Top)
+                                        .build(app)
+                                        .height(92.),
+                                    text_field(id!(), binding!(state, State, vertical_center))
+                                        .align(Alignment::Center)
+                                        .vertical_align(TextFieldVerticalAlignment::Center)
+                                        .build(app)
+                                        .height(92.),
+                                    text_field(id!(), binding!(state, State, vertical_bottom))
+                                        .align(Alignment::Center)
+                                        .vertical_align(TextFieldVerticalAlignment::Bottom)
+                                        .build(app)
+                                        .height(92.),
+                                ],
+                            ),
+                            app,
+                        ),
+                        empty(),
                         empty(),
                     ],
                 ),

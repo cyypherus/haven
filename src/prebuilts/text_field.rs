@@ -341,8 +341,12 @@ fn text_field_scroll_gesture<State: 'static>(
             wrap,
         );
         let ts = binding.get_mut(state);
-        let (content_width, content_height) =
-            bound_text_field_scroll_size(&mut ts.editor, app, 1.5, wrap.then_some(editor_area.width));
+        let (content_width, content_height) = bound_text_field_scroll_size(
+            &mut ts.editor,
+            app,
+            1.5,
+            wrap.then_some(editor_area.width),
+        );
         update_text_field_viewport(
             ts,
             TextFieldViewport {
@@ -476,6 +480,7 @@ pub fn text_field<'a, State>(
         highlight_fill: BrushSource::Static(Brush::Solid(DEFAULT_PURP)),
         hint_text: None,
         hint_fill: BrushSource::Static(Brush::Solid(DEFAULT_FG_COLOR.with_alpha(0.55))),
+        display: None,
         on_edit: None,
         esc_end_editing: false,
         enter_end_editing: false,
@@ -507,6 +512,7 @@ pub struct TextField<'a, State> {
     pub(crate) highlight_fill: BrushSource<TextState>,
     pub(crate) hint_text: Option<String>,
     pub(crate) hint_fill: BrushSource<TextState>,
+    display: Option<Rc<dyn Fn(&TextState) -> String>>,
     on_edit: Option<Rc<dyn Fn(&mut State, &mut PaneState, EditInteraction)>>,
 }
 
@@ -529,6 +535,7 @@ impl<State> Debug for TextField<'_, State> {
             .field("highlight_fill", &self.highlight_fill)
             .field("hint_text", &self.hint_text)
             .field("hint_fill", &self.hint_fill)
+            .field("display", &self.display.is_some())
             .field("on_edit", &self.on_edit.is_some())
             .finish()
     }
@@ -549,6 +556,10 @@ impl<'a, State> TextField<'a, State> {
     }
     pub fn hint_fill(mut self, fill: impl Into<BrushSource<TextState>>) -> Self {
         self.hint_fill = fill.into();
+        self
+    }
+    pub fn display(mut self, display: impl Fn(&TextState) -> String + 'static) -> Self {
+        self.display = Some(Rc::new(display));
         self
     }
     pub fn on_edit(
@@ -631,6 +642,8 @@ impl<'a, State> TextField<'a, State> {
         let fill = self.text_fill.clone();
         let hint_text = self.hint_text.clone();
         let hint_fill = self.hint_fill.clone();
+        let display = self.display.clone();
+        let uses_display = display.is_some();
         let cursor_fill = self.cursor_fill.clone();
         let highlight_fill = self.highlight_fill.clone();
         let alignment = self.alignment;
@@ -643,6 +656,8 @@ impl<'a, State> TextField<'a, State> {
         let show_hint = self.state.text.trim().is_empty() && hint_text.is_some();
         let render_text = if show_hint {
             hint_text.unwrap()
+        } else if let Some(display) = display {
+            display(self.state)
         } else {
             self.state.text.clone()
         };
@@ -874,13 +889,12 @@ impl<'a, State> TextField<'a, State> {
                     alignment,
                     if wrap { Some(editor_area.width) } else { None },
                 );
-                let (content_width, content_height) =
-                    bound_text_field_scroll_size(
-                        &mut editor,
-                        ctx,
-                        1.5,
-                        wrap.then_some(editor_area.width),
-                    );
+                let (content_width, content_height) = bound_text_field_scroll_size(
+                    &mut editor,
+                    ctx,
+                    1.5,
+                    wrap.then_some(editor_area.width),
+                );
                 let mut views = Vec::new();
                 if content_width > editor_area.width {
                     views.extend(
@@ -943,14 +957,22 @@ impl<'a, State> TextField<'a, State> {
                             let ts = binding.get_mut(state);
                             let previous_text = ts.text.clone();
                             let mut handled = false;
+                            let action_mod = app.modifiers.unwrap_or_default().contains(
+                                if cfg!(target_os = "macos") {
+                                    Modifier::Super
+                                } else {
+                                    Modifier::Control
+                                },
+                            );
+                            if uses_display
+                                && let Key::Character(text) = &event.key
+                                && action_mod
+                                && (text.eq_ignore_ascii_case("c")
+                                    || text.eq_ignore_ascii_case("x"))
+                            {
+                                handled = true;
+                            }
                             if line_mode == TextFieldLineMode::Single {
-                                let action_mod = app.modifiers.unwrap_or_default().contains(
-                                    if cfg!(target_os = "macos") {
-                                        Modifier::Super
-                                    } else {
-                                        Modifier::Control
-                                    },
-                                );
                                 match &event.key {
                                     Key::Named(NamedKey::Enter) => handled = true,
                                     Key::Character(text)
@@ -994,12 +1016,11 @@ impl<'a, State> TextField<'a, State> {
                                 .layout(&mut app.font_cx, &mut app.layout_cx)
                                 .clone();
                             let cursor = text_field_cursor(&mut ts.editor, 1.5);
-                            let (content_width, content_height) =
-                                text_field_scroll_size(
-                                    &layout,
-                                    cursor,
-                                    wrap.then_some(editor_area.width),
-                                );
+                            let (content_width, content_height) = text_field_scroll_size(
+                                &layout,
+                                cursor,
+                                wrap.then_some(editor_area.width),
+                            );
                             let mut visible = ts.viewport;
                             let mut content_width = content_width;
                             let mut content_height = content_height;
@@ -1345,6 +1366,14 @@ mod tests {
         builder.build()
     }
 
+    fn action_modifier() -> Modifier {
+        if cfg!(target_os = "macos") {
+            Modifier::Super
+        } else {
+            Modifier::Control
+        }
+    }
+
     fn text_origin_x(frame: &Frame) -> f64 {
         frame
             .items
@@ -1683,19 +1712,15 @@ mod tests {
     fn enables_redacted_input() {
         struct State {
             text: TextState,
-            value: String,
+            edits: Vec<EditInteraction>,
         }
 
         const FIELD: u64 = 9005;
 
         fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
             text_field(FIELD, binding!(state, State, text))
-                .on_edit(|state, _, edit| {
-                    if let EditInteraction::Update(text) = edit {
-                        state.value.push_str(text.trim_matches('*'));
-                        state.text = TextState::new("*".repeat(state.value.len()));
-                    }
-                })
+                .display(|state| "*".repeat(state.text.chars().count()))
+                .on_edit(|state, _, edit| state.edits.push(edit))
                 .build(app)
                 .width(140.)
                 .height(40.)
@@ -1703,7 +1728,7 @@ mod tests {
 
         let mut state = State {
             text: TextState::new(""),
-            value: String::new(),
+            edits: Vec::new(),
         };
         let mut pane = test_pane(PaneBuilder::new("test", view));
         pane.redraw(&mut state, 300, 200, 1.0);
@@ -1733,10 +1758,81 @@ mod tests {
             })
             .expect("cursor rendered");
         pane.key_pressed(&mut state, "b");
+        pane.redraw(&mut state, 300, 200, 1.0);
+        pane.key_pressed(&mut state, NamedKey::Backspace);
+        pane.key_pressed(&mut state, NamedKey::ArrowLeft);
+        pane.key_pressed(&mut state, "z");
 
         assert!(cursor_x > text_x + text_width * 0.5);
-        assert_eq!(state.value, "ab");
-        assert_eq!(state.text.text, "**");
+        assert_eq!(state.text.text, "za");
+        assert!(matches!(
+            state.edits.last(),
+            Some(EditInteraction::Update(text)) if text == "za"
+        ));
+    }
+
+    #[test]
+    fn displayed_text_copy_does_not_expose_backing_text() {
+        struct State {
+            text: TextState,
+        }
+
+        const FIELD: u64 = 9012;
+
+        fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+            text_field(FIELD, binding!(state, State, text))
+                .display(|state| "*".repeat(state.text.chars().count()))
+                .build(app)
+                .width(140.)
+                .height(40.)
+        }
+
+        let mut state = State {
+            text: TextState::new("secret"),
+        };
+        let mut pane = test_pane(PaneBuilder::new("test", view));
+        pane.redraw(&mut state, 300, 200, 1.0);
+        state
+            .text
+            .begin_editing_with(&mut pane.pane_state, InitialSelection::All);
+        pane.redraw(&mut state, 300, 200, 1.0);
+
+        pane.modifiers_changed(Modifiers::from_pressed([action_modifier()]));
+        pane.key_pressed(&mut state, "c");
+
+        assert_eq!(state.text.text, "secret");
+    }
+
+    #[test]
+    fn displayed_text_cut_does_not_expose_or_delete_backing_text() {
+        struct State {
+            text: TextState,
+        }
+
+        const FIELD: u64 = 9013;
+
+        fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+            text_field(FIELD, binding!(state, State, text))
+                .display(|state| "*".repeat(state.text.chars().count()))
+                .build(app)
+                .width(140.)
+                .height(40.)
+        }
+
+        let mut state = State {
+            text: TextState::new("secret"),
+        };
+        let mut pane = test_pane(PaneBuilder::new("test", view));
+        pane.redraw(&mut state, 300, 200, 1.0);
+        state
+            .text
+            .begin_editing_with(&mut pane.pane_state, InitialSelection::All);
+        pane.redraw(&mut state, 300, 200, 1.0);
+
+        pane.modifiers_changed(Modifiers::from_pressed([action_modifier()]));
+        pane.key_pressed(&mut state, "x");
+
+        assert_eq!(state.text.text, "secret");
     }
 
     #[test]

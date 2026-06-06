@@ -1,8 +1,8 @@
-#[cfg(feature = "winit")]
+#[cfg(feature = "platform-winit")]
 use crate::MouseButton;
 use crate::{Key, Modifier, Modifiers, NamedKey};
 
-#[cfg(feature = "vello")]
+#[cfg(feature = "platform-winit")]
 use crate::pane::{Pane, PaneEffect};
 #[cfg(feature = "debug-overlay")]
 use crate::primitives::{PathData, text};
@@ -10,30 +10,30 @@ use crate::primitives::{PathData, text};
 use crate::render::Frame;
 #[cfg(feature = "debug-overlay")]
 use crate::{Area, Color, Stroke};
-#[cfg(feature = "vello")]
+#[cfg(feature = "platform-winit")]
 use crate::{PaneBuilder, ScrollDelta};
-#[cfg(feature = "vello")]
+#[cfg(feature = "platform-winit")]
 use std::collections::HashMap;
 #[cfg(feature = "debug-overlay")]
 use std::collections::VecDeque;
-#[cfg(feature = "vello")]
+#[cfg(feature = "platform-winit")]
 use std::sync::Arc;
 #[cfg(feature = "debug-overlay")]
 use std::time::Instant;
-#[cfg(feature = "vello")]
+#[cfg(feature = "platform-winit")]
 use winit::application::ApplicationHandler;
-#[cfg(feature = "vello")]
+#[cfg(feature = "platform-winit")]
 use winit::dpi::LogicalSize;
-#[cfg(feature = "vello")]
+#[cfg(feature = "platform-winit")]
 use winit::event::MouseScrollDelta;
-#[cfg(feature = "vello")]
+#[cfg(feature = "platform-winit")]
 use winit::event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy};
-#[cfg(feature = "vello")]
+#[cfg(feature = "platform-winit")]
 use winit::window::{Icon, Window as WinitWindow, WindowId};
 
-#[cfg(all(feature = "vello", target_os = "macos"))]
+#[cfg(all(feature = "platform-winit", target_os = "macos"))]
 use winit::platform::macos::WindowAttributesExtMacOS;
-#[cfg(all(feature = "vello", target_os = "windows"))]
+#[cfg(all(feature = "platform-winit", target_os = "windows"))]
 use winit::platform::windows::WindowAttributesExtWindows;
 
 pub(crate) fn key(value: winit::keyboard::Key) -> Option<Key> {
@@ -72,28 +72,76 @@ fn named_key_from_winit(value: winit::keyboard::NamedKey) -> Option<NamedKey> {
     Some(key)
 }
 
-#[cfg(feature = "vello")]
+#[cfg(feature = "platform-winit")]
 enum WinitEvent {
     Wake(WindowId),
 }
 
-#[cfg(feature = "vello")]
-use crate::renderers::vello::{VelloRenderer as Renderer, VelloSurface as Surface};
+#[cfg(feature = "platform-winit")]
+use crate::renderers::anyrender::Renderer;
 
-#[cfg(feature = "vello")]
+#[cfg(all(
+    feature = "platform-winit",
+    not(any(
+        feature = "renderer-vello",
+        feature = "renderer-vello-cpu",
+        feature = "renderer-skia"
+    ))
+))]
+compile_error!("enable one renderer feature: renderer-vello, renderer-vello-cpu, or renderer-skia");
+
+#[cfg(all(
+    feature = "platform-winit",
+    feature = "renderer-vello",
+    any(feature = "renderer-vello-cpu", feature = "renderer-skia")
+))]
+compile_error!("enable exactly one renderer feature");
+
+#[cfg(all(
+    feature = "platform-winit",
+    feature = "renderer-vello-cpu",
+    feature = "renderer-skia"
+))]
+compile_error!("enable exactly one renderer feature");
+
+#[cfg(feature = "renderer-vello")]
+type SelectedWindowRenderer = anyrender_vello::VelloWindowRenderer;
+#[cfg(feature = "renderer-vello-cpu")]
+type SelectedWindowRenderer = anyrender_vello_cpu::VelloCpuWindowRenderer;
+#[cfg(feature = "renderer-skia")]
+type SelectedWindowRenderer = anyrender_skia::SkiaWindowRenderer;
+
+#[cfg(feature = "renderer-vello")]
+fn window_renderer() -> SelectedWindowRenderer {
+    anyrender_vello::VelloWindowRenderer::with_options(anyrender_vello::VelloRendererOptions {
+        base_color: crate::TRANSPARENT,
+        ..Default::default()
+    })
+}
+
+#[cfg(feature = "renderer-vello-cpu")]
+fn window_renderer() -> SelectedWindowRenderer {
+    anyrender_vello_cpu::VelloCpuWindowRenderer::new()
+}
+
+#[cfg(feature = "renderer-skia")]
+fn window_renderer() -> SelectedWindowRenderer {
+    anyrender_skia::SkiaWindowRenderer::new()
+}
+
+#[cfg(feature = "platform-winit")]
 pub struct WinitApp<State> {
     state: State,
     panes: HashMap<&'static str, PaneBuilder<State>>,
     windows: HashMap<WindowId, WinitSurface<State>>,
     pane_windows: HashMap<&'static str, WindowId>,
-    renderer: Renderer,
     proxy: Option<EventLoopProxy<WinitEvent>>,
     window_icon: Option<Icon>,
 }
 
-#[cfg(feature = "vello")]
+#[cfg(feature = "platform-winit")]
 struct WinitSurface<State> {
-    surface: Surface,
+    renderer: Renderer<SelectedWindowRenderer>,
     window: Arc<WinitWindow>,
     pane: Pane<State>,
     #[cfg(feature = "debug-overlay")]
@@ -290,7 +338,7 @@ fn format_value(value: Option<f64>, width: usize, precision: usize) -> String {
     }
 }
 
-#[cfg(feature = "vello")]
+#[cfg(feature = "platform-winit")]
 impl<State: 'static> WinitApp<State> {
     pub fn new(state: State) -> Self {
         Self {
@@ -298,7 +346,6 @@ impl<State: 'static> WinitApp<State> {
             panes: HashMap::new(),
             windows: HashMap::new(),
             pane_windows: HashMap::new(),
-            renderer: Renderer::new(),
             proxy: None,
             window_icon: None,
         }
@@ -376,9 +423,7 @@ impl<State: 'static> WinitApp<State> {
         let window = Arc::new(event_loop.create_window(attributes).unwrap());
         let size = window.inner_size();
         let window_id = window.id();
-        let surface =
-            self.renderer
-                .create_surface(window.clone(), size.width, size.height, transparent);
+        let renderer = Renderer::new(window_renderer(), window.clone(), size.width, size.height);
 
         #[cfg(target_os = "windows")]
         window.set_visible(true);
@@ -394,7 +439,7 @@ impl<State: 'static> WinitApp<State> {
         self.windows.insert(
             window_id,
             WinitSurface {
-                surface,
+                renderer,
                 window,
                 pane,
                 #[cfg(feature = "debug-overlay")]
@@ -451,7 +496,7 @@ impl<State: 'static> WinitApp<State> {
         let size = surface.window.inner_size();
         let width = size.width;
         let height = size.height;
-        self.renderer.resize(&mut surface.surface, width, height);
+        surface.renderer.resize(width, height);
 
         let (frame, effects) = surface.pane.redraw(
             &mut self.state,
@@ -477,7 +522,7 @@ impl<State: 'static> WinitApp<State> {
             .append_to(&mut frame, &mut surface.pane, target_frame_ms);
 
         let window = surface.window.clone();
-        self.renderer.render(&mut surface.surface, &frame, || {
+        surface.renderer.render(&frame, || {
             window.pre_present_notify();
         });
 
@@ -488,7 +533,7 @@ impl<State: 'static> WinitApp<State> {
     }
 }
 
-#[cfg(feature = "vello")]
+#[cfg(feature = "platform-winit")]
 impl<State: 'static> ApplicationHandler<WinitEvent> for WinitApp<State> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let panes: Vec<_> = self
@@ -642,7 +687,7 @@ impl<State: 'static> ApplicationHandler<WinitEvent> for WinitApp<State> {
     }
 }
 
-#[cfg(feature = "vello")]
+#[cfg(feature = "platform-winit")]
 fn scroll_delta(delta: MouseScrollDelta) -> ScrollDelta {
     match delta {
         MouseScrollDelta::LineDelta(x, y) => ScrollDelta { x, y },
@@ -653,7 +698,7 @@ fn scroll_delta(delta: MouseScrollDelta) -> ScrollDelta {
     }
 }
 
-#[cfg(feature = "winit")]
+#[cfg(feature = "platform-winit")]
 fn mouse_button(value: winit::event::MouseButton) -> MouseButton {
     match value {
         winit::event::MouseButton::Left => MouseButton::Left,

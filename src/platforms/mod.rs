@@ -1,2 +1,2 @@
-#[cfg(feature = "winit")]
+#[cfg(feature = "platform-winit")]
 pub mod winit;
