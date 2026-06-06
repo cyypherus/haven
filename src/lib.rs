@@ -34,7 +34,7 @@ use peniko::color::AlphaColor;
 use peniko::color::Srgb;
 pub use prebuilts::*;
 pub use primitives::{
-    Circle, Image, ImageSource, Path, Rect, Shadow, Span, Svg, Text, circle, image,
+    Circle, Image, ImageSource, Path, PathData, Rect, Shadow, Span, Svg, Text, circle, image,
     image_from_bytes, image_from_path, path, rect, rich_text, shadow, span, svg, text,
 };
 pub use view::{

@@ -13,6 +13,6 @@ pub use image::{ImageSource, image, image_from_bytes, image_from_path};
 pub use path::{Path, path};
 pub use rect::{Rect, rect};
 pub use shadow::{Shadow, shadow};
-pub(crate) use shape::PathData;
+pub use shape::PathData;
 pub use svg::{Svg, svg};
 pub use text::{Span, Text, TextLayout, rich_text, span, text};
