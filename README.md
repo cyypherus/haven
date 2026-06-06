@@ -8,15 +8,17 @@
 
 Haven handles windowing, layout, rendering, state, and user interaction for native Rust apps.
 
-Built with [winit](https://github.com/rust-windowing/winit), [backer](https://github.com/cyypherus/backer), [anyrender](https://github.com/cyypherus/anyrender), [kurbo](https://github.com/linebender/kurbo) `0.13.0`, and [parley](https://github.com/linebender/parley) `0.7.0`.
+Built with [winit](https://github.com/rust-windowing/winit), [backer](https://github.com/cyypherus/backer), [anyrender](https://github.com/cyypherus/anyrender), and [parley](https://github.com/linebender/parley).
 
-_This library is functional but very experimental. API stability is not a goal at this stage & it is likely you will encounter bugs._
+_This library is functional but experimental. API stability is not a goal at this stage & it is likely you will encounter bugs._
 
 ### Features
 
 - Declarative API: The code should look like the structure it defines
 - Flexible layout: Constraint-based layout powered by backer
 - App runtime: Winit integration for running panes
+- Multiple windows: Run more than one pane from the same app
+- Headless interaction: Drive panes directly for automated testing
 - Rendering: Anyrender with Vello by default
 - Interaction: Gestures, text editing, scrolling, buttons, toggles, sliders, and dropdowns
 
