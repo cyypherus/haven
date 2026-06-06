@@ -59,6 +59,6 @@ pub const DEFAULT_FG_COLOR: Color = AlphaColor::WHITE;
 pub const DEFAULT_PURP: Color = AlphaColor::from_rgb8(113, 70, 232);
 pub const DEFAULT_DARK_GRAY: Color = AlphaColor::from_rgb8(30, 30, 30);
 pub const DEFAULT_GRAY: Color = AlphaColor::from_rgb8(50, 50, 50);
-pub const DEFAULT_LIGHT_GRAY: Color = AlphaColor::from_rgb8(113, 70, 232);
+pub const DEFAULT_LIGHT_GRAY: Color = AlphaColor::from_rgb8(113, 113, 113);
 pub const DEFAULT_FG: Color = Color::from_rgb8(230, 230, 230);
 pub const TRANSPARENT: Color = Color::TRANSPARENT;
