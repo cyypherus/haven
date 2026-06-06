@@ -204,25 +204,17 @@ impl Text {
 
 pub struct TextLayout {
     pub(crate) layout_cache: LayoutCache,
-    pub(crate) font_cx: FontContext,
-    pub(crate) layout_cx: LayoutContext<Brush>,
 }
 
 impl TextLayout {
-    pub(crate) fn new(
-        layout_cache: LayoutCache,
-        font_cx: FontContext,
-        layout_cx: LayoutContext<Brush>,
-    ) -> Self {
-        Self {
-            layout_cache,
-            font_cx,
-            layout_cx,
-        }
+    pub(crate) fn new(layout_cache: LayoutCache) -> Self {
+        Self { layout_cache }
     }
 
     pub(crate) fn build_layout(
         &mut self,
+        font_cx: &mut FontContext,
+        layout_cx: &mut LayoutContext<Brush>,
         text: &Text,
         current_fill: &Brush,
         available_width: f32,
@@ -263,15 +255,11 @@ impl TextLayout {
         };
 
         let mut layout = if text.styles.is_empty() {
-            let mut builder = self
-                .layout_cx
-                .tree_builder(&mut self.font_cx, 1., true, &root_style);
+            let mut builder = layout_cx.tree_builder(font_cx, 1., true, &root_style);
             builder.push_text(&current_text);
             builder.build().0
         } else {
-            let mut builder =
-                self.layout_cx
-                    .ranged_builder(&mut self.font_cx, &current_text, 1., true);
+            let mut builder = layout_cx.ranged_builder(font_cx, &current_text, 1., true);
             builder.push_default(StyleProperty::Brush(root_style.brush.clone()));
             builder.push_default(StyleProperty::FontStack(root_style.font_stack));
             builder.push_default(StyleProperty::FontWeight(root_style.font_weight));
@@ -318,7 +306,14 @@ impl Text {
         app: &mut PaneState,
     ) -> TextRenderLayout {
         let fill = self.fill.resolve(area, &());
-        let layout = app.text_layout.build_layout(self, &fill, area.width, true);
+        let layout = app.text_layout.build_layout(
+            &mut app.font_cx,
+            &mut app.layout_cx,
+            self,
+            &fill,
+            area.width,
+            true,
+        );
         let transform = Affine::translate((area.x as f64, area.y as f64)).then_scale(scale_factor);
 
         let backgrounds = self
@@ -365,14 +360,26 @@ impl Text {
             node.dynamic_height(move |w, ctx| {
                 let default_brush = Brush::Solid(crate::DEFAULT_FG_COLOR);
                 ctx.text_layout
-                    .build_layout(&self, &default_brush, w, true)
+                    .build_layout(
+                        &mut ctx.font_cx,
+                        &mut ctx.layout_cx,
+                        &self,
+                        &default_brush,
+                        w,
+                        true,
+                    )
                     .height()
             })
         } else {
             let default_brush = Brush::Solid(crate::DEFAULT_FG_COLOR);
-            let layout = ctx
-                .text_layout
-                .build_layout(&self, &default_brush, 10000., true);
+            let layout = ctx.text_layout.build_layout(
+                &mut ctx.font_cx,
+                &mut ctx.layout_cx,
+                &self,
+                &default_brush,
+                10000.,
+                true,
+            );
             node.height(layout.height()).width(layout.width().max(10.))
         }
     }

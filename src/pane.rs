@@ -417,12 +417,11 @@ impl PaneState {
 
 impl<State: 'static> Pane<State> {
     fn new(config: PaneBuilder<State>) -> Self {
+        let layout_cache = HashMap::new();
         let mut font_cx = FontContext::new();
-
         font_cx
             .collection
             .register_fonts(Blob::new(Arc::new(RUBIK_FONT)), None);
-
         for (font_bytes, family_opt) in config.custom_fonts.iter() {
             font_cx.collection.register_fonts(
                 Blob::new(font_bytes.clone()),
@@ -433,9 +432,6 @@ impl<State: 'static> Pane<State> {
             );
         }
 
-        let layout_cache = HashMap::new();
-        let layout_cx = LayoutContext::new();
-        let font_cx_inner = FontContext::new();
         let base_color = if config.transparent.unwrap_or(false) {
             Color::TRANSPARENT
         } else {
@@ -454,8 +450,8 @@ impl<State: 'static> Pane<State> {
             cursor_position: None,
             gesture_state: GestureState::None,
             pane_state: PaneState {
-                text_layout: TextLayout::new(layout_cache, font_cx_inner, layout_cx),
-                font_cx: FontContext::new(),
+                text_layout: TextLayout::new(layout_cache),
+                font_cx,
                 layout_cx: LayoutContext::new(),
                 scale_factor: 1.,
                 text_editing: TextEditing::default(),

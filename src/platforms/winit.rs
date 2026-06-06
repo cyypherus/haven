@@ -362,9 +362,8 @@ impl<State: 'static> WinitApp<State> {
     }
 
     pub fn run(mut self) {
-        let event_loop = EventLoop::with_user_event()
-            .build()
-            .expect("Could not create event loop");
+        let mut event_loop = EventLoop::with_user_event();
+        let event_loop = event_loop.build().expect("Could not create event loop");
         self.proxy = Some(event_loop.create_proxy());
         event_loop.run_app(&mut self).expect("run to completion");
     }

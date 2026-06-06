@@ -5,11 +5,6 @@ edition = "2024"
 publish = false
 
 [[example]]
-name = "basic"
-path = "examples/basic.rs"
-required-features = ["platform-winit"]
-
-[[example]]
 name = "buttons"
 path = "examples/buttons.rs"
 required-features = ["platform-winit"]

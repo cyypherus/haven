@@ -8,6 +8,7 @@ struct State {
     selected_task: Option<usize>,
     row_buttons: Vec<ButtonState>,
     compose_button: ButtonState,
+    detail_edit_button: ButtonState,
     panel_cancel_button: ButtonState,
     panel_save_button: ButtonState,
 }
@@ -86,6 +87,7 @@ impl Default for State {
             selected_task: None,
             row_buttons: vec![ButtonState::default(); 13],
             compose_button: ButtonState::default(),
+            detail_edit_button: ButtonState::default(),
             panel_cancel_button: ButtonState::default(),
             panel_save_button: ButtonState::default(),
         }
@@ -94,19 +96,42 @@ impl Default for State {
 
 #[derive(Debug, Clone)]
 struct PanelState {
+    mode: PanelMode,
     draft: TextState,
     project: DropdownState<Project>,
     priority: DropdownState<Priority>,
 }
 
-impl Default for PanelState {
-    fn default() -> Self {
+impl PanelState {
+    fn create() -> Self {
         Self {
+            mode: PanelMode::Create,
             draft: TextState::new(""),
             project: DropdownState::default(),
             priority: DropdownState::default(),
         }
     }
+
+    fn edit(index: usize, task: &Task) -> Self {
+        Self {
+            mode: PanelMode::Edit(index),
+            draft: TextState::new(&task.title),
+            project: DropdownState {
+                selected: task.project,
+                ..DropdownState::default()
+            },
+            priority: DropdownState {
+                selected: task.priority,
+                ..DropdownState::default()
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum PanelMode {
+    Create,
+    Edit(usize),
 }
 
 #[derive(Debug, Clone)]
@@ -169,6 +194,13 @@ enum Project {
 }
 
 impl Project {
+    const ALL: [Project; 4] = [
+        Project::Canopy,
+        Project::Garden,
+        Project::Commons,
+        Project::People,
+    ];
+
     fn label(self) -> &'static str {
         match self {
             Project::Canopy => "Canopy",
@@ -197,6 +229,8 @@ enum Priority {
 }
 
 impl Priority {
+    const ALL: [Priority; 3] = [Priority::Low, Priority::Medium, Priority::High];
+
     fn label(self) -> &'static str {
         match self {
             Priority::Low => "Low",
@@ -210,6 +244,14 @@ impl Priority {
             Priority::Low => Color::from_rgb8(120, 200, 120),
             Priority::Medium => Color::from_rgb8(230, 180, 80),
             Priority::High => Color::from_rgb8(240, 90, 90),
+        }
+    }
+
+    fn index(self) -> usize {
+        match self {
+            Priority::Low => 0,
+            Priority::Medium => 1,
+            Priority::High => 2,
         }
     }
 }
@@ -271,7 +313,7 @@ fn header<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
                     .text_label("New task")
                     .on_click(|state, _| {
                         if state.panel.is_none() {
-                            state.panel = Some(PanelState::default());
+                            state.panel = Some(PanelState::create());
                         } else {
                             state.panel = None;
                         }
@@ -438,12 +480,16 @@ fn project_pill<'a, State: 'static>(
 
 fn panel_slot<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
     if let Some(panel) = &state.panel {
+        let title = match panel.mode {
+            PanelMode::Create => "Create a task",
+            PanelMode::Edit(_) => "Edit task",
+        };
         return stack(vec![
             card(id!(), app),
             column_spaced(
                 12.,
                 vec![
-                    text(id!(), "Create a task")
+                    text(id!(), title)
                         .font_size(20)
                         .font_weight(FontWeight::BOLD)
                         .align(Alignment::Start)
@@ -478,7 +524,7 @@ fn panel_slot<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
     if let Some(index) = state.selected_task
         && let Some(task) = state.tasks.get(index)
     {
-        return selected_task_panel(index, task, app);
+        return selected_task_panel(index, task, state, app);
     }
 
     empty_panel(app)
@@ -506,7 +552,12 @@ fn empty_panel<'a>(app: &mut PaneState) -> View<'a, State> {
     ])
 }
 
-fn selected_task_panel<'a>(index: usize, task: &Task, app: &mut PaneState) -> View<'a, State> {
+fn selected_task_panel<'a>(
+    index: usize,
+    task: &Task,
+    state: &'a State,
+    app: &mut PaneState,
+) -> View<'a, State> {
     stack(vec![
         card(id!(index as u64), app),
         column_spaced(
@@ -517,21 +568,22 @@ fn selected_task_panel<'a>(index: usize, task: &Task, app: &mut PaneState) -> Vi
                     .font_weight(FontWeight::BOLD)
                     .build(app)
                     .expand_x(),
-                text(id!(), &task.title)
-                    .font_weight(FontWeight::BOLD)
-                    .build(app)
-                    .expand_x(),
-                row_spaced(
-                    10.,
-                    vec![
-                        project_pill(id!(index as u64), task.project, app),
-                        priority_pill(id!(index as u64), task.priority, app),
-                    ],
-                ),
+                task_card_summary(index as u64, &task.title, task.project, task.priority, app),
                 text(id!(), format!("Canopy route stop {}", index + 1))
                     .align(Alignment::Start)
                     .fill(Color::from_rgb8(150, 150, 165))
                     .build(app)
+                    .expand_x(),
+                button(id!(index as u64), binding!(state.detail_edit_button))
+                    .text_label("Edit")
+                    .on_click(move |state, _| {
+                        if let Some(task) = state.tasks.get(index) {
+                            state.panel = Some(PanelState::edit(index, task));
+                            state.selected_task = Some(index);
+                        }
+                    })
+                    .build(app)
+                    .height(38.)
                     .expand_x(),
             ],
         )
@@ -552,19 +604,34 @@ fn panel_actions<'a>(state: PanelActionsState, app: &mut PaneState) -> View<'a, 
                 .expand_x()
                 .height(38.),
             button(id!(), binding!(state.save_button))
-                .text_label("Create")
+                .text_label(match state.panel.as_ref().map(|panel| panel.mode) {
+                    Some(PanelMode::Edit(_)) => "Save",
+                    _ => "Create",
+                })
                 .on_click(|state, _| {
                     let Some(panel) = &state.panel else { return };
                     let title = panel.draft.text.trim();
                     if title.is_empty() {
                         return;
                     }
-                    state.tasks.insert(
-                        0,
-                        Task::new(title, panel.project.selected, panel.priority.selected),
-                    );
-                    state.row_buttons.insert(0, ButtonState::default());
-                    state.selected_task = None;
+                    let task = Task {
+                        title: title.to_string(),
+                        project: panel.project.selected,
+                        priority: panel.priority.selected,
+                    };
+                    match panel.mode {
+                        PanelMode::Create => {
+                            state.tasks.insert(0, task);
+                            state.row_buttons.insert(0, ButtonState::default());
+                            state.selected_task = None;
+                        }
+                        PanelMode::Edit(index) => {
+                            if let Some(existing) = state.tasks.get_mut(index) {
+                                *existing = task;
+                                state.selected_task = Some(index);
+                            }
+                        }
+                    }
                     state.panel = None;
                 })
                 .build(app)
@@ -575,9 +642,22 @@ fn panel_actions<'a>(state: PanelActionsState, app: &mut PaneState) -> View<'a, 
 }
 
 fn panel_form<'a>(state: &'a PanelState, app: &mut PaneState) -> View<'a, PanelState> {
+    let preview_title = state.draft.text.trim();
+    let preview_title = if preview_title.is_empty() {
+        "Untitled task"
+    } else {
+        preview_title
+    };
     column_spaced(
         12.,
         vec![
+            task_card_summary(
+                id!(),
+                preview_title,
+                state.project.selected,
+                state.priority.selected,
+                app,
+            ),
             text_field(id!(), binding!(state.draft))
                 .hint_text("Enter a task title...")
                 .align(Alignment::Start)
@@ -589,12 +669,7 @@ fn panel_form<'a>(state: &'a PanelState, app: &mut PaneState) -> View<'a, PanelS
                     dropdown(
                         id!(),
                         binding!(state.project),
-                        vec![
-                            Project::Canopy,
-                            Project::Garden,
-                            Project::Commons,
-                            Project::People,
-                        ],
+                        Project::ALL.to_vec(),
                         |ctx, app| {
                             dropdown_label(
                                 id!(ctx.index as u64),
@@ -609,7 +684,7 @@ fn panel_form<'a>(state: &'a PanelState, app: &mut PaneState) -> View<'a, PanelS
                     dropdown(
                         id!(),
                         binding!(state.priority),
-                        vec![Priority::Low, Priority::Medium, Priority::High],
+                        Priority::ALL.to_vec(),
                         |ctx, app| {
                             dropdown_label(
                                 id!(ctx.index as u64),
@@ -621,6 +696,33 @@ fn panel_form<'a>(state: &'a PanelState, app: &mut PaneState) -> View<'a, PanelS
                         },
                     )
                     .build(app),
+                ],
+            ),
+        ],
+    )
+}
+
+fn task_card_summary<'a, State: 'static>(
+    id: u64,
+    title: &str,
+    project: Project,
+    priority: Priority,
+    app: &mut PaneState,
+) -> View<'a, State> {
+    column_spaced(
+        10.,
+        vec![
+            text(id!(id), title)
+                .font_weight(FontWeight::BOLD)
+                .wrap()
+                .align(Alignment::Start)
+                .build(app)
+                .expand_x(),
+            row_spaced(
+                10.,
+                vec![
+                    project_pill(id!(id, 1u64), project, app),
+                    priority_pill(id!(id, 2u64), priority, app),
                 ],
             ),
         ],
@@ -647,43 +749,167 @@ fn dropdown_label<'a, State: 'static>(
 }
 
 fn summary_chart<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
-    let data = project_counts(&state.tasks);
+    let data = project_priority_counts(&state.tasks);
+    let totals = data.map(|counts| counts.iter().sum::<usize>());
+    let max_count = totals.iter().copied().max().unwrap_or(1).max(1);
     stack(vec![
         card(id!(), app),
-        row_spaced(
-            12.,
+        column_spaced(
+            10.,
             vec![
-                text(id!(), "Garden load")
-                    .align(Alignment::Start)
-                    .font_weight(FontWeight::BOLD)
-                    .build(app)
-                    .width(120.),
-                draw(move |area, ctx| {
-                    let max = data.iter().copied().max().unwrap_or(1).max(1) as f32;
-                    let bar_width = area.width / data.len() as f32;
-                    data.iter()
-                        .enumerate()
-                        .flat_map(|(index, value)| {
-                            let h = area.height * (*value as f32 / max);
-                            let x = area.x + index as f32 * bar_width;
-                            let y = area.y + area.height - h;
-                            rect(id!(index as u64))
-                                .fill(project_by_index(index).color())
-                                .corner_rounding(4.)
-                                .build(ctx)
-                                .width(bar_width - 8.)
-                                .height(h)
-                                .offset(
-                                    x + (bar_width * 0.5) - area.x - (area.width * 0.5),
-                                    y + (h * 0.5) - area.y - (area.height * 0.5),
-                                )
-                                .draw(area, ctx)
-                        })
-                        .collect()
-                }),
+                row_spaced(
+                    12.,
+                    vec![
+                        text(id!(), "Workload by project")
+                            .align(Alignment::Start)
+                            .font_weight(FontWeight::BOLD)
+                            .build(app)
+                            .expand_x(),
+                        priority_legend(app),
+                    ],
+                ),
+                row_spaced(
+                    8.,
+                    vec![
+                        column(vec![
+                            chart_y_axis(max_count, app).expand(),
+                            space().height(32.),
+                        ])
+                        .width(28.),
+                        column(vec![
+                            draw(move |area, ctx| {
+                                let max = max_count as f32;
+                                let bar_width = area.width / data.len() as f32;
+                                let mut views = Vec::new();
+                                for (tick, ratio) in [0., 0.5, 1.].into_iter().enumerate() {
+                                    let y = area.y + area.height - area.height * ratio;
+                                    views.extend(
+                                        rect(id!(tick as u64))
+                                            .fill(Color::from_rgb8(58, 58, 72))
+                                            .build(ctx)
+                                            .width(area.width)
+                                            .height(if tick == 0 { 2. } else { 1. })
+                                            .offset(0., y - area.y - (area.height * 0.5))
+                                            .draw(area, ctx),
+                                    );
+                                }
+                                for (project_index, counts) in data.iter().enumerate() {
+                                    let mut bottom = area.y + area.height;
+                                    let x = area.x + project_index as f32 * bar_width;
+                                    for priority in Priority::ALL {
+                                        let value = counts[priority.index()];
+                                        if value == 0 {
+                                            continue;
+                                        }
+                                        let height = area.height * (value as f32 / max);
+                                        bottom -= height;
+                                        views.extend(
+                                            rect(id!(
+                                                project_index as u64,
+                                                priority.index() as u64
+                                            ))
+                                            .fill(priority.color())
+                                            .corner_rounding(4.)
+                                            .build(ctx)
+                                            .width((bar_width - 16.).max(6.))
+                                            .height(height)
+                                            .offset(
+                                                x + (bar_width * 0.5) - area.x - (area.width * 0.5),
+                                                bottom + (height * 0.5)
+                                                    - area.y
+                                                    - (area.height * 0.5),
+                                            )
+                                            .draw(area, ctx),
+                                        );
+                                    }
+                                }
+                                views
+                            })
+                            .expand(),
+                            row(Project::ALL
+                                .iter()
+                                .enumerate()
+                                .map(|(index, project)| {
+                                    chart_project_label(index, *project, totals[index], app)
+                                        .expand_x()
+                                })
+                                .collect())
+                            .expand_x()
+                            .height(32.),
+                        ])
+                        .expand(),
+                    ],
+                )
+                .expand(),
             ],
         )
         .pad(14.),
+    ])
+}
+
+fn chart_y_axis<'a, State: 'static>(max: usize, app: &mut PaneState) -> View<'a, State> {
+    column(vec![
+        chart_y_tick(max, app),
+        space().expand(),
+        chart_y_tick(max.div_ceil(2), app),
+        space().expand(),
+        chart_y_tick(0, app),
+    ])
+}
+
+fn chart_y_tick<'a, State: 'static>(value: usize, app: &mut PaneState) -> View<'a, State> {
+    text(id!(), value.to_string())
+        .fill(Color::from_rgb8(150, 150, 165))
+        .font_size(11)
+        .align(Alignment::End)
+        .build(app)
+        .expand_x()
+}
+
+fn priority_legend<'a, State: 'static>(app: &mut PaneState) -> View<'a, State> {
+    row_spaced(
+        10.,
+        Priority::ALL
+            .iter()
+            .map(|priority| {
+                row_spaced(
+                    5.,
+                    vec![
+                        rect(id!())
+                            .fill(priority.color())
+                            .corner_rounding(999.)
+                            .build(app)
+                            .width(8.)
+                            .height(8.),
+                        text(id!(), priority.label())
+                            .fill(Color::from_rgb8(170, 170, 185))
+                            .font_size(12)
+                            .build(app),
+                    ],
+                )
+            })
+            .collect(),
+    )
+}
+
+fn chart_project_label<'a, State: 'static>(
+    index: usize,
+    project: Project,
+    count: usize,
+    app: &mut PaneState,
+) -> View<'a, State> {
+    column(vec![
+        text(id!(index as u64), project.label())
+            .fill(project.color())
+            .font_size(12)
+            .font_weight(FontWeight::BOLD)
+            .build(app)
+            .expand_x(),
+        text(id!(index as u64), count.to_string())
+            .fill(Color::from_rgb8(170, 170, 185))
+            .font_size(12)
+            .build(app)
+            .expand_x(),
     ])
 }
 
@@ -695,28 +921,16 @@ fn card<'a, State: 'static>(id: u64, app: &mut PaneState) -> View<'a, State> {
         .build(app)
 }
 
-fn project_counts(tasks: &[Task]) -> [usize; 4] {
-    let mut counts = [0; 4];
+fn project_priority_counts(tasks: &[Task]) -> [[usize; 3]; 4] {
+    let mut counts = [[0; 3]; 4];
     for task in tasks {
-        counts[project_index(task.project)] += 1;
+        let project_index = match task.project {
+            Project::Canopy => 0,
+            Project::Garden => 1,
+            Project::Commons => 2,
+            Project::People => 3,
+        };
+        counts[project_index][task.priority.index()] += 1;
     }
     counts
-}
-
-fn project_by_index(index: usize) -> Project {
-    match index {
-        0 => Project::Canopy,
-        1 => Project::Garden,
-        2 => Project::Commons,
-        _ => Project::People,
-    }
-}
-
-fn project_index(project: Project) -> usize {
-    match project {
-        Project::Canopy => 0,
-        Project::Garden => 1,
-        Project::Commons => 2,
-        Project::People => 3,
-    }
 }
