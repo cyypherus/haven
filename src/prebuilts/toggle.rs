@@ -35,12 +35,13 @@ impl ToggleState {
 }
 
 type ViewFn<'a, State> = Rc<dyn Fn(ToggleState, Area, &mut PaneState) -> View<'a, State> + 'a>;
+type OnToggle<State> = Rc<dyn Fn(&mut State, &mut PaneState, bool)>;
 
 fn set_toggle_on<State>(
     state: &mut State,
     app: &mut PaneState,
     binding: &Binding<State, ToggleState>,
-    on_toggle: Option<fn(&mut State, &mut PaneState, bool)>,
+    on_toggle: &Option<OnToggle<State>>,
     on: bool,
 ) {
     if binding.get(state).on == on {
@@ -54,7 +55,7 @@ fn set_toggle_on<State>(
 
 pub struct Toggle<'a, State> {
     id: u64,
-    on_toggle: Option<fn(&mut State, &mut PaneState, bool)>,
+    on_toggle: Option<OnToggle<State>>,
     state: ToggleState,
     binding: Binding<State, ToggleState>,
     knob: Option<ViewFn<'a, State>>,
@@ -76,8 +77,11 @@ pub fn toggle<'a, State>(
 }
 
 impl<'a, State> Toggle<'a, State> {
-    pub fn on_toggle(mut self, on_toggle: fn(&mut State, &mut PaneState, bool)) -> Self {
-        self.on_toggle = Some(on_toggle);
+    pub fn on_toggle(
+        mut self,
+        on_toggle: impl Fn(&mut State, &mut PaneState, bool) + 'static,
+    ) -> Self {
+        self.on_toggle = Some(Rc::new(on_toggle));
         self
     }
 
@@ -103,6 +107,7 @@ impl<'a, State> Toggle<'a, State> {
         let state = self.state;
         let knob_fn = self.knob;
         let track_fn = self.track;
+        let on_toggle = self.on_toggle;
         let id = self.id;
         draw(move |area, ctx: &mut PaneState| {
             let width = area.width;
@@ -163,6 +168,7 @@ impl<'a, State> Toggle<'a, State> {
                             .button(MouseButton::Left | MouseButton::Right)
                             .run({
                                 let binding = self.binding.clone();
+                                let on_toggle = on_toggle.clone();
                                 move |state: &mut State, app: &mut PaneState, event| match event
                                     .state
                                 {
@@ -177,7 +183,7 @@ impl<'a, State> Toggle<'a, State> {
                                             state,
                                             app,
                                             &binding,
-                                            self.on_toggle,
+                                            &on_toggle,
                                             !binding.get(state).on,
                                         );
                                         binding.update(state, |s| s.depressed = false)
@@ -190,6 +196,7 @@ impl<'a, State> Toggle<'a, State> {
                             .button(MouseButton::Left | MouseButton::Right)
                             .run({
                                 let binding = self.binding.clone();
+                                let on_toggle = on_toggle.clone();
                                 move |state: &mut State, app: &mut PaneState, drag| {
                                     let (x, completed) = match drag {
                                         DragPhase::Began { .. } => {
@@ -204,7 +211,7 @@ impl<'a, State> Toggle<'a, State> {
                                         state,
                                         app,
                                         &binding,
-                                        self.on_toggle,
+                                        &on_toggle,
                                         x >= width as f64 * 0.5,
                                     );
                                 }

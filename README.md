@@ -8,7 +8,7 @@
 
 Haven handles windowing, layout, rendering, state, and user interaction for native Rust apps.
 
-Built with [winit](https://github.com/rust-windowing/winit), [backer](https://github.com/cyypherus/backer), and [anyrender](https://github.com/cyypherus/anyrender).
+Built with [winit](https://github.com/rust-windowing/winit), [backer](https://github.com/cyypherus/backer), [anyrender](https://github.com/cyypherus/anyrender), [kurbo](https://github.com/linebender/kurbo) `0.13.0`, and [parley](https://github.com/linebender/parley) `0.7.0`.
 
 _This library is functional but very experimental. API stability is not a goal at this stage & it is likely you will encounter bugs._
 
@@ -87,3 +87,7 @@ Examples can be run directly with `cargo run --example <name>`.
 ## Status
 
 Haven is usable but new! Breaking changes may be relatively frequent as the crate matures.
+
+## Contributing
+
+This project is unlikely to be able to support any substantial volume of contributions as it's just a hobby project maintained during spare time. If you're interested in seeing a change in the library, feel free to open an issue.

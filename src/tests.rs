@@ -132,8 +132,9 @@ fn toggle_click_updates_state() {
     const TOGGLE: u64 = 20;
 
     fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        let expected = true;
         toggle(TOGGLE, binding!(state.toggle))
-            .on_toggle(|state, _, on| state.toggled = Some(on))
+            .on_toggle(move |state, _, on| state.toggled = Some(on == expected))
             .build(app)
             .width(60.)
             .height(30.)
