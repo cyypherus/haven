@@ -2,7 +2,7 @@
 
 # Haven
 
-**A WIP declarative UI crate for native applications.**
+**A declarative UI crate for native applications.**
 
 </div>
 

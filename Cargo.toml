@@ -2,6 +2,9 @@
 name = "haven-ui"
 version = "0.1.0"
 edition = "2024"
+description = "Declarative UI crate for native Rust applications."
+license-file = "LICENSE.md"
+repository = "https://github.com/cyypherus/haven"
 
 [lib]
 name = "haven"
