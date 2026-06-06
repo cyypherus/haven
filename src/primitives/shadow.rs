@@ -1,4 +1,4 @@
-use crate::pane::{PaneState, View};
+use crate::pane::{PaneElement, PaneState};
 use crate::view::{Drawable, DrawableType};
 use crate::{Area, Color, DEFAULT_CORNER_ROUNDING};
 use backer::Layout;
@@ -63,7 +63,7 @@ impl Shadow {
     pub fn build<State: 'static>(
         self,
         ctx: &mut PaneState,
-    ) -> Layout<'static, View<State>, PaneState> {
+    ) -> Layout<'static, PaneElement<State>, PaneState> {
         self.view().build(ctx)
     }
 }

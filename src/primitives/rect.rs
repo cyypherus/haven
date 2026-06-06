@@ -1,6 +1,6 @@
 use crate::DEFAULT_CORNER_ROUNDING;
 use crate::brush_source::BrushSource;
-use crate::pane::{PaneState, View};
+use crate::pane::{PaneElement, PaneState};
 use crate::primitives::shape::{PathData, rect_path};
 use crate::view::{Drawable, DrawableType};
 use backer::Layout;
@@ -66,7 +66,7 @@ impl Rect {
     pub fn build<State: 'static>(
         self,
         ctx: &mut PaneState,
-    ) -> Layout<'static, View<State>, PaneState> {
+    ) -> Layout<'static, PaneElement<State>, PaneState> {
         self.view().build(ctx)
     }
 }

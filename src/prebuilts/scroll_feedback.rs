@@ -4,7 +4,7 @@ use crate::{
     view::{BlendMode, Compositing},
 };
 use backer::{
-    Align, Area, Layout,
+    Align, Area,
     nodes::{empty, stack, stack_aligned},
 };
 use peniko::{Brush, Gradient};
@@ -79,7 +79,7 @@ pub(crate) fn scroll_edge_glows<'a, State: 'static>(
     ctx: &mut PaneState,
     feedback: &ScrollEdgeFeedback,
     now: Instant,
-) -> Layout<'a, View<State>, PaneState> {
+) -> View<'a, State> {
     if feedback.is_animating(now) {
         ctx.needs_redraw = true;
     }
@@ -105,7 +105,7 @@ fn scroll_edge_glow<'a, State: 'static>(
     ctx: &mut PaneState,
     edge: ScrollEdge,
     alpha: f32,
-) -> Layout<'a, View<State>, PaneState> {
+) -> View<'a, State> {
     if alpha <= 0.01 {
         return empty();
     }

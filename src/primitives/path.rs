@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use crate::brush_source::BrushSource;
-use crate::pane::{PaneState, View};
+use crate::pane::{PaneElement, PaneState};
 use crate::primitives::shape::PathData;
 use crate::view::{Drawable, DrawableType};
 use backer::{Area, Layout};
@@ -43,7 +43,7 @@ impl Path {
     pub fn build<State: 'static>(
         self,
         ctx: &mut PaneState,
-    ) -> Layout<'static, View<State>, PaneState> {
+    ) -> Layout<'static, PaneElement<State>, PaneState> {
         self.view().build(ctx)
     }
 }

@@ -1,5 +1,5 @@
 use crate::brush_source::BrushSource;
-use crate::pane::{PaneState, View};
+use crate::pane::{PaneElement, PaneState};
 use crate::primitives::shape::{PathData, circle_path};
 use crate::view::{Drawable, DrawableType};
 
@@ -43,7 +43,7 @@ impl Circle {
     pub fn finish<State: 'static>(
         self,
         ctx: &mut PaneState,
-    ) -> Layout<'static, View<State>, PaneState> {
+    ) -> Layout<'static, PaneElement<State>, PaneState> {
         self.view().build(ctx)
     }
 }

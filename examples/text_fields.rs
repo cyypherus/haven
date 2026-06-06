@@ -66,7 +66,7 @@ fn main() {
         .run();
 }
 
-fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
     stack(vec![
         rect(id!()).fill(background()).build(app).expand(),
         column_spaced(
@@ -79,7 +79,7 @@ fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, Pa
                         field_panel(
                             "Default single-line",
                             state.default_single.editing,
-                            text_field(id!(), binding!(state, State, default_single))
+                            text_field(id!(), binding!(state.default_single))
                                 .hint_text("Enter one line")
                                 .align(Alignment::Start)
                                 .build(app)
@@ -89,7 +89,7 @@ fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, Pa
                         field_panel(
                             "Explicit single-line",
                             state.explicit_single.editing,
-                            text_field(id!(), binding!(state, State, explicit_single))
+                            text_field(id!(), binding!(state.explicit_single))
                                 .singleline()
                                 .hint_text("Newlines are filtered")
                                 .align(Alignment::Start)
@@ -100,7 +100,7 @@ fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, Pa
                         field_panel(
                             "Wrapped single-line",
                             state.wrapped_single.editing,
-                            text_field(id!(), binding!(state, State, wrapped_single))
+                            text_field(id!(), binding!(state.wrapped_single))
                                 .singleline()
                                 .wrap()
                                 .align(Alignment::Start)
@@ -116,7 +116,7 @@ fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, Pa
                         field_panel(
                             "Multiline",
                             state.multiline.editing,
-                            text_field(id!(), binding!(state, State, multiline))
+                            text_field(id!(), binding!(state.multiline))
                                 .multiline()
                                 .hint_text("Enter preserves newlines")
                                 .align(Alignment::Start)
@@ -127,7 +127,7 @@ fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, Pa
                         field_panel(
                             "Wrapped multiline",
                             state.wrapped_multiline.editing,
-                            text_field(id!(), binding!(state, State, wrapped_multiline))
+                            text_field(id!(), binding!(state.wrapped_multiline))
                                 .multiline()
                                 .wrap()
                                 .align(Alignment::Start)
@@ -138,7 +138,7 @@ fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, Pa
                         field_panel(
                             "Custom styling",
                             state.styled.editing,
-                            text_field(id!(), binding!(state, State, styled))
+                            text_field(id!(), binding!(state.styled))
                                 .text_fill(Color::from_rgb8(255, 245, 210))
                                 .cursor_fill(Color::from_rgb8(255, 215, 90))
                                 .highlight_fill(Color::from_rgb8(80, 130, 220).with_alpha(0.55))
@@ -178,7 +178,7 @@ fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, Pa
                         field_panel(
                             "Enter end editing",
                             state.enter_done.editing,
-                            text_field(id!(), binding!(state, State, enter_done))
+                            text_field(id!(), binding!(state.enter_done))
                                 .enter_end_editing()
                                 .align(Alignment::Start)
                                 .build(app)
@@ -188,7 +188,7 @@ fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, Pa
                         field_panel(
                             "Escape end editing",
                             state.escape_done.editing,
-                            text_field(id!(), binding!(state, State, escape_done))
+                            text_field(id!(), binding!(state.escape_done))
                                 .esc_end_editing()
                                 .align(Alignment::Start)
                                 .build(app)
@@ -198,7 +198,7 @@ fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, Pa
                         field_panel(
                             "Redacted",
                             state.password.editing,
-                            text_field(id!(), binding!(state, State, password))
+                            text_field(id!(), binding!(state.password))
                                 .hint_text("Type a secret")
                                 .align(Alignment::Start)
                                 .display(|state| "*".repeat(state.text.chars().count()))
@@ -214,7 +214,7 @@ fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, Pa
                         field_panel(
                             "Filtered digits",
                             state.digits.editing,
-                            text_field(id!(), binding!(state, State, digits))
+                            text_field(id!(), binding!(state.digits))
                                 .hint_text("Only digits remain")
                                 .align(Alignment::Start)
                                 .on_edit(|state, _, edit| {
@@ -236,14 +236,14 @@ fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, Pa
                             column_spaced(
                                 10.,
                                 vec![
-                                    text_field(id!(), binding!(state, State, focus_target))
+                                    text_field(id!(), binding!(state.focus_target))
                                         .align(Alignment::Start)
                                         .build(app)
                                         .height(42.),
                                     row_spaced(
                                         10.,
                                         vec![
-                                            button(id!(), binding!(state, State, focus_button))
+                                            button(id!(), binding!(state.focus_button))
                                                 .text_label("Focus")
                                                 .on_click(|state, app| {
                                                     state.focus_target.begin_editing(app);
@@ -251,7 +251,7 @@ fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, Pa
                                                 .build(app)
                                                 .height(34.)
                                                 .width(68.),
-                                            button(id!(), binding!(state, State, end_button))
+                                            button(id!(), binding!(state.end_button))
                                                 .text_label("End")
                                                 .on_click(|state, app| {
                                                     state.focus_target.end_editing(app);
@@ -259,7 +259,7 @@ fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, Pa
                                                 .build(app)
                                                 .height(34.)
                                                 .width(58.),
-                                            button(id!(), binding!(state, State, select_button))
+                                            button(id!(), binding!(state.select_button))
                                                 .text_label("Select all")
                                                 .on_click(|state, app| {
                                                     state.focus_target.begin_editing_with(
@@ -285,15 +285,15 @@ fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, Pa
                             column_spaced(
                                 8.,
                                 vec![
-                                    text_field(id!(), binding!(state, State, aligned_start))
+                                    text_field(id!(), binding!(state.aligned_start))
                                         .align(Alignment::Start)
                                         .build(app)
                                         .height(30.),
-                                    text_field(id!(), binding!(state, State, aligned_center))
+                                    text_field(id!(), binding!(state.aligned_center))
                                         .align(Alignment::Center)
                                         .build(app)
                                         .height(30.),
-                                    text_field(id!(), binding!(state, State, aligned_end))
+                                    text_field(id!(), binding!(state.aligned_end))
                                         .align(Alignment::End)
                                         .build(app)
                                         .height(30.),
@@ -314,17 +314,17 @@ fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, Pa
                             row_spaced(
                                 8.,
                                 vec![
-                                    text_field(id!(), binding!(state, State, vertical_top))
+                                    text_field(id!(), binding!(state.vertical_top))
                                         .align(Alignment::Center)
                                         .vertical_align(TextFieldVerticalAlignment::Top)
                                         .build(app)
                                         .height(92.),
-                                    text_field(id!(), binding!(state, State, vertical_center))
+                                    text_field(id!(), binding!(state.vertical_center))
                                         .align(Alignment::Center)
                                         .vertical_align(TextFieldVerticalAlignment::Center)
                                         .build(app)
                                         .height(92.),
-                                    text_field(id!(), binding!(state, State, vertical_bottom))
+                                    text_field(id!(), binding!(state.vertical_bottom))
                                         .align(Alignment::Center)
                                         .vertical_align(TextFieldVerticalAlignment::Bottom)
                                         .build(app)
@@ -344,7 +344,7 @@ fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, Pa
     ])
 }
 
-fn heading<'a>(value: &'static str, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+fn heading<'a>(value: &'static str, app: &mut PaneState) -> View<'a, State> {
     text(id!(), value)
         .font_size(30)
         .font_weight(FontWeight::BOLD)
@@ -356,9 +356,9 @@ fn heading<'a>(value: &'static str, app: &mut PaneState) -> Layout<'a, View<Stat
 fn field_panel<'a>(
     label: &'static str,
     editing: bool,
-    field: Layout<'a, View<State>, PaneState>,
+    field: View<'a, State>,
     app: &mut PaneState,
-) -> Layout<'a, View<State>, PaneState> {
+) -> View<'a, State> {
     stack(vec![
         rect(id!())
             .fill(panel_fill(editing))

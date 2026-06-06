@@ -40,7 +40,7 @@ fn main() {
         .run();
 }
 
-fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
     stack(vec![
         rect(id!())
             .fill(background())
@@ -69,7 +69,7 @@ fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, Pa
     ])
 }
 
-fn shared_regions<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+fn shared_regions<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
     let shared = gesture::click(id!())
         .button(MouseButton::Left | MouseButton::Right)
         .run(|state: &mut State, _app, event| {
@@ -120,7 +120,7 @@ fn shared_regions<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<
     )
 }
 
-fn pass_through<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+fn pass_through<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
     panel(
         stack(vec![
             rect(id!())
@@ -162,10 +162,7 @@ fn pass_through<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<St
     )
 }
 
-fn predicate_buttons<'a>(
-    state: &'a State,
-    app: &mut PaneState,
-) -> Layout<'a, View<State>, PaneState> {
+fn predicate_buttons<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
     panel(
         stack(vec![
             rect(id!())
@@ -192,7 +189,7 @@ fn predicate_buttons<'a>(
     )
 }
 
-fn gated_drag<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+fn gated_drag<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
     let puck_x = state.puck.x as f32;
     let puck_y = state.puck.y as f32;
     panel(
@@ -255,14 +252,11 @@ fn gated_drag<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<Stat
     )
 }
 
-fn panel<'a>(
-    visual: Layout<'a, View<State>, PaneState>,
-    label: Layout<'a, View<State>, PaneState>,
-) -> Layout<'a, View<State>, PaneState> {
+fn panel<'a>(visual: View<'a, State>, label: View<'a, State>) -> View<'a, State> {
     column_spaced(20., vec![visual.height(190.), label]).align(Align::CenterCenter)
 }
 
-fn hint<'a>(id: u64, copy: &str, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+fn hint<'a>(id: u64, copy: &str, app: &mut PaneState) -> View<'a, State> {
     text(id, copy)
         .font_size(12)
         .fill(hint_color())

@@ -6,7 +6,7 @@ use crate::{
     rect,
 };
 use backer::{
-    Area, Layout,
+    Area,
     nodes::{draw, stack},
 };
 use peniko::Brush;
@@ -19,8 +19,7 @@ pub struct SliderState {
     pub value: f32,
 }
 
-type ViewFn<'a, State> =
-    Rc<dyn Fn(SliderState, Area, &mut PaneState) -> Layout<'a, View<State>, PaneState> + 'a>;
+type ViewFn<'a, State> = Rc<dyn Fn(SliderState, Area, &mut PaneState) -> View<'a, State> + 'a>;
 
 pub struct Slider<'a, State> {
     id: u64,
@@ -79,7 +78,7 @@ impl<'a, State> Slider<'a, State> {
 
     pub fn knob(
         mut self,
-        f: impl Fn(SliderState, Area, &mut PaneState) -> Layout<'a, View<State>, PaneState> + 'a,
+        f: impl Fn(SliderState, Area, &mut PaneState) -> View<'a, State> + 'a,
     ) -> Self {
         self.knob = Some(Rc::new(f));
         self
@@ -87,7 +86,7 @@ impl<'a, State> Slider<'a, State> {
 
     pub fn track(
         mut self,
-        f: impl Fn(SliderState, Area, &mut PaneState) -> Layout<'a, View<State>, PaneState> + 'a,
+        f: impl Fn(SliderState, Area, &mut PaneState) -> View<'a, State> + 'a,
     ) -> Self {
         self.track = Some(Rc::new(f));
         self
@@ -95,7 +94,7 @@ impl<'a, State> Slider<'a, State> {
 
     pub fn traveled_track(
         mut self,
-        f: impl Fn(SliderState, Area, &mut PaneState) -> Layout<'a, View<State>, PaneState> + 'a,
+        f: impl Fn(SliderState, Area, &mut PaneState) -> View<'a, State> + 'a,
     ) -> Self {
         self.traveled_track = Some(Rc::new(f));
         self
@@ -103,13 +102,13 @@ impl<'a, State> Slider<'a, State> {
 
     pub fn background(
         mut self,
-        f: impl Fn(SliderState, Area, &mut PaneState) -> Layout<'a, View<State>, PaneState> + 'a,
+        f: impl Fn(SliderState, Area, &mut PaneState) -> View<'a, State> + 'a,
     ) -> Self {
         self.background = Some(Rc::new(f));
         self
     }
 
-    pub fn build(self, _ctx: &mut PaneState) -> Layout<'a, View<State>, PaneState>
+    pub fn build(self, _ctx: &mut PaneState) -> View<'a, State>
     where
         State: 'static,
     {

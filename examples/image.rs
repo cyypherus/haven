@@ -146,7 +146,7 @@ async fn main() {
                                 .build(app)
                                 .pad(10.)
                                 .width_range(..200.),
-                                button(id!(), binding!(state, State, paste_button))
+                                button(id!(), binding!(state.paste_button))
                                     .label(|_state, ctx| text(id!(), "Paste").build(ctx))
                                     .on_click(|s, _| s.paste_from_clipboard())
                                     .build(app)
@@ -154,7 +154,7 @@ async fn main() {
                                     .width(80.),
                             ],
                         ),
-                        button(id!(), binding!(state, State, load_button))
+                        button(id!(), binding!(state.load_button))
                             .label(move |_state, ctx| {
                                 text(
                                     id!(),

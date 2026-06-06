@@ -1,4 +1,4 @@
-use crate::pane::{PaneState, View};
+use crate::pane::{PaneElement, PaneState};
 
 use crate::DEFAULT_CORNER_ROUNDING;
 use crate::view::{Drawable, DrawableType};
@@ -83,7 +83,7 @@ impl Image {
     pub fn finish<State: 'static>(
         self,
         ctx: &mut PaneState,
-    ) -> Layout<'static, View<State>, PaneState> {
+    ) -> Layout<'static, PaneElement<State>, PaneState> {
         self.view().build(ctx)
     }
 }

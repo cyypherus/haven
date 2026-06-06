@@ -5,7 +5,7 @@ use crate::{
     view::{Compositing, rounded_rect_path},
 };
 use backer::{
-    Align, Area, Layout,
+    Align, Area,
     nodes::{column, draw, empty, stack},
 };
 use std::time::Instant;
@@ -37,7 +37,7 @@ impl ScrollerState {
         available_area: Area,
         ctx: &mut PaneState,
         id: u64,
-        cell: &dyn Fn(usize, u64, &mut PaneState) -> Option<Layout<'a, View<State>, PaneState>>,
+        cell: &dyn Fn(usize, u64, &mut PaneState) -> Option<View<'a, State>>,
     ) -> bool {
         let area_changed = self.area != available_area;
         let mut height_of = |index: usize| {
@@ -216,10 +216,10 @@ enum EdgeHit {
 
 pub fn scroller<'a, State: 'static>(
     id: u64,
-    backing: Option<Layout<'a, View<State>, PaneState>>,
-    cell: impl Fn(usize, u64, &mut PaneState) -> Option<Layout<'a, View<State>, PaneState>> + 'a,
+    backing: Option<View<'a, State>>,
+    cell: impl Fn(usize, u64, &mut PaneState) -> Option<View<'a, State>> + 'a,
     ctx: &mut PaneState,
-) -> Layout<'a, View<State>, PaneState> {
+) -> View<'a, State> {
     stack(vec![
         backing.unwrap_or(empty()),
         rect(id)

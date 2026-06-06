@@ -1,6 +1,6 @@
 use crate::brush_source::BrushSource;
 use crate::editor::Editor;
-use crate::pane::{PaneState, View};
+use crate::pane::{PaneElement, PaneState, View};
 use crate::primitives::shape::{PathData, rect_path};
 use crate::view::DrawableType;
 use crate::view::rect_path as clip_rect_path;
@@ -10,7 +10,7 @@ use crate::{
     DragPhase, EditInteraction, Gesture, Key, KeyPhase, Modifier, MouseButton, NamedKey, gesture,
     rect,
 };
-use backer::{Area, Layout, nodes::*};
+use backer::{Area, nodes::*};
 use kurbo::{Affine, Rect as KRect, Stroke};
 use parley::{Alignment, FontWeight, LineHeight, StyleProperty};
 use peniko::color::palette::css::TRANSPARENT;
@@ -487,8 +487,7 @@ pub fn text_field<'a, State>(
     }
 }
 
-type BgViewFn<'a, State> =
-    Rc<dyn Fn(&TextState, Area, &mut PaneState) -> Layout<'a, View<State>, PaneState> + 'a>;
+type BgViewFn<'a, State> = Rc<dyn Fn(&TextState, Area, &mut PaneState) -> View<'a, State> + 'a>;
 
 pub struct TextField<'a, State> {
     pub(crate) id: u64,
@@ -595,7 +594,7 @@ impl<'a, State> TextField<'a, State> {
     }
     pub fn background(
         mut self,
-        f: impl Fn(&TextState, Area, &mut PaneState) -> Layout<'a, View<State>, PaneState> + 'a,
+        f: impl Fn(&TextState, Area, &mut PaneState) -> View<'a, State> + 'a,
     ) -> Self {
         self.background = Some(Rc::new(f));
         self
@@ -627,7 +626,7 @@ impl<'a, State> TextField<'a, State> {
 }
 
 impl<'a, State> TextField<'a, State> {
-    pub fn build(self, ctx: &mut PaneState) -> Layout<'a, View<State>, PaneState>
+    pub fn build(self, ctx: &mut PaneState) -> View<'a, State>
     where
         State: 'static,
     {
@@ -761,7 +760,7 @@ impl<'a, State> TextField<'a, State> {
                     width: rect.width() as f32,
                     height: rect.height() as f32,
                 };
-                selection_views.push(View::draw(
+                selection_views.push(PaneElement::draw(
                     Box::new(DrawableType::Path(Box::new(PathData {
                         id: crate::id!(id, selection_index as u64, 1u64),
                         builder: rect_path((2., 2., 2., 2.)),
@@ -792,7 +791,7 @@ impl<'a, State> TextField<'a, State> {
                     height: cursor.height() as f32,
                 };
                 let rounding = (cursor_width * 0.5) as f32;
-                cursor_views.push(View::<State>::draw(
+                cursor_views.push(PaneElement::<State>::draw(
                     Box::new(DrawableType::Path(Box::new(PathData {
                         id: crate::id!(id, 2u64),
                         builder: rect_path((rounding, rounding, rounding, rounding)),
@@ -811,7 +810,7 @@ impl<'a, State> TextField<'a, State> {
             let transform =
                 Affine::translate((placement.origin_x as f64, placement.origin_y as f64))
                     .then_scale(scale_factor);
-            views.push(View::<State>::draw(
+            views.push(PaneElement::<State>::draw(
                 Box::new(DrawableType::Layout(Box::new((layout, transform)))),
                 area,
             ));
@@ -845,8 +844,14 @@ impl<'a, State> TextField<'a, State> {
             )
         };
         let content = stack(vec![
-            draw(move |area, _| vec![View::editor_area(root_id, area, edit_callback.clone())])
-                .inert(),
+            draw(move |area, _| {
+                vec![PaneElement::editor_area(
+                    root_id,
+                    area,
+                    edit_callback.clone(),
+                )]
+            })
+            .inert(),
             text_content,
         ])
         .pad(if editable { self.padding } else { 0. });
@@ -1405,8 +1410,8 @@ mod tests {
 
         const FIELD: u64 = 9010;
 
-        fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-            text_field(FIELD, binding!(state, State, text))
+        fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+            text_field(FIELD, binding!(state.text))
                 .vertical_align(state.vertical_alignment)
                 .build(app)
                 .width(160.)
@@ -1444,13 +1449,13 @@ mod tests {
         const SINGLE: u64 = 9001;
         const MULTI: u64 = 9002;
 
-        fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
             column(vec![
-                text_field(SINGLE, binding!(state, State, single))
+                text_field(SINGLE, binding!(state.single))
                     .build(app)
                     .width(140.)
                     .height(40.),
-                text_field(MULTI, binding!(state, State, multi))
+                text_field(MULTI, binding!(state.multi))
                     .multiline()
                     .build(app)
                     .width(140.)
@@ -1486,8 +1491,8 @@ mod tests {
 
         const FIELD: u64 = 9011;
 
-        fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-            text_field(FIELD, binding!(state, State, text))
+        fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+            text_field(FIELD, binding!(state.text))
                 .multiline()
                 .wrap()
                 .build(app)
@@ -1526,14 +1531,14 @@ mod tests {
         const MULTI: u64 = 9007;
         const ENTER_DONE: u64 = 9008;
 
-        fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
             column(vec![
-                text_field(MULTI, binding!(state, State, multiline))
+                text_field(MULTI, binding!(state.multiline))
                     .multiline()
                     .build(app)
                     .width(140.)
                     .height(40.),
-                text_field(ENTER_DONE, binding!(state, State, enter_done))
+                text_field(ENTER_DONE, binding!(state.enter_done))
                     .enter_end_editing()
                     .build(app)
                     .width(140.)
@@ -1562,8 +1567,8 @@ mod tests {
 
         const FIELD: u64 = 9001;
 
-        fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-            text_field(FIELD, binding!(state, State, text))
+        fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+            text_field(FIELD, binding!(state.text))
                 .build(app)
                 .width(60.)
                 .height(32.)
@@ -1594,9 +1599,9 @@ mod tests {
         const START: u64 = 9003;
         const END: u64 = 9004;
 
-        fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
             column(vec![
-                text_field(FIELD, binding!(state, State, text))
+                text_field(FIELD, binding!(state.text))
                     .build(app)
                     .width(140.)
                     .height(40.),
@@ -1653,8 +1658,8 @@ mod tests {
 
         const FIELD: u64 = 9005;
 
-        fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-            text_field(FIELD, binding!(state, State, text))
+        fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+            text_field(FIELD, binding!(state.text))
                 .build(app)
                 .width(140.)
                 .height(40.)
@@ -1682,13 +1687,13 @@ mod tests {
         const A: u64 = 9003;
         const B: u64 = 9004;
 
-        fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
             column(vec![
-                text_field(A, binding!(state, State, a))
+                text_field(A, binding!(state.a))
                     .build(app)
                     .width(140.)
                     .height(40.),
-                text_field(B, binding!(state, State, b))
+                text_field(B, binding!(state.b))
                     .build(app)
                     .width(140.)
                     .height(40.),
@@ -1717,8 +1722,8 @@ mod tests {
 
         const FIELD: u64 = 9005;
 
-        fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-            text_field(FIELD, binding!(state, State, text))
+        fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+            text_field(FIELD, binding!(state.text))
                 .display(|state| "*".repeat(state.text.chars().count()))
                 .on_edit(|state, _, edit| state.edits.push(edit))
                 .build(app)
@@ -1779,8 +1784,8 @@ mod tests {
 
         const FIELD: u64 = 9012;
 
-        fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-            text_field(FIELD, binding!(state, State, text))
+        fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+            text_field(FIELD, binding!(state.text))
                 .display(|state| "*".repeat(state.text.chars().count()))
                 .build(app)
                 .width(140.)
@@ -1811,8 +1816,8 @@ mod tests {
 
         const FIELD: u64 = 9013;
 
-        fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-            text_field(FIELD, binding!(state, State, text))
+        fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+            text_field(FIELD, binding!(state.text))
                 .display(|state| "*".repeat(state.text.chars().count()))
                 .build(app)
                 .width(140.)
@@ -1843,8 +1848,8 @@ mod tests {
 
         const FIELD: u64 = 9006;
 
-        fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-            text_field(FIELD, binding!(state, State, text))
+        fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+            text_field(FIELD, binding!(state.text))
                 .on_edit(|state, _, edit| {
                     if let EditInteraction::Update(text) = edit {
                         state.text = TextState::new(

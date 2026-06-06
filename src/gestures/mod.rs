@@ -623,7 +623,7 @@ mod tests {
         const A: u64 = 9020;
         const B: u64 = 9021;
 
-        fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        fn view<'a>(_: &'a State, app: &mut PaneState) -> View<'a, State> {
             let click = click();
             row(vec![
                 rect(A)
@@ -659,7 +659,7 @@ mod tests {
         const B: u64 = 9031;
         const C: u64 = 9032;
 
-        fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        fn view<'a>(_: &'a State, app: &mut PaneState) -> View<'a, State> {
             let click = click();
             stack_aligned(
                 Align::TopLeading,
@@ -711,7 +711,7 @@ mod tests {
         const B: u64 = 9041;
         const C: u64 = 9042;
 
-        fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        fn view<'a>(_: &'a State, app: &mut PaneState) -> View<'a, State> {
             let click = click();
             stack_aligned(
                 Align::TopLeading,
@@ -761,7 +761,7 @@ mod tests {
         const A: u64 = 9050;
         const B: u64 = 9051;
 
-        fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        fn view<'a>(_: &'a State, app: &mut PaneState) -> View<'a, State> {
             let click = click();
             row(vec![
                 rect(A)
@@ -803,7 +803,7 @@ mod tests {
         const B: u64 = 9061;
         const C: u64 = 9062;
 
-        fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        fn view<'a>(_: &'a State, app: &mut PaneState) -> View<'a, State> {
             let click = click();
             stack_aligned(
                 Align::TopLeading,
@@ -859,7 +859,7 @@ mod tests {
         const B: u64 = 9071;
         const C: u64 = 9072;
 
-        fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        fn view<'a>(_: &'a State, app: &mut PaneState) -> View<'a, State> {
             let click = click();
             stack_aligned(
                 Align::TopLeading,
@@ -914,7 +914,7 @@ mod tests {
         const A: u64 = 9080;
         const B: u64 = 9081;
 
-        fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        fn view<'a>(_: &'a State, app: &mut PaneState) -> View<'a, State> {
             let click = click();
             stack(vec![
                 rect(A)
@@ -948,7 +948,7 @@ mod tests {
         const A: u64 = 9090;
         const B: u64 = 9091;
 
-        fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+        fn view<'a>(_: &'a State, app: &mut PaneState) -> View<'a, State> {
             let click = click();
             let other_click = other_click();
             stack(vec![

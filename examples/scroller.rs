@@ -6,7 +6,7 @@ struct State {
     texts: Vec<String>,
 }
 
-fn backing<State: 'static>(app: &mut PaneState) -> Layout<'static, View<State>, PaneState> {
+fn backing<State: 'static>(app: &mut PaneState) -> Layout<'static, PaneElement<State>, PaneState> {
     rect(id!())
         .corner_rounding(DEFAULT_CORNER_ROUNDING)
         .stroke(Color::from_rgb8(50, 50, 50), Stroke::new(2.))
@@ -14,7 +14,7 @@ fn backing<State: 'static>(app: &mut PaneState) -> Layout<'static, View<State>, 
         .build(app)
 }
 
-fn text_cell<'a>(i: usize, s: &str, ctx: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+fn text_cell<'a>(i: usize, s: &str, ctx: &mut PaneState) -> View<'a, State> {
     stack(vec![
         rect(id!(i as u64))
             .fill(Color::from_rgb8(40, 40, 40))

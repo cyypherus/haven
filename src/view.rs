@@ -3,10 +3,10 @@ use crate::gestures::{
     Interaction,
     regions::{area_rect, intersect},
 };
-use crate::pane::{EditHandler, PaneState, View, ViewKind};
+use crate::pane::{EditHandler, PaneElement, PaneElementKind, PaneState, View};
 use crate::primitives::{Image, PathData, Shadow, Svg, Text};
 use crate::{Binding, OwnedBinding};
-use backer::{Area, Layout, nodes::*};
+use backer::{Area, nodes::*};
 use kurbo::{Affine, BezPath};
 use parley::Layout as TextLayout;
 use peniko::{self, Brush};
@@ -64,12 +64,20 @@ macro_rules! id {
 
 #[macro_export]
 macro_rules! binding {
-    ($state_var:ident, $State:ty, $field:ident) => {
-        (
-            &$state_var.$field,
-            Binding::new(|s: &$State| &s.$field, |s: &mut $State| &mut s.$field),
+    ($state_var:ident.$($field:ident).+) => {{
+        fn bind<'a, State, T>(
+            state: &'a State,
+            get: impl for<'b> Fn(&'b State) -> &'b T + 'static,
+            get_mut: impl for<'b> Fn(&'b mut State) -> &'b mut T + 'static,
+        ) -> (&'a T, $crate::Binding<State, T>) {
+            (get(state), $crate::Binding::new(get, get_mut))
+        }
+        bind(
+            $state_var,
+            |s| &s.$($field).+,
+            |s| &mut s.$($field).+,
         )
-    };
+    }};
 }
 
 pub fn rect_path(area: Area) -> BezPath {
@@ -111,7 +119,7 @@ pub trait Compositing<'a, State> {
     fn opacity(self, alpha: f32) -> Self;
 }
 
-impl<'a, State: 'static> Compositing<'a, State> for Layout<'a, View<State>, PaneState> {
+impl<'a, State: 'static> Compositing<'a, State> for View<'a, State> {
     fn clipped(self, path: impl Fn(Area) -> BezPath + 'static) -> Self {
         wrap_layer(self, path, peniko::BlendMode::default(), 1.0, true)
     }
@@ -147,12 +155,12 @@ impl<'a, State: 'static> Compositing<'a, State> for Layout<'a, View<State>, Pane
 }
 
 fn wrap_layer<'a, State: 'static>(
-    mut content: Layout<'a, View<State>, PaneState>,
+    mut content: View<'a, State>,
     path: impl Fn(Area) -> BezPath + 'static,
     blend: peniko::BlendMode,
     alpha: f32,
     clip_gestures: bool,
-) -> Layout<'a, View<State>, PaneState> {
+) -> View<'a, State> {
     draw(move |area, ctx| {
         let mut views = Vec::new();
         views.extend(
@@ -172,11 +180,11 @@ fn wrap_layer<'a, State: 'static>(
             let clip_rect = area_rect(area);
             views.extend(child_views.into_iter().map(move |view| {
                 match view.into_kind() {
-                    ViewKind::Draw {
+                    PaneElementKind::Draw {
                         view,
                         area,
                         gestures,
-                    } => View(ViewKind::Draw {
+                    } => PaneElement(PaneElementKind::Draw {
                         view,
                         area,
                         gestures: gestures
@@ -191,16 +199,16 @@ fn wrap_layer<'a, State: 'static>(
                             })
                             .collect(),
                     }),
-                    ViewKind::EditorArea {
+                    PaneElementKind::EditorArea {
                         id,
                         area,
                         edit_handler,
-                    } => View(ViewKind::EditorArea {
+                    } => PaneElement(PaneElementKind::EditorArea {
                         id,
                         area,
                         edit_handler,
                     }),
-                    ViewKind::Empty => View::empty(),
+                    PaneElementKind::Empty => PaneElement::empty(),
                 }
             }));
         } else {
@@ -265,7 +273,7 @@ impl<State: 'static> Drawable<State> {
         }
     }
 
-    pub fn build<'a>(self, ctx: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    pub fn build<'a>(self, ctx: &mut PaneState) -> View<'a, State> {
         let text_clone = if let DrawableType::Text(t) = &self.view_type {
             Some(t.clone())
         } else {
@@ -273,7 +281,7 @@ impl<State: 'static> Drawable<State> {
         };
 
         let node = draw(move |area, _| {
-            vec![View(ViewKind::Draw {
+            vec![PaneElement(PaneElementKind::Draw {
                 view: Box::new(self.view_type.clone()),
                 area,
                 gestures: self.gestures.clone(),
@@ -316,9 +324,9 @@ impl<State: 'static> Drawable<State> {
 }
 
 pub fn scope<'a, Parent: 'static, Sub: 'static>(
-    layout: Layout<'a, View<Sub>, PaneState>,
+    layout: View<'a, Sub>,
     binding: Binding<Parent, Sub>,
-) -> Layout<'a, View<Parent>, PaneState> {
+) -> View<'a, Parent> {
     let binding = Rc::new(binding);
     let gesture_binding = binding.clone();
     map_scope(
@@ -333,9 +341,9 @@ pub fn scope<'a, Parent: 'static, Sub: 'static>(
 }
 
 pub fn owned_scope<'a, Parent: 'static, Sub: 'static>(
-    layout: Layout<'a, View<Sub>, PaneState>,
+    layout: View<'a, Sub>,
     binding: OwnedBinding<Parent, Sub>,
-) -> Layout<'a, View<Parent>, PaneState> {
+) -> View<'a, Parent> {
     let gesture_binding = binding.clone();
     map_scope(
         layout,
@@ -349,7 +357,7 @@ pub fn owned_scope<'a, Parent: 'static, Sub: 'static>(
 }
 
 fn map_scope<'a, Parent: 'static, Sub: 'static>(
-    layout: Layout<'a, View<Sub>, PaneState>,
+    layout: View<'a, Sub>,
     f: impl Fn(
         &mut Parent,
         &mut PaneState,
@@ -360,13 +368,13 @@ fn map_scope<'a, Parent: 'static, Sub: 'static>(
     callback_f: impl Fn(&mut Parent, &mut PaneState, EditInteraction, &EditHandler<Sub>)
     + Clone
     + 'static,
-) -> Layout<'a, View<Parent>, PaneState> {
+) -> View<'a, Parent> {
     layout.map(move |view| match view.into_kind() {
-        ViewKind::Draw {
+        PaneElementKind::Draw {
             view,
             area,
             gestures,
-        } => View(ViewKind::Draw {
+        } => PaneElement(PaneElementKind::Draw {
             view,
             area,
             gestures: gestures
@@ -396,11 +404,11 @@ fn map_scope<'a, Parent: 'static, Sub: 'static>(
                 })
                 .collect(),
         }),
-        ViewKind::EditorArea {
+        PaneElementKind::EditorArea {
             id,
             area,
             edit_handler,
-        } => View(ViewKind::EditorArea {
+        } => PaneElement(PaneElementKind::EditorArea {
             id,
             area,
             edit_handler: if let Some(edit_handler) = edit_handler {
@@ -414,6 +422,6 @@ fn map_scope<'a, Parent: 'static, Sub: 'static>(
                 None
             },
         }),
-        ViewKind::Empty => View::empty(),
+        PaneElementKind::Empty => PaneElement::empty(),
     })
 }

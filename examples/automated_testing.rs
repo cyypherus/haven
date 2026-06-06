@@ -11,8 +11,8 @@ struct State {
 const BUTTON: u64 = 1;
 const SLIDER: u64 = 2;
 
-fn button_view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-    button(BUTTON, binding!(state, State, button))
+fn button_view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+    button(BUTTON, binding!(state.button))
         .text_label("Run")
         .on_click(|state, _| state.clicked = true)
         .build(app)
@@ -20,8 +20,8 @@ fn button_view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<Sta
         .height(40.)
 }
 
-fn slider_view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-    slider(SLIDER, binding!(state, State, slider))
+fn slider_view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+    slider(SLIDER, binding!(state.slider))
         .on_change(|state, _, value| state.changed = Some(value))
         .build(app)
         .width(100.)

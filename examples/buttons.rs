@@ -27,7 +27,7 @@ fn main() {
                             20.,
                             vec![
                                 text(id!(), "Text button").fill(Color::WHITE).build(app),
-                                button(id!(), binding!(state, State, b1))
+                                button(id!(), binding!(state.b1))
                                     .text_label(format!("Click count {}", state.count))
                                     .on_click(|s, _| s.count += 1)
                                     .build(app),
@@ -39,7 +39,7 @@ fn main() {
                             20.,
                             vec![
                                 text(id!(), "Custom body").fill(Color::WHITE).build(app),
-                                button(id!(), binding!(state, State, b2))
+                                button(id!(), binding!(state.b2))
                                     .on_click(|s, _| s.count += 1)
                                     .surface(|state, ctx| {
                                         rect(id!())
@@ -62,7 +62,7 @@ fn main() {
                             20.,
                             vec![
                                 text(id!(), "Svg label").fill(Color::WHITE).build(app),
-                                button(id!(), binding!(state, State, b3))
+                                button(id!(), binding!(state.b3))
                                     .on_click(|s, _| s.count += 1)
                                     .label(|state, ctx| {
                                         svg(id!(), include_str!("../assets/download.svg"))

@@ -4,7 +4,7 @@ use crate::{
     Binding, ClickPhase, DEFAULT_CORNER_ROUNDING, DEFAULT_GRAY, MouseButton, gesture, rect,
 };
 use crate::{Color, TRANSPARENT};
-use backer::{Align, Layout, nodes::*};
+use backer::{Align, nodes::*};
 use kurbo::Stroke;
 use peniko::Brush;
 use std::rc::Rc;
@@ -41,11 +41,8 @@ pub struct DropDown<'a, State, T> {
     state: &'a DropdownState<T>,
     binding: Binding<State, DropdownState<T>>,
     options: Vec<T>,
-    view_fn:
-        Rc<dyn Fn(DropdownItemCtx<T>, &mut PaneState) -> Layout<'a, View<State>, PaneState> + 'a>,
-    background: Option<
-        Rc<dyn Fn(&DropdownState<T>, &mut PaneState) -> Layout<'a, View<State>, PaneState> + 'a>,
-    >,
+    view_fn: Rc<dyn Fn(DropdownItemCtx<T>, &mut PaneState) -> View<'a, State> + 'a>,
+    background: Option<Rc<dyn Fn(&DropdownState<T>, &mut PaneState) -> View<'a, State> + 'a>>,
     on_select: Option<Rc<dyn Fn(&mut State, &mut PaneState, &T)>>,
 }
 
@@ -53,7 +50,7 @@ pub fn dropdown<'a, State, T: Clone + PartialEq + 'static>(
     id: u64,
     state: (&'a DropdownState<T>, Binding<State, DropdownState<T>>),
     options: Vec<T>,
-    view_fn: impl Fn(DropdownItemCtx<T>, &mut PaneState) -> Layout<'a, View<State>, PaneState> + 'a,
+    view_fn: impl Fn(DropdownItemCtx<T>, &mut PaneState) -> View<'a, State> + 'a,
 ) -> DropDown<'a, State, T> {
     DropDown {
         id,
@@ -69,7 +66,7 @@ pub fn dropdown<'a, State, T: Clone + PartialEq + 'static>(
 impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
     pub fn background(
         mut self,
-        f: impl Fn(&DropdownState<T>, &mut PaneState) -> Layout<'a, View<State>, PaneState> + 'a,
+        f: impl Fn(&DropdownState<T>, &mut PaneState) -> View<'a, State> + 'a,
     ) -> Self {
         self.background = Some(Rc::new(f));
         self
@@ -83,7 +80,7 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
         self
     }
 
-    pub fn build(self, ctx: &mut PaneState) -> Layout<'a, View<State>, PaneState>
+    pub fn build(self, ctx: &mut PaneState) -> View<'a, State>
     where
         State: 'static,
     {
@@ -105,10 +102,7 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
         let view_fn = self.view_fn.clone();
         let row_binding = binding.clone();
 
-        let row = move |index: usize,
-                        option: &T,
-                        ctx: &mut PaneState|
-              -> Layout<'a, View<State>, PaneState> {
+        let row = move |index: usize, option: &T, ctx: &mut PaneState| -> View<'a, State> {
             let item_ctx = DropdownItemCtx {
                 index,
                 value: option,
@@ -196,7 +190,7 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
             .expand_x()
         };
 
-        let surface = |ctx: &mut PaneState| -> Layout<'a, View<State>, PaneState> {
+        let surface = |ctx: &mut PaneState| -> View<'a, State> {
             if let Some(ref f) = background_fn {
                 f(dd_state, ctx)
             } else {

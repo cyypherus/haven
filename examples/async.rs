@@ -32,7 +32,7 @@ fn on_wake(state: &mut State, app: &mut PaneState) {
     }
 }
 
-fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
     column_spaced(
         16.,
         vec![
@@ -51,7 +51,7 @@ fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, Pa
             )
             .font_size(16)
             .build(app),
-            button(id!(), binding!(state, State, load_button))
+            button(id!(), binding!(state.load_button))
                 .text_label("Load value")
                 .on_click(|state, app| {
                     if state.loading {

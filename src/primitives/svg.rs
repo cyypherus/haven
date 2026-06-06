@@ -1,4 +1,4 @@
-use crate::pane::{PaneState, View};
+use crate::pane::{PaneElement, PaneState};
 
 use crate::view::{Drawable, DrawableType};
 
@@ -37,7 +37,7 @@ impl Svg {
     pub fn finish<State: 'static>(
         self,
         ctx: &mut PaneState,
-    ) -> Layout<'static, View<State>, PaneState> {
+    ) -> Layout<'static, PaneElement<State>, PaneState> {
         self.view().build(ctx)
     }
 }

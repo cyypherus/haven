@@ -6,7 +6,7 @@ use crate::{
     pane::{PaneState, View},
     rect,
 };
-use backer::{Layout, nodes::stack};
+use backer::nodes::stack;
 use peniko::Brush;
 use peniko::color::palette::css::TRANSPARENT;
 use std::rc::Rc;
@@ -17,8 +17,7 @@ pub struct ButtonState {
     pub depressed: bool,
 }
 
-type ViewFn<'a, State> =
-    Rc<dyn Fn(ButtonState, &mut PaneState) -> Layout<'a, View<State>, PaneState> + 'a>;
+type ViewFn<'a, State> = Rc<dyn Fn(ButtonState, &mut PaneState) -> View<'a, State> + 'a>;
 
 pub struct Button<'a, State> {
     id: u64,
@@ -48,14 +47,14 @@ pub fn button<'a, State>(
 impl<'a, State> Button<'a, State> {
     pub fn surface(
         mut self,
-        f: impl Fn(ButtonState, &mut PaneState) -> Layout<'a, View<State>, PaneState> + 'a,
+        f: impl Fn(ButtonState, &mut PaneState) -> View<'a, State> + 'a,
     ) -> Self {
         self.surface = Some(Rc::new(f));
         self
     }
     pub fn label(
         mut self,
-        f: impl Fn(ButtonState, &mut PaneState) -> Layout<'a, View<State>, PaneState> + 'a,
+        f: impl Fn(ButtonState, &mut PaneState) -> View<'a, State> + 'a,
     ) -> Self {
         self.label = Some(Rc::new(f));
         self
@@ -68,7 +67,7 @@ impl<'a, State> Button<'a, State> {
         self.on_click = Some(Rc::new(on_click));
         self
     }
-    pub fn build(self, ctx: &mut PaneState) -> Layout<'a, View<State>, PaneState>
+    pub fn build(self, ctx: &mut PaneState) -> View<'a, State>
     where
         State: 'static,
     {

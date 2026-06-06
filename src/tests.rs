@@ -29,10 +29,10 @@ fn dropdown_expands_and_selects_an_option() {
     const DROPDOWN: u64 = 10;
     const OPTIONS: [(u64, &str); 3] = [(11, "one"), (12, "two"), (13, "three")];
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
         dropdown(
             DROPDOWN,
-            binding!(state, State, dropdown),
+            binding!(state.dropdown),
             OPTIONS.iter().map(|(_, value)| *value).collect(),
             |item, app| text(OPTIONS[item.index].0, *item.value).build(app),
         )
@@ -88,16 +88,16 @@ fn dropdown_hover_captures_overlapping_button() {
     const DROPDOWN: u64 = 15;
     const OPTIONS: [(u64, &str); 3] = [(16, "one"), (17, "two"), (18, "three")];
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
         stack(vec![
-            button(BUTTON, binding!(state, State, button))
+            button(BUTTON, binding!(state.button))
                 .text_label("behind")
                 .build(app)
                 .width(120.)
                 .height(90.),
             dropdown(
                 DROPDOWN,
-                binding!(state, State, dropdown),
+                binding!(state.dropdown),
                 OPTIONS.iter().map(|(_, value)| *value).collect(),
                 |item, app| text(OPTIONS[item.index].0, *item.value).build(app),
             )
@@ -131,8 +131,8 @@ fn toggle_click_updates_state() {
 
     const TOGGLE: u64 = 20;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        toggle(TOGGLE, binding!(state, State, toggle))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        toggle(TOGGLE, binding!(state.toggle))
             .on_toggle(|state, _, on| state.toggled = Some(on))
             .build(app)
             .width(60.)
@@ -168,8 +168,8 @@ fn toggle_drag_updates_state_from_position() {
 
     const TOGGLE: u64 = 21;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        toggle(TOGGLE, binding!(state, State, toggle))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        toggle(TOGGLE, binding!(state.toggle))
             .on_toggle(|state, _, on| state.toggled = Some(on))
             .build(app)
             .width(60.)
@@ -217,7 +217,7 @@ fn drawable_click_event_reports_mouse_button_and_location() {
 
     const TARGET: u64 = 25;
 
-    fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(_: &'a State, app: &mut PaneState) -> View<'a, State> {
         rect(TARGET)
             .fill(TRANSPARENT)
             .view()
@@ -261,7 +261,7 @@ fn mouse_predicates_cover_all_button_variants() {
 
     const TARGET: u64 = 125;
 
-    fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(_: &'a State, app: &mut PaneState) -> View<'a, State> {
         rect(TARGET)
             .fill(TRANSPARENT)
             .view()
@@ -320,7 +320,7 @@ fn programmatic_click_reports_logical_location_when_scaled() {
 
     const TARGET: u64 = 26;
 
-    fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(_: &'a State, app: &mut PaneState) -> View<'a, State> {
         rect(TARGET)
             .fill(TRANSPARENT)
             .view()
@@ -361,7 +361,7 @@ fn click_capture_ignores_handlers_for_other_buttons() {
     const LEFT_TARGET: u64 = 26;
     const RIGHT_TARGET: u64 = 27;
 
-    fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(_: &'a State, app: &mut PaneState) -> View<'a, State> {
         let left_click = gesture::click(id!(LEFT_TARGET, 1u64))
             .button(MouseButton::Left)
             .run(|state: &mut State, _, event| {
@@ -419,7 +419,7 @@ fn click_capture_waits_for_matching_release_button() {
 
     const TARGET: u64 = 28;
 
-    fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(_: &'a State, app: &mut PaneState) -> View<'a, State> {
         rect(TARGET)
             .fill(TRANSPARENT)
             .view()
@@ -463,7 +463,7 @@ fn scoped_gesture_click_uses_region_and_button_predicates() {
     const A: u64 = 2002;
     const B: u64 = 2003;
 
-    fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(_: &'a State, app: &mut PaneState) -> View<'a, State> {
         let target = gesture::click(id!(A, 1u64))
             .button(MouseButton::Left | MouseButton::Right)
             .run(|state: &mut State, _, event| {
@@ -537,7 +537,7 @@ fn scoped_gesture_drag_can_use_right_button() {
 
     const SURFACE: u64 = 2011;
 
-    fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(_: &'a State, app: &mut PaneState) -> View<'a, State> {
         rect(SURFACE)
             .fill(TRANSPARENT)
             .view()
@@ -577,7 +577,7 @@ fn scoped_gesture_drag_can_use_button_predicate() {
 
     const SURFACE: u64 = 2012;
 
-    fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(_: &'a State, app: &mut PaneState) -> View<'a, State> {
         rect(SURFACE)
             .fill(TRANSPARENT)
             .view()
@@ -629,7 +629,7 @@ fn scoped_gesture_click_can_use_modifier_predicate() {
 
     const SURFACE: u64 = 2013;
 
-    fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(_: &'a State, app: &mut PaneState) -> View<'a, State> {
         rect(SURFACE)
             .fill(TRANSPARENT)
             .view()
@@ -687,7 +687,7 @@ fn scoped_scroll_is_region_gated_but_key_is_not() {
     const A: u64 = 2021;
     const B: u64 = 2022;
 
-    fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(_: &'a State, app: &mut PaneState) -> View<'a, State> {
         let scroll =
             gesture::scroll(id!(A, 1u64)).run(|state: &mut State, _, _| state.scrolls += 1);
         let key = gesture::key(id!(A, 2u64))
@@ -743,7 +743,7 @@ fn clipping_limits_pointer_gestures() {
     const CLIP: u64 = 2023;
     const TARGET: u64 = 2024;
 
-    fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(_: &'a State, app: &mut PaneState) -> View<'a, State> {
         stack_aligned(
             Align::TopLeading,
             vec![
@@ -823,7 +823,7 @@ fn blend_layer_does_not_clip_pointer_gestures() {
     const LAYER: u64 = 2035;
     const TARGET: u64 = 2036;
 
-    fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(_: &'a State, app: &mut PaneState) -> View<'a, State> {
         stack_aligned(
             Align::TopLeading,
             vec![
@@ -876,7 +876,7 @@ fn clipping_limits_layered_pointer_gestures() {
     const CLIP: u64 = 2037;
     const TARGET: u64 = 2038;
 
-    fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(_: &'a State, app: &mut PaneState) -> View<'a, State> {
         stack_aligned(
             Align::TopLeading,
             vec![
@@ -931,7 +931,7 @@ fn key_gestures_default_to_capture() {
     const BOTTOM: u64 = 2031;
     const TOP: u64 = 2032;
 
-    fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(_: &'a State, app: &mut PaneState) -> View<'a, State> {
         stack(vec![
             rect(BOTTOM)
                 .fill(TRANSPARENT)
@@ -983,7 +983,7 @@ fn scoped_shared_token_can_mark_multiple_regions() {
     const B: u64 = 2032;
     const CLICK: u64 = 2033;
 
-    fn child_view<'a>(_: &'a Child, app: &mut PaneState) -> Layout<'a, View<Child>, PaneState> {
+    fn child_view<'a>(_: &'a Child, app: &mut PaneState) -> View<'a, Child> {
         let click =
             gesture::click(CLICK)
                 .button(MouseButton::Left)
@@ -1011,8 +1011,8 @@ fn scoped_shared_token_can_mark_multiple_regions() {
         ])
     }
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        let (_, child) = binding!(state, State, child);
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        let (_, child) = binding!(state.child);
         scope(child_view(&state.child, app), child)
     }
 
@@ -1043,8 +1043,8 @@ fn scoped_text_field_lifecycle_callback_uses_child_state() {
 
     const FIELD: u64 = 2034;
 
-    fn child_view<'a>(state: &'a Child, app: &mut PaneState) -> Layout<'a, View<Child>, PaneState> {
-        text_field(FIELD, binding!(state, Child, text))
+    fn child_view<'a>(state: &'a Child, app: &mut PaneState) -> View<'a, Child> {
+        text_field(FIELD, binding!(state.text))
             .on_edit(|state, _, edit| {
                 if matches!(edit, EditInteraction::Start) {
                     state.starts += 1;
@@ -1055,8 +1055,8 @@ fn scoped_text_field_lifecycle_callback_uses_child_state() {
             .height(40.)
     }
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        let (_, child) = binding!(state, State, child);
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        let (_, child) = binding!(state.child);
         scope(child_view(&state.child, app), child)
     }
 
@@ -1079,7 +1079,7 @@ fn click_release_outside_cancels_captured_click() {
 
     const TARGET: u64 = 29;
 
-    fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(_: &'a State, app: &mut PaneState) -> View<'a, State> {
         rect(TARGET)
             .fill(TRANSPARENT)
             .view()
@@ -1120,7 +1120,7 @@ fn drag_starts_after_threshold_and_cancels_click() {
 
     const TARGET: u64 = 30;
 
-    fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(_: &'a State, app: &mut PaneState) -> View<'a, State> {
         rect(TARGET)
             .fill(TRANSPARENT)
             .view()
@@ -1187,7 +1187,7 @@ fn click_outside_is_button_specific() {
     const LISTENER: u64 = 30;
     const TARGET: u64 = 31;
 
-    fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(_: &'a State, app: &mut PaneState) -> View<'a, State> {
         let outside = gesture::click(id!(LISTENER, 1u64))
             .button(MouseButton::Right)
             .anywhere()
@@ -1241,7 +1241,7 @@ fn occluded_gesture_without_anywhere_has_no_default_region() {
     const OCCLUDER: u64 = 33;
     const TARGET: u64 = 34;
 
-    fn view<'a>(_: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(_: &'a State, app: &mut PaneState) -> View<'a, State> {
         let outside = gesture::click(id!(TARGET, 1u64)).run(|state: &mut State, _, event| {
             if event.state == ClickPhase::Completed {
                 state.outside += 1;
@@ -1285,8 +1285,8 @@ fn right_click_does_not_start_left_drag_handler() {
 
     const SLIDER: u64 = 32;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        slider(SLIDER, binding!(state, State, slider))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        slider(SLIDER, binding!(state.slider))
             .build(app)
             .width(100.)
             .height(20.)
@@ -1316,8 +1316,8 @@ fn slider_click_updates_value() {
 
     const SLIDER: u64 = 31;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        slider(SLIDER, binding!(state, State, slider))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        slider(SLIDER, binding!(state.slider))
             .on_change(|state, _, value| state.changed = Some(value))
             .build(app)
             .width(100.)
@@ -1345,8 +1345,8 @@ fn slider_drag_updates_value() {
 
     const SLIDER: u64 = 30;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        slider(SLIDER, binding!(state, State, slider))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        slider(SLIDER, binding!(state.slider))
             .on_change(|state, _, value| state.changed = Some(value))
             .build(app)
             .width(100.)
@@ -1396,8 +1396,8 @@ fn text_field_click_and_key_update_state() {
 
     const FIELD: u64 = 40;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .on_edit(|state, _, edit| state.edits.push(edit))
             .build(app)
             .width(140.)
@@ -1458,8 +1458,8 @@ fn text_field_on_edit_observes_applied_text_state() {
 
     const FIELD: u64 = 76;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .on_edit(|state, _, edit| match edit {
                 EditInteraction::Start => state.seen.push(Seen::Start {
                     text: state.text.text.clone(),
@@ -1514,8 +1514,8 @@ fn text_field_left_mouse_down_does_not_start_editing() {
 
     const FIELD: u64 = 69;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .build(app)
             .width(140.)
             .height(40.)
@@ -1544,8 +1544,8 @@ fn text_field_types_multiple_characters() {
 
     const FIELD: u64 = 41;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .build(app)
             .width(140.)
             .height(40.)
@@ -1575,8 +1575,8 @@ fn text_field_keeps_horizontal_cursor_in_view_after_edit() {
 
     const FIELD: u64 = 70;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .build(app)
             .width(60.)
             .height(32.)
@@ -1612,8 +1612,8 @@ fn text_field_arrow_navigation_updates_viewport() {
 
     const FIELD: u64 = 77;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .build(app)
             .width(60.)
             .height(32.)
@@ -1641,8 +1641,8 @@ fn wrapped_text_field_keeps_vertical_cursor_in_view_after_edit() {
 
     const FIELD: u64 = 71;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .wrap()
             .build(app)
             .width(60.)
@@ -1673,8 +1673,8 @@ fn text_field_horizontal_arrows_do_not_jitter_vertical_viewport() {
 
     const FIELD: u64 = 93;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .build(app)
             .width(160.)
             .height(28.)
@@ -1714,8 +1714,8 @@ fn inactive_text_field_scrolls_viewport_without_editing() {
 
     const FIELD: u64 = 72;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .build(app)
             .width(60.)
             .height(32.)
@@ -1743,8 +1743,8 @@ fn inactive_text_field_keeps_non_overflow_text_in_field_width() {
 
     const FIELD: u64 = 80;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .build(app)
             .width(160.)
             .height(40.)
@@ -1780,8 +1780,8 @@ fn text_field_without_overflow_does_not_scroll_or_pulse_edges() {
 
     const FIELD: u64 = 81;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .build(app)
             .width(160.)
             .height(40.)
@@ -1819,14 +1819,14 @@ fn text_field_without_overflow_does_not_capture_scroller_scroll() {
         id!(SCROLLER, index as u64)
     }
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
         scroller(
             SCROLLER,
             None,
             |index, _, app| {
                 if index == 0 {
                     return Some(
-                        text_field(FIELD, binding!(state, State, text))
+                        text_field(FIELD, binding!(state.text))
                             .build(app)
                             .height(40.),
                     );
@@ -1874,14 +1874,14 @@ fn text_field_horizontal_overflow_captures_horizontal_not_vertical_scroll() {
         id!(SCROLLER, index as u64)
     }
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
         scroller(
             SCROLLER,
             None,
             |index, _, app| {
                 if index == 0 {
                     return Some(
-                        text_field(FIELD, binding!(state, State, text))
+                        text_field(FIELD, binding!(state.text))
                             .build(app)
                             .width(60.)
                             .height(40.),
@@ -1929,8 +1929,8 @@ fn text_field_focus_does_not_move_text_layout() {
 
     const FIELD: u64 = 82;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .build(app)
             .width(160.)
             .height(40.)
@@ -1974,8 +1974,8 @@ fn text_field_click_uses_rendered_text_origin() {
 
     const FIELD: u64 = 83;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .build(app)
             .width(180.)
             .height(44.)
@@ -2015,8 +2015,8 @@ fn text_field_scroll_edge_feedback_pulses_at_limits() {
 
     const FIELD: u64 = 78;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .build(app)
             .width(60.)
             .height(32.)
@@ -2049,8 +2049,8 @@ fn empty_focused_text_field_cursor_uses_text_metrics() {
 
     const FIELD: u64 = 79;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .build(app)
             .width(120.)
             .height(100.)
@@ -2088,8 +2088,8 @@ fn text_field_clicking_cursor_position_does_not_scroll_viewport() {
 
     const FIELD: u64 = 73;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .build(app)
             .width(60.)
             .height(32.)
@@ -2119,8 +2119,8 @@ fn text_field_viewport_allows_end_cursor_width() {
 
     const FIELD: u64 = 74;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .build(app)
             .width(60.)
             .height(32.)
@@ -2158,8 +2158,8 @@ fn text_field_trailing_spaces_keep_cursor_in_view() {
 
     const FIELD: u64 = 84;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .build(app)
             .width(60.)
             .height(32.)
@@ -2209,8 +2209,8 @@ fn inactive_centered_text_field_accounts_for_trailing_spaces() {
 
     const FIELD: u64 = 92;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .build(app)
             .width(160.)
             .height(40.)
@@ -2253,8 +2253,8 @@ fn text_field_drag_select_inside_viewport_does_not_scroll() {
 
     const FIELD: u64 = 75;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .build(app)
             .width(80.)
             .height(32.)
@@ -2287,8 +2287,8 @@ fn text_field_drag_select_past_viewport_edge_scrolls() {
 
     const FIELD: u64 = 76;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .build(app)
             .width(80.)
             .height(32.)
@@ -2328,8 +2328,8 @@ fn text_field_right_click_starts_editing() {
 
     const FIELD: u64 = 67;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .on_edit(|state, _, edit| state.edits.push(edit))
             .build(app)
             .width(140.)
@@ -2363,8 +2363,8 @@ fn text_field_backspace_removes_character() {
 
     const FIELD: u64 = 42;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .build(app)
             .width(140.)
             .height(40.)
@@ -2400,8 +2400,8 @@ fn text_field_arrow_then_insert_places_caret() {
 
     const FIELD: u64 = 43;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .build(app)
             .width(140.)
             .height(40.)
@@ -2433,8 +2433,8 @@ fn text_state_select_all_replaces_with_next_key() {
 
     const FIELD: u64 = 62;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .build(app)
             .width(140.)
             .height(40.)
@@ -2471,8 +2471,8 @@ fn text_field_start_edit_can_select_all() {
 
     const FIELD: u64 = 66;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .on_edit(|state, app, edit| {
                 if matches!(edit, EditInteraction::Start) {
                     state.text.select_all_text(app);
@@ -2505,8 +2505,8 @@ fn text_field_enter_ends_editing_when_configured() {
 
     const FIELD: u64 = 44;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .enter_end_editing()
             .on_edit(|state, _, edit| state.edits.push(edit))
             .build(app)
@@ -2537,8 +2537,8 @@ fn text_field_escape_ends_editing_when_configured() {
 
     const FIELD: u64 = 45;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .esc_end_editing()
             .build(app)
             .width(140.)
@@ -2567,8 +2567,8 @@ fn text_field_enter_does_not_end_editing_by_default() {
 
     const FIELD: u64 = 46;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .build(app)
             .width(140.)
             .height(40.)
@@ -2598,11 +2598,11 @@ fn text_field_click_outside_can_be_user_handled() {
     const FIELD: u64 = 47;
     const OUTSIDE: u64 = 64;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
         column_spaced(
             10.,
             vec![
-                text_field(FIELD, binding!(state, State, text))
+                text_field(FIELD, binding!(state.text))
                     .on_edit(|state, _, edit| state.edits.push(edit))
                     .build(app)
                     .width(140.)
@@ -2653,8 +2653,8 @@ fn text_field_right_click_does_not_end_editing() {
 
     const FIELD: u64 = 63;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .build(app)
             .width(140.)
             .height(40.)
@@ -2687,8 +2687,8 @@ fn text_state_end_editing_clears_active_editor() {
 
     const FIELD: u64 = 65;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .build(app)
             .width(140.)
             .height(40.)
@@ -2717,8 +2717,8 @@ fn text_state_begin_editing_focuses_matching_text_field() {
 
     const FIELD: u64 = 67;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .build(app)
             .width(140.)
             .height(40.)
@@ -2742,8 +2742,8 @@ fn text_state_begin_editing_places_cursor_at_end_by_default() {
 
     const FIELD: u64 = 86;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .build(app)
             .width(140.)
             .height(40.)
@@ -2770,8 +2770,8 @@ fn text_state_begin_editing_renders_caret_without_click() {
 
     const FIELD: u64 = 89;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .build(app)
             .width(140.)
             .height(40.)
@@ -2804,8 +2804,8 @@ fn text_state_begin_editing_with_cursor_start_inserts_at_start() {
 
     const FIELD: u64 = 87;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .build(app)
             .width(140.)
             .height(40.)
@@ -2834,8 +2834,8 @@ fn text_state_begin_editing_with_select_all_replaces_text() {
 
     const FIELD: u64 = 88;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .build(app)
             .width(140.)
             .height(40.)
@@ -2867,13 +2867,13 @@ fn text_state_begin_editing_refocuses_after_another_field_takes_focus() {
     const FIELD_A: u64 = 84;
     const FIELD_B: u64 = 85;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
         column(vec![
-            text_field(FIELD_A, binding!(state, State, a))
+            text_field(FIELD_A, binding!(state.a))
                 .build(app)
                 .width(140.)
                 .height(40.),
-            text_field(FIELD_B, binding!(state, State, b))
+            text_field(FIELD_B, binding!(state.b))
                 .build(app)
                 .width(140.)
                 .height(40.),
@@ -2907,8 +2907,8 @@ fn text_state_begin_and_end_editing_send_lifecycle_callbacks() {
 
     const FIELD: u64 = 93;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .on_edit(|state, _, edit| state.edits.push(edit))
             .build(app)
             .width(140.)
@@ -2939,13 +2939,13 @@ fn text_state_begin_editing_defocuses_previous_field_in_same_redraw() {
     const FIELD_A: u64 = 90;
     const FIELD_B: u64 = 91;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
         column(vec![
-            text_field(FIELD_A, binding!(state, State, a))
+            text_field(FIELD_A, binding!(state.a))
                 .build(app)
                 .width(140.)
                 .height(40.),
-            text_field(FIELD_B, binding!(state, State, b))
+            text_field(FIELD_B, binding!(state.b))
                 .build(app)
                 .width(140.)
                 .height(40.),
@@ -2991,8 +2991,8 @@ fn text_state_end_editing_cancels_unapplied_focus_request() {
 
     const FIELD: u64 = 68;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
-        text_field(FIELD, binding!(state, State, text))
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(FIELD, binding!(state.text))
             .build(app)
             .width(140.)
             .height(40.)
@@ -3020,15 +3020,15 @@ fn text_field_focus_switches_between_two_fields() {
     const FIELD_A: u64 = 48;
     const FIELD_B: u64 = 49;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
         column_spaced(
             10.,
             vec![
-                text_field(FIELD_A, binding!(state, State, a))
+                text_field(FIELD_A, binding!(state.a))
                     .build(app)
                     .width(140.)
                     .height(40.),
-                text_field(FIELD_B, binding!(state, State, b))
+                text_field(FIELD_B, binding!(state.b))
                     .build(app)
                     .width(140.)
                     .height(40.),
@@ -3071,16 +3071,16 @@ fn text_field_focus_switch_sends_end_to_previous_field() {
     const FIELD_A: u64 = 70;
     const FIELD_B: u64 = 71;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
         column_spaced(
             10.,
             vec![
-                text_field(FIELD_A, binding!(state, State, a))
+                text_field(FIELD_A, binding!(state.a))
                     .on_edit(|state, _, edit| state.edits.push(("a", edit)))
                     .build(app)
                     .width(140.)
                     .height(40.),
-                text_field(FIELD_B, binding!(state, State, b))
+                text_field(FIELD_B, binding!(state.b))
                     .on_edit(|state, _, edit| state.edits.push(("b", edit)))
                     .build(app)
                     .width(140.)
@@ -3123,11 +3123,11 @@ fn text_field_focus_switch_sets_new_editor_before_previous_end_callback() {
     const FIELD_A: u64 = 72;
     const FIELD_B: u64 = 73;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
         column_spaced(
             10.,
             vec![
-                text_field(FIELD_A, binding!(state, State, a))
+                text_field(FIELD_A, binding!(state.a))
                     .on_edit(|state, app, edit| {
                         if matches!(edit, EditInteraction::End) {
                             if !app.text_field_is_focused(FIELD_A) {
@@ -3141,7 +3141,7 @@ fn text_field_focus_switch_sets_new_editor_before_previous_end_callback() {
                     .build(app)
                     .width(140.)
                     .height(40.),
-                text_field(FIELD_B, binding!(state, State, b))
+                text_field(FIELD_B, binding!(state.b))
                     .build(app)
                     .width(140.)
                     .height(40.),
@@ -3177,11 +3177,11 @@ fn text_state_recreated_field_can_focus_again_with_same_view_id() {
     const FIELD_A: u64 = 74;
     const FIELD_B: u64 = 75;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
         column_spaced(
             10.,
             vec![
-                text_field(FIELD_A, binding!(state, State, a))
+                text_field(FIELD_A, binding!(state.a))
                     .on_edit(|state, _, edit| {
                         if matches!(edit, EditInteraction::End) {
                             state.a = TextState::new("synced a");
@@ -3190,7 +3190,7 @@ fn text_state_recreated_field_can_focus_again_with_same_view_id() {
                     .build(app)
                     .width(140.)
                     .height(40.),
-                text_field(FIELD_B, binding!(state, State, b))
+                text_field(FIELD_B, binding!(state.b))
                     .build(app)
                     .width(140.)
                     .height(40.),
@@ -3231,15 +3231,15 @@ fn text_field_drag_in_second_field_switches_focus() {
     const FIELD_A: u64 = 60;
     const FIELD_B: u64 = 61;
 
-    fn view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
         column_spaced(
             10.,
             vec![
-                text_field(FIELD_A, binding!(state, State, a))
+                text_field(FIELD_A, binding!(state.a))
                     .build(app)
                     .width(140.)
                     .height(40.),
-                text_field(FIELD_B, binding!(state, State, b))
+                text_field(FIELD_B, binding!(state.b))
                     .build(app)
                     .width(140.)
                     .height(40.),
@@ -3283,7 +3283,7 @@ fn scroller_scroll_updates_state() {
         id!(index as u64)
     }
 
-    fn view<'a>(_state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(_state: &'a State, app: &mut PaneState) -> View<'a, State> {
         scroller(
             SCROLLER,
             None,
@@ -3332,7 +3332,7 @@ fn nested_scroller_receives_scroll_over_its_area() {
     const OUTER: u64 = 51;
     const INNER: u64 = 52;
 
-    fn view<'a>(_state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(_state: &'a State, app: &mut PaneState) -> View<'a, State> {
         scroller(
             OUTER,
             None,
@@ -3400,7 +3400,7 @@ fn wake_runs_on_wake_and_returns_pane_effects() {
         value: u32,
     }
 
-    fn view<'a>(_state: &'a State, _app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(_state: &'a State, _app: &mut PaneState) -> View<'a, State> {
         empty()
     }
 
@@ -3426,7 +3426,7 @@ fn wake_runs_on_wake_and_returns_pane_effects() {
 fn shadow_primitive_emits_render_item() {
     struct State;
 
-    fn view<'a>(_state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+    fn view<'a>(_state: &'a State, app: &mut PaneState) -> View<'a, State> {
         shadow(70)
             .color(Color::BLACK.with_alpha(0.4))
             .blur(12.)

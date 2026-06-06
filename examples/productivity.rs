@@ -220,7 +220,7 @@ fn main() {
         .run();
 }
 
-fn main_view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+fn main_view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
     stack(vec![
         rect(id!()).fill(Color::from_rgb8(18, 18, 24)).build(app),
         column_spaced(
@@ -243,7 +243,7 @@ fn main_view<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State
     ])
 }
 
-fn header<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+fn header<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
     row_spaced(
         14.,
         vec![
@@ -267,7 +267,7 @@ fn header<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, 
             ])
             .expand_x(),
             if state.panel.is_none() {
-                button(id!(), binding!(state, State, compose_button))
+                button(id!(), binding!(state.compose_button))
                     .text_label("New task")
                     .on_click(|state, _| {
                         if state.panel.is_none() {
@@ -286,7 +286,7 @@ fn header<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, 
     )
 }
 
-fn task_list<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+fn task_list<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
     let tasks = state.tasks.clone();
     let row_buttons = state.row_buttons.clone();
     let selected_task = state.selected_task;
@@ -324,7 +324,7 @@ fn task_row<'a>(
     button_state: ButtonState,
     selected: bool,
     app: &mut PaneState,
-) -> Layout<'a, View<State>, PaneState> {
+) -> View<'a, State> {
     button(
         id!(index as u64),
         (
@@ -400,7 +400,7 @@ fn priority_pill<'a, State: 'static>(
     id: u64,
     priority: Priority,
     app: &mut PaneState,
-) -> Layout<'a, View<State>, PaneState> {
+) -> View<'a, State> {
     stack(vec![
         rect(id!(id))
             .fill(priority.color().with_alpha(0.2))
@@ -420,7 +420,7 @@ fn project_pill<'a, State: 'static>(
     id: u64,
     project: Project,
     app: &mut PaneState,
-) -> Layout<'a, View<State>, PaneState> {
+) -> View<'a, State> {
     stack(vec![
         rect(id!(id))
             .fill(project.color().with_alpha(0.2))
@@ -436,7 +436,7 @@ fn project_pill<'a, State: 'static>(
     .height(28.)
 }
 
-fn panel_slot<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+fn panel_slot<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
     if let Some(panel) = &state.panel {
         return stack(vec![
             card(id!(), app),
@@ -484,7 +484,7 @@ fn panel_slot<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<Stat
     empty_panel(app)
 }
 
-fn empty_panel<'a>(app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+fn empty_panel<'a>(app: &mut PaneState) -> View<'a, State> {
     stack(vec![
         card(id!(), app),
         column_spaced(
@@ -506,11 +506,7 @@ fn empty_panel<'a>(app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
     ])
 }
 
-fn selected_task_panel<'a>(
-    index: usize,
-    task: &Task,
-    app: &mut PaneState,
-) -> Layout<'a, View<State>, PaneState> {
+fn selected_task_panel<'a>(index: usize, task: &Task, app: &mut PaneState) -> View<'a, State> {
     stack(vec![
         card(id!(index as u64), app),
         column_spaced(
@@ -544,20 +540,18 @@ fn selected_task_panel<'a>(
     ])
 }
 
-fn panel_actions<'a>(
-    state: PanelActionsState,
-    app: &mut PaneState,
-) -> Layout<'a, View<PanelActionsState>, PaneState> {
+fn panel_actions<'a>(state: PanelActionsState, app: &mut PaneState) -> View<'a, PanelActionsState> {
+    let state = &state;
     row_spaced(
         10.,
         vec![
-            button(id!(), binding!(state, PanelActionsState, cancel_button))
+            button(id!(), binding!(state.cancel_button))
                 .text_label("Cancel")
                 .on_click(|state, _| state.panel = None)
                 .build(app)
                 .expand_x()
                 .height(38.),
-            button(id!(), binding!(state, PanelActionsState, save_button))
+            button(id!(), binding!(state.save_button))
                 .text_label("Create")
                 .on_click(|state, _| {
                     let Some(panel) = &state.panel else { return };
@@ -580,14 +574,11 @@ fn panel_actions<'a>(
     )
 }
 
-fn panel_form<'a>(
-    state: &'a PanelState,
-    app: &mut PaneState,
-) -> Layout<'a, View<PanelState>, PaneState> {
+fn panel_form<'a>(state: &'a PanelState, app: &mut PaneState) -> View<'a, PanelState> {
     column_spaced(
         12.,
         vec![
-            text_field(id!(), binding!(state, PanelState, draft))
+            text_field(id!(), binding!(state.draft))
                 .hint_text("Enter a task title...")
                 .align(Alignment::Start)
                 .enter_end_editing()
@@ -597,7 +588,7 @@ fn panel_form<'a>(
                 vec![
                     dropdown(
                         id!(),
-                        binding!(state, PanelState, project),
+                        binding!(state.project),
                         vec![
                             Project::Canopy,
                             Project::Garden,
@@ -617,7 +608,7 @@ fn panel_form<'a>(
                     .build(app),
                     dropdown(
                         id!(),
-                        binding!(state, PanelState, priority),
+                        binding!(state.priority),
                         vec![Priority::Low, Priority::Medium, Priority::High],
                         |ctx, app| {
                             dropdown_label(
@@ -642,7 +633,7 @@ fn dropdown_label<'a, State: 'static>(
     selected: bool,
     hovered: bool,
     app: &mut PaneState,
-) -> Layout<'a, View<State>, PaneState> {
+) -> View<'a, State> {
     text(id!(id), label)
         .fill(if selected || hovered {
             DEFAULT_FG
@@ -655,7 +646,7 @@ fn dropdown_label<'a, State: 'static>(
         .expand_x()
 }
 
-fn summary_chart<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+fn summary_chart<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
     let data = project_counts(&state.tasks);
     stack(vec![
         card(id!(), app),
@@ -696,7 +687,7 @@ fn summary_chart<'a>(state: &'a State, app: &mut PaneState) -> Layout<'a, View<S
     ])
 }
 
-fn card<'a, State: 'static>(id: u64, app: &mut PaneState) -> Layout<'a, View<State>, PaneState> {
+fn card<'a, State: 'static>(id: u64, app: &mut PaneState) -> View<'a, State> {
     rect(id)
         .fill(Color::from_rgb8(26, 26, 36))
         .stroke(Color::from_rgb8(48, 48, 62), Stroke::new(1.))

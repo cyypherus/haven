@@ -3,7 +3,7 @@ use crate::utils::adjust_brush;
 use crate::{Binding, ClickPhase, DragPhase, MouseButton, gesture, id, rect};
 use crate::{DEFAULT_FG, DEFAULT_GRAY, DEFAULT_LIGHT_GRAY, TRANSPARENT, circle};
 use backer::{
-    Area, Layout,
+    Area,
     nodes::{draw, stack},
 };
 use peniko::Brush;
@@ -34,8 +34,7 @@ impl ToggleState {
     }
 }
 
-type ViewFn<'a, State> =
-    Rc<dyn Fn(ToggleState, Area, &mut PaneState) -> Layout<'a, View<State>, PaneState> + 'a>;
+type ViewFn<'a, State> = Rc<dyn Fn(ToggleState, Area, &mut PaneState) -> View<'a, State> + 'a>;
 
 fn set_toggle_on<State>(
     state: &mut State,
@@ -84,7 +83,7 @@ impl<'a, State> Toggle<'a, State> {
 
     pub fn knob(
         mut self,
-        f: impl Fn(ToggleState, Area, &mut PaneState) -> Layout<'a, View<State>, PaneState> + 'a,
+        f: impl Fn(ToggleState, Area, &mut PaneState) -> View<'a, State> + 'a,
     ) -> Self {
         self.knob = Some(Rc::new(f));
         self
@@ -92,12 +91,12 @@ impl<'a, State> Toggle<'a, State> {
 
     pub fn track(
         mut self,
-        f: impl Fn(ToggleState, Area, &mut PaneState) -> Layout<'a, View<State>, PaneState> + 'a,
+        f: impl Fn(ToggleState, Area, &mut PaneState) -> View<'a, State> + 'a,
     ) -> Self {
         self.track = Some(Rc::new(f));
         self
     }
-    pub fn build(self, _ctx: &mut PaneState) -> Layout<'a, View<State>, PaneState>
+    pub fn build(self, _ctx: &mut PaneState) -> View<'a, State>
     where
         State: 'static,
     {

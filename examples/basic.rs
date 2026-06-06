@@ -85,16 +85,14 @@ fn main() {
                         row_spaced(
                             10.,
                             vec![
-                                toggle(id!(), binding!(state, State, toggle))
+                                toggle(id!(), binding!(state.toggle))
                                     .build(app)
                                     .height(25.)
                                     .width(50.),
-                                slider(id!(), binding!(state, State, slider))
-                                    .build(app)
-                                    .height(25.),
+                                slider(id!(), binding!(state.slider)).build(app).height(25.),
                             ],
                         ),
-                        button(id!(), binding!(state, State, button))
+                        button(id!(), binding!(state.button))
                             .text_label("Engage thrusters")
                             .on_click(|_state, app| {
                                 app.open("thrusters");
@@ -129,10 +127,7 @@ fn main() {
         .run();
 }
 
-fn thrusters_view<'a>(
-    _state: &'a State,
-    app: &mut PaneState,
-) -> Layout<'a, View<State>, PaneState> {
+fn thrusters_view<'a>(_state: &'a State, app: &mut PaneState) -> View<'a, State> {
     stack(vec![
         rect(id!())
             .fill(Color::from_rgb8(30, 30, 40).with_alpha(0.75))
@@ -159,16 +154,13 @@ fn thrusters_view<'a>(
     .pad(20.)
 }
 
-fn dropdown_and_text<'a>(
-    state: &'a DDTextState,
-    app: &mut PaneState,
-) -> Layout<'a, View<DDTextState>, PaneState> {
+fn dropdown_and_text<'a>(state: &'a DDTextState, app: &mut PaneState) -> View<'a, DDTextState> {
     row_spaced(
         10.,
         vec![
             dropdown(
                 id!(),
-                binding!(state, DDTextState, dropdown),
+                binding!(state.dropdown),
                 vec![
                     Biome::Canopy,
                     Biome::Mycelial,
@@ -189,7 +181,7 @@ fn dropdown_and_text<'a>(
                 },
             )
             .build(app),
-            text_field(id!(), binding!(state, DDTextState, text))
+            text_field(id!(), binding!(state.text))
                 .align(Alignment::Start)
                 .build(app),
         ],

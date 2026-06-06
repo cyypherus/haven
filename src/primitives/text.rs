@@ -1,5 +1,5 @@
 use crate::brush_source::BrushSource;
-use crate::pane::{LayoutCache, PaneState, View};
+use crate::pane::{LayoutCache, PaneElement, PaneState};
 use crate::render::{RenderItem, TextRenderLayout};
 use crate::view::{Drawable, DrawableType};
 use crate::{DEFAULT_FG_COLOR, DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE};
@@ -197,7 +197,7 @@ impl Text {
     pub fn build<State: 'static>(
         self,
         ctx: &mut PaneState,
-    ) -> Layout<'static, View<State>, PaneState> {
+    ) -> Layout<'static, PaneElement<State>, PaneState> {
         self.view().build(ctx)
     }
 }
@@ -359,8 +359,8 @@ impl Text {
     pub(crate) fn with_text_constraints<State>(
         self,
         ctx: &mut PaneState,
-        node: Layout<'static, View<State>, PaneState>,
-    ) -> Layout<'static, View<State>, PaneState> {
+        node: Layout<'static, PaneElement<State>, PaneState>,
+    ) -> Layout<'static, PaneElement<State>, PaneState> {
         if self.wrap {
             node.dynamic_height(move |w, ctx| {
                 let default_brush = Brush::Solid(crate::DEFAULT_FG_COLOR);

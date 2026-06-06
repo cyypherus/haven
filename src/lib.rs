@@ -28,7 +28,7 @@ pub use gestures::{
     GestureId, KeyEvent, KeyPhase, KeyPredicate, ModifierPredicate, MouseButton, ScrollDelta,
     gesture,
 };
-pub use pane::{Pane, PaneBuilder, PaneEffect, PaneState, PaneWaker, View};
+pub use pane::{Pane, PaneBuilder, PaneEffect, PaneElement, PaneState, PaneWaker, View};
 pub use parley::{Alignment, FontWeight, StyleProperty};
 use peniko::color::AlphaColor;
 use peniko::color::Srgb;

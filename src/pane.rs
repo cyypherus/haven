@@ -22,7 +22,7 @@ use std::sync::Arc;
 type FontEntry = (Arc<Vec<u8>>, Option<String>);
 pub(crate) type EditHandler<State> = Rc<dyn Fn(&mut State, &mut PaneState, EditInteraction)>;
 
-type ViewFn<State> = for<'a> fn(&'a State, &mut PaneState) -> Layout<'a, View<State>, PaneState>;
+type ViewFn<State> = for<'a> fn(&'a State, &mut PaneState) -> View<'a, State>;
 
 const DRAG_START_DISTANCE: f64 = 3.0;
 
@@ -272,9 +272,11 @@ pub struct PaneState {
     wake: Arc<dyn Fn() + Send + Sync>,
 }
 
-pub struct View<State: ?Sized>(pub(crate) ViewKind<State>);
+pub type View<'a, State> = Layout<'a, PaneElement<State>, PaneState>;
 
-pub(crate) enum ViewKind<State: ?Sized> {
+pub struct PaneElement<State: ?Sized>(pub(crate) PaneElementKind<State>);
+
+pub(crate) enum PaneElementKind<State: ?Sized> {
     Draw {
         view: Box<DrawableType>,
         area: Area,
@@ -288,9 +290,9 @@ pub(crate) enum ViewKind<State: ?Sized> {
     Empty,
 }
 
-impl<State: ?Sized> View<State> {
+impl<State: ?Sized> PaneElement<State> {
     pub(crate) fn draw(view: Box<DrawableType>, area: Area) -> Self {
-        Self(ViewKind::Draw {
+        Self(PaneElementKind::Draw {
             view,
             area,
             gestures: Vec::new(),
@@ -302,7 +304,7 @@ impl<State: ?Sized> View<State> {
         area: Area,
         edit_handler: Option<EditHandler<State>>,
     ) -> Self {
-        Self(ViewKind::EditorArea {
+        Self(PaneElementKind::EditorArea {
             id,
             area,
             edit_handler,
@@ -310,10 +312,10 @@ impl<State: ?Sized> View<State> {
     }
 
     pub(crate) fn empty() -> Self {
-        Self(ViewKind::Empty)
+        Self(PaneElementKind::Empty)
     }
 
-    pub(crate) fn into_kind(self) -> ViewKind<State> {
+    pub(crate) fn into_kind(self) -> PaneElementKind<State> {
         self.0
     }
 }
@@ -582,7 +584,7 @@ impl<State: 'static> Pane<State> {
 
         for item in draw_items {
             match item.into_kind() {
-                ViewKind::EditorArea {
+                PaneElementKind::EditorArea {
                     id,
                     area,
                     edit_handler,
@@ -593,7 +595,7 @@ impl<State: 'static> Pane<State> {
                         self.edit_handlers.insert(id, edit_handler);
                     }
                 }
-                ViewKind::Draw {
+                PaneElementKind::Draw {
                     view,
                     area,
                     gestures,
@@ -647,7 +649,7 @@ impl<State: 'static> Pane<State> {
                     };
                     items.push(render_item);
                 }
-                ViewKind::Empty => (),
+                PaneElementKind::Empty => (),
             }
         }
         let mut seen_gestures = HashSet::new();
