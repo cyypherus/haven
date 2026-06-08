@@ -30,7 +30,7 @@ _This library is functional but experimental. API stability is not a goal at thi
 > - Accessibility
 > - Video or gif support
 > - Rotation
-> - Robust effects like blur and shadow
+> - Robust effects like blurs or complex shadows
 > - A stable, mature library which will rarely have bugs
 
 # Quick Start
