@@ -10,6 +10,8 @@ mod pane;
 mod platforms;
 mod prebuilts;
 mod primitives;
+#[cfg(test)]
+mod public_api_test;
 pub mod render;
 mod renderers;
 mod utils;
