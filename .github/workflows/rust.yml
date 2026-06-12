@@ -56,3 +56,14 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev
       - name: Run clippy
         run: cargo clippy -- --deny warnings
+
+  public-api:
+    name: public api
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev
+      - name: Run public API check
+        run: cargo test --verbose --features test-api public_api

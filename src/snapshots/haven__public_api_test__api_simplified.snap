@@ -1,0 +1,557 @@
+---
+source: src/public_api_test.rs
+expression: public_api_simplified
+---
+pub mod haven
+pub use haven::<<backer::nodes::*>>
+pub use haven::Align
+pub use haven::Alignment
+pub use haven::Area
+pub use haven::BezPath
+pub use haven::Brush
+pub use haven::Cap
+pub use haven::FontWeight
+pub use haven::Gradient
+pub use haven::Join
+pub use haven::Layout
+pub use haven::Point
+pub use haven::Stroke
+pub use haven::StyleProperty
+pub mod haven::gesture
+pub fn haven::gesture::click(id: u64) -> haven::gestures::ClickGesture
+pub fn haven::gesture::drag(id: u64) -> haven::gestures::DragGesture
+pub fn haven::gesture::hover(id: u64) -> haven::gestures::HoverGesture
+pub fn haven::gesture::key(id: u64) -> haven::gestures::KeyGesture
+pub fn haven::gesture::scroll(id: u64) -> haven::gestures::ScrollGesture
+pub mod haven::render
+pub enum haven::render::RenderItem
+pub haven::render::RenderItem::Image
+pub haven::render::RenderItem::Image::area: backer::types::Area
+pub haven::render::RenderItem::Image::image: haven::Image
+pub haven::render::RenderItem::Layout
+pub haven::render::RenderItem::Layout::layout: parley::layout::layout::Layout<peniko::brush::Brush>
+pub haven::render::RenderItem::Layout::transform: kurbo::affine::Affine
+pub haven::render::RenderItem::Path
+pub haven::render::RenderItem::Path::area: backer::types::Area
+pub haven::render::RenderItem::Path::path: alloc::boxed::Box<haven::PathData>
+pub haven::render::RenderItem::PopLayer
+pub haven::render::RenderItem::PushLayer
+pub haven::render::RenderItem::PushLayer::alpha: f32
+pub haven::render::RenderItem::PushLayer::blend: peniko::blend::BlendMode
+pub haven::render::RenderItem::PushLayer::path: kurbo::bezpath::BezPath
+pub haven::render::RenderItem::Shadow
+pub haven::render::RenderItem::Shadow::area: backer::types::Area
+pub haven::render::RenderItem::Shadow::shadow: haven::Shadow
+pub haven::render::RenderItem::Svg
+pub haven::render::RenderItem::Svg::area: backer::types::Area
+pub haven::render::RenderItem::Svg::svg: haven::Svg
+pub haven::render::RenderItem::Text(haven::render::TextRenderLayout)
+pub struct haven::render::Frame
+pub haven::render::Frame::base_color: haven::Color
+pub haven::render::Frame::height: u32
+pub haven::render::Frame::items: alloc::vec::Vec<haven::render::RenderItem>
+pub haven::render::Frame::scale_factor: f64
+pub haven::render::Frame::width: u32
+pub struct haven::render::TextRenderLayout
+pub haven::render::TextRenderLayout::backgrounds: alloc::vec::Vec<(kurbo::rect::Rect, peniko::brush::Brush)>
+pub haven::render::TextRenderLayout::layout: parley::layout::layout::Layout<peniko::brush::Brush>
+pub haven::render::TextRenderLayout::transform: kurbo::affine::Affine
+pub mod haven::winit
+pub struct haven::winit::WinitApp<State>
+impl<State: 'static> haven::winit::WinitApp<State>
+pub fn haven::winit::WinitApp<State>::new(state: State) -> Self
+pub fn haven::winit::WinitApp<State>::pane(self, pane: haven::PaneBuilder<State>) -> Self
+pub fn haven::winit::WinitApp<State>::run(self)
+pub fn haven::winit::WinitApp<State>::window_icon(self, icon: winit::icon::Icon) -> Self
+pub macro haven::binding!
+pub macro haven::id!
+pub enum haven::BlendMode
+pub haven::BlendMode::Additive
+pub haven::BlendMode::Multiply
+pub haven::BlendMode::Normal
+pub haven::BlendMode::Screen
+pub enum haven::BrushSource<V>
+pub haven::BrushSource::Dynamic(alloc::rc::Rc<dyn core::ops::function::Fn(backer::types::Area, &V) -> peniko::brush::Brush>)
+pub haven::BrushSource::Static(peniko::brush::Brush)
+impl<T, V> core::convert::From<T> for haven::BrushSource<V> where T: core::ops::function::Fn(backer::types::Area, &V) -> peniko::brush::Brush + 'static
+pub fn haven::BrushSource<V>::from(value: T) -> Self
+impl<V> core::convert::From<color::color::AlphaColor<color::colorspace::Srgb>> for haven::BrushSource<V>
+pub fn haven::BrushSource<V>::from(value: haven::Color) -> Self
+impl<V> core::convert::From<peniko::brush::Brush> for haven::BrushSource<V>
+pub fn haven::BrushSource<V>::from(value: peniko::brush::Brush) -> Self
+impl<V> core::convert::From<peniko::gradient::Gradient> for haven::BrushSource<V>
+pub fn haven::BrushSource<V>::from(value: peniko::gradient::Gradient) -> Self
+impl<V> core::fmt::Debug for haven::BrushSource<V>
+pub fn haven::BrushSource<V>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum haven::ClickPhase
+pub haven::ClickPhase::Cancelled
+pub haven::ClickPhase::Completed
+pub haven::ClickPhase::Started
+pub enum haven::DragPhase
+pub haven::DragPhase::Began
+pub haven::DragPhase::Began::start: kurbo::point::Point
+pub haven::DragPhase::Began::start_global: kurbo::point::Point
+pub haven::DragPhase::Completed
+pub haven::DragPhase::Completed::current: kurbo::point::Point
+pub haven::DragPhase::Completed::current_global: kurbo::point::Point
+pub haven::DragPhase::Completed::delta: kurbo::point::Point
+pub haven::DragPhase::Completed::distance: f32
+pub haven::DragPhase::Completed::start: kurbo::point::Point
+pub haven::DragPhase::Completed::start_global: kurbo::point::Point
+pub haven::DragPhase::Updated
+pub haven::DragPhase::Updated::current: kurbo::point::Point
+pub haven::DragPhase::Updated::current_global: kurbo::point::Point
+pub haven::DragPhase::Updated::delta: kurbo::point::Point
+pub haven::DragPhase::Updated::distance: f32
+pub haven::DragPhase::Updated::start: kurbo::point::Point
+pub haven::DragPhase::Updated::start_global: kurbo::point::Point
+pub enum haven::EditInteraction
+pub haven::EditInteraction::End
+pub haven::EditInteraction::Start
+pub haven::EditInteraction::Update(alloc::string::String)
+pub enum haven::ImageSource
+pub haven::ImageSource::Buffer(u32, u32, alloc::sync::Arc<alloc::vec::Vec<u8>>)
+pub haven::ImageSource::Bytes(alloc::sync::Arc<alloc::vec::Vec<u8>>)
+pub haven::ImageSource::Path(alloc::string::String)
+impl core::convert::From<&str> for haven::ImageSource
+pub fn haven::ImageSource::from(path: &str) -> Self
+impl core::convert::From<alloc::string::String> for haven::ImageSource
+pub fn haven::ImageSource::from(path: alloc::string::String) -> Self
+impl core::convert::From<alloc::sync::Arc<alloc::vec::Vec<u8>>> for haven::ImageSource
+pub fn haven::ImageSource::from(bytes: alloc::sync::Arc<alloc::vec::Vec<u8>>) -> Self
+impl core::convert::From<alloc::vec::Vec<u8>> for haven::ImageSource
+pub fn haven::ImageSource::from(bytes: alloc::vec::Vec<u8>) -> Self
+pub enum haven::InitialSelection
+pub haven::InitialSelection::All
+pub haven::InitialSelection::End
+pub haven::InitialSelection::Start
+pub enum haven::Key
+pub haven::Key::Character(alloc::string::String)
+pub haven::Key::Named(haven::NamedKey)
+impl haven::Key
+pub fn haven::Key::character(value: impl core::convert::Into<alloc::string::String>) -> Self
+impl core::convert::From<&str> for haven::Key
+pub fn haven::Key::from(value: &str) -> Self
+impl core::convert::From<alloc::string::String> for haven::Key
+pub fn haven::Key::from(value: alloc::string::String) -> Self
+impl core::convert::From<haven::Key> for haven::KeyPredicate
+pub fn haven::KeyPredicate::from(key: haven::Key) -> Self
+impl core::convert::From<haven::NamedKey> for haven::Key
+pub fn haven::Key::from(value: haven::NamedKey) -> Self
+impl core::ops::bit::BitAnd for haven::Key
+pub type haven::Key::Output = haven::gestures::predicates::Predicate<haven::Key>
+pub fn haven::Key::bitand(self, rhs: Self) -> Self::Output
+impl core::ops::bit::BitAnd<haven::Key> for haven::KeyPredicate
+pub type haven::KeyPredicate::Output = haven::gestures::predicates::Predicate<haven::Key>
+pub fn haven::KeyPredicate::bitand(self, rhs: haven::Key) -> Self::Output
+impl core::ops::bit::BitOr for haven::Key
+pub type haven::Key::Output = haven::gestures::predicates::Predicate<haven::Key>
+pub fn haven::Key::bitor(self, rhs: Self) -> Self::Output
+impl core::ops::bit::BitOr<haven::Key> for haven::KeyPredicate
+pub type haven::KeyPredicate::Output = haven::gestures::predicates::Predicate<haven::Key>
+pub fn haven::KeyPredicate::bitor(self, rhs: haven::Key) -> Self::Output
+impl core::ops::bit::Not for haven::Key
+pub type haven::Key::Output = haven::gestures::predicates::Predicate<haven::Key>
+pub fn haven::Key::not(self) -> Self::Output
+pub enum haven::KeyPhase
+pub haven::KeyPhase::Pressed
+pub haven::KeyPhase::Released
+pub enum haven::Modifier
+pub haven::Modifier::Alt
+pub haven::Modifier::Control
+pub haven::Modifier::Shift
+pub haven::Modifier::Super
+impl core::convert::From<haven::Modifier> for haven::ModifierPredicate
+pub fn haven::ModifierPredicate::from(modifier: haven::Modifier) -> Self
+impl core::ops::bit::BitAnd for haven::Modifier
+pub type haven::Modifier::Output = haven::gestures::predicates::Predicate<haven::Modifier>
+pub fn haven::Modifier::bitand(self, rhs: Self) -> Self::Output
+impl core::ops::bit::BitAnd<haven::Modifier> for haven::ModifierPredicate
+pub type haven::ModifierPredicate::Output = haven::gestures::predicates::Predicate<haven::Modifier>
+pub fn haven::ModifierPredicate::bitand(self, rhs: haven::Modifier) -> Self::Output
+impl core::ops::bit::BitOr for haven::Modifier
+pub type haven::Modifier::Output = haven::gestures::predicates::Predicate<haven::Modifier>
+pub fn haven::Modifier::bitor(self, rhs: Self) -> Self::Output
+impl core::ops::bit::BitOr<haven::Modifier> for haven::ModifierPredicate
+pub type haven::ModifierPredicate::Output = haven::gestures::predicates::Predicate<haven::Modifier>
+pub fn haven::ModifierPredicate::bitor(self, rhs: haven::Modifier) -> Self::Output
+impl core::ops::bit::Not for haven::Modifier
+pub type haven::Modifier::Output = haven::gestures::predicates::Predicate<haven::Modifier>
+pub fn haven::Modifier::not(self) -> Self::Output
+pub enum haven::MouseButton
+pub haven::MouseButton::Back
+pub haven::MouseButton::Forward
+pub haven::MouseButton::Left
+pub haven::MouseButton::Middle
+pub haven::MouseButton::Other(u16)
+pub haven::MouseButton::Right
+impl core::convert::From<haven::MouseButton> for haven::ButtonPredicate
+pub fn haven::ButtonPredicate::from(button: haven::MouseButton) -> Self
+impl core::ops::bit::BitAnd for haven::MouseButton
+pub type haven::MouseButton::Output = haven::gestures::predicates::Predicate<haven::MouseButton>
+pub fn haven::MouseButton::bitand(self, rhs: Self) -> Self::Output
+impl core::ops::bit::BitAnd<haven::MouseButton> for haven::ButtonPredicate
+pub type haven::ButtonPredicate::Output = haven::gestures::predicates::Predicate<haven::MouseButton>
+pub fn haven::ButtonPredicate::bitand(self, rhs: haven::MouseButton) -> Self::Output
+impl core::ops::bit::BitOr for haven::MouseButton
+pub type haven::MouseButton::Output = haven::gestures::predicates::Predicate<haven::MouseButton>
+pub fn haven::MouseButton::bitor(self, rhs: Self) -> Self::Output
+impl core::ops::bit::BitOr<haven::MouseButton> for haven::ButtonPredicate
+pub type haven::ButtonPredicate::Output = haven::gestures::predicates::Predicate<haven::MouseButton>
+pub fn haven::ButtonPredicate::bitor(self, rhs: haven::MouseButton) -> Self::Output
+impl core::ops::bit::Not for haven::MouseButton
+pub type haven::MouseButton::Output = haven::gestures::predicates::Predicate<haven::MouseButton>
+pub fn haven::MouseButton::not(self) -> Self::Output
+pub enum haven::NamedKey
+pub haven::NamedKey::ArrowDown
+pub haven::NamedKey::ArrowLeft
+pub haven::NamedKey::ArrowRight
+pub haven::NamedKey::ArrowUp
+pub haven::NamedKey::Backspace
+pub haven::NamedKey::Delete
+pub haven::NamedKey::End
+pub haven::NamedKey::Enter
+pub haven::NamedKey::Escape
+pub haven::NamedKey::Home
+pub haven::NamedKey::Space
+pub haven::NamedKey::Tab
+impl core::convert::From<haven::NamedKey> for haven::Key
+pub fn haven::Key::from(value: haven::NamedKey) -> Self
+impl core::convert::From<haven::NamedKey> for haven::KeyPredicate
+pub fn haven::KeyPredicate::from(key: haven::NamedKey) -> Self
+impl core::ops::bit::BitAnd for haven::NamedKey
+pub type haven::NamedKey::Output = haven::gestures::predicates::Predicate<haven::Key>
+pub fn haven::NamedKey::bitand(self, rhs: Self) -> Self::Output
+impl core::ops::bit::BitAnd<haven::NamedKey> for haven::KeyPredicate
+pub type haven::KeyPredicate::Output = haven::gestures::predicates::Predicate<haven::Key>
+pub fn haven::KeyPredicate::bitand(self, rhs: haven::NamedKey) -> Self::Output
+impl core::ops::bit::BitOr for haven::NamedKey
+pub type haven::NamedKey::Output = haven::gestures::predicates::Predicate<haven::Key>
+pub fn haven::NamedKey::bitor(self, rhs: Self) -> Self::Output
+impl core::ops::bit::BitOr<haven::NamedKey> for haven::KeyPredicate
+pub type haven::KeyPredicate::Output = haven::gestures::predicates::Predicate<haven::Key>
+pub fn haven::KeyPredicate::bitor(self, rhs: haven::NamedKey) -> Self::Output
+impl core::ops::bit::Not for haven::NamedKey
+pub type haven::NamedKey::Output = haven::gestures::predicates::Predicate<haven::Key>
+pub fn haven::NamedKey::not(self) -> Self::Output
+pub enum haven::PaneEffect
+pub haven::PaneEffect::Close
+pub haven::PaneEffect::Open(&'static str)
+pub haven::PaneEffect::Redraw
+pub enum haven::TextFieldVerticalAlignment
+pub haven::TextFieldVerticalAlignment::Bottom
+pub haven::TextFieldVerticalAlignment::Center
+pub haven::TextFieldVerticalAlignment::Top
+pub struct haven::Binding<State, T>
+impl<State, T> haven::Binding<State, T>
+pub fn haven::Binding<State, T>::get<'a>(&'a self, state: &'a State) -> &'a T
+pub fn haven::Binding<State, T>::get_mut<'a>(&'a self, state: &'a mut State) -> &'a mut T
+pub fn haven::Binding<State, T>::set(&self, state: &mut State, value: T)
+pub fn haven::Binding<State, T>::update(&self, state: &mut State, f: impl core::ops::function::FnOnce(&mut T))
+impl<State, T> haven::Binding<State, T>
+pub fn haven::Binding<State, T>::new(get: impl for<'a> core::ops::function::Fn(&'a State) -> &'a T + 'static, get_mut: impl for<'a> core::ops::function::Fn(&'a mut State) -> &'a mut T + 'static) -> Self
+impl<State, T> core::clone::Clone for haven::Binding<State, T>
+pub fn haven::Binding<State, T>::clone(&self) -> Self
+impl<State, T> core::fmt::Debug for haven::Binding<State, T>
+pub fn haven::Binding<State, T>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct haven::Button<'a, State>
+impl<'a, State> haven::Button<'a, State>
+pub fn haven::Button<'a, State>::build(self, ctx: &mut haven::PaneState) -> haven::View<'a, State> where State: 'static
+pub fn haven::Button<'a, State>::label(self, f: impl core::ops::function::Fn(haven::ButtonState, &mut haven::PaneState) -> haven::View<'a, State> + 'a) -> Self
+pub fn haven::Button<'a, State>::on_click(self, on_click: impl core::ops::function::Fn(&mut State, &mut haven::PaneState) + 'static) -> Self
+pub fn haven::Button<'a, State>::surface(self, f: impl core::ops::function::Fn(haven::ButtonState, &mut haven::PaneState) -> haven::View<'a, State> + 'a) -> Self
+pub fn haven::Button<'a, State>::text_label(self, text_label: impl core::convert::AsRef<str>) -> Self
+pub struct haven::ButtonState
+pub haven::ButtonState::depressed: bool
+pub haven::ButtonState::hovered: bool
+pub struct haven::Circle
+impl haven::Circle
+pub fn haven::Circle::fill(self, brush: impl core::convert::Into<haven::BrushSource<()>>) -> Self
+pub fn haven::Circle::finish<State: 'static>(self, ctx: &mut haven::PaneState) -> backer::types::Layout<'static, haven::PaneElement<State>, haven::PaneState>
+pub fn haven::Circle::stroke(self, brush: impl core::convert::Into<haven::BrushSource<()>>, style: kurbo::stroke::Stroke) -> Self
+pub fn haven::Circle::view<State: 'static>(self) -> haven::Drawable<State>
+pub struct haven::ClickEvent
+pub haven::ClickEvent::button: haven::MouseButton
+pub haven::ClickEvent::location: haven::ClickLocation
+pub haven::ClickEvent::state: haven::ClickPhase
+pub struct haven::ClickLocation
+impl haven::ClickLocation
+pub fn haven::ClickLocation::global(&self) -> kurbo::point::Point
+pub fn haven::ClickLocation::local(&self) -> kurbo::point::Point
+pub struct haven::Drawable<State>
+impl<State: 'static> haven::Drawable<State>
+pub fn haven::Drawable<State>::build<'a>(self, ctx: &mut haven::PaneState) -> haven::View<'a, State>
+pub fn haven::Drawable<State>::gesture(self, gesture: haven::Gesture<State>) -> Self
+pub fn haven::Drawable<State>::include(self, gesture: &haven::Gesture<State>) -> Self
+pub fn haven::Drawable<State>::occlude(self, gesture: &haven::Gesture<State>) -> Self
+pub struct haven::DropDown<'a, State, T>
+impl<'a, State, T: core::clone::Clone + core::cmp::PartialEq + 'static> haven::DropDown<'a, State, T>
+pub fn haven::DropDown<'a, State, T>::background(self, f: impl core::ops::function::Fn(&haven::DropdownState<T>, &mut haven::PaneState) -> haven::View<'a, State> + 'a) -> Self
+pub fn haven::DropDown<'a, State, T>::build(self, ctx: &mut haven::PaneState) -> haven::View<'a, State> where State: 'static
+pub fn haven::DropDown<'a, State, T>::on_select(self, on_select: impl core::ops::function::Fn(&mut State, &mut haven::PaneState, &T) + 'static) -> Self
+pub struct haven::DropdownItemCtx<'a, T>
+pub haven::DropdownItemCtx::expanded: bool
+pub haven::DropdownItemCtx::hovered: bool
+pub haven::DropdownItemCtx::index: usize
+pub haven::DropdownItemCtx::selected: bool
+pub haven::DropdownItemCtx::value: &'a T
+pub struct haven::DropdownState<T>
+pub haven::DropdownState::depressed: bool
+pub haven::DropdownState::expanded: bool
+pub haven::DropdownState::hovered: core::option::Option<usize>
+pub haven::DropdownState::selected: T
+impl<T: core::default::Default> core::default::Default for haven::DropdownState<T>
+pub fn haven::DropdownState<T>::default() -> Self
+pub struct haven::Gesture<State: ?core::marker::Sized>
+impl<State: ?core::marker::Sized> haven::Gesture<State>
+pub fn haven::Gesture<State>::id(&self) -> haven::GestureId
+impl<State: ?core::marker::Sized> core::clone::Clone for haven::Gesture<State>
+pub fn haven::Gesture<State>::clone(&self) -> Self
+pub struct haven::GestureId(_)
+pub struct haven::Image
+impl haven::Image
+pub fn haven::Image::corner_rounding(self, radius: f32) -> Self
+pub fn haven::Image::finish<State: 'static>(self, ctx: &mut haven::PaneState) -> backer::types::Layout<'static, haven::PaneElement<State>, haven::PaneState>
+pub fn haven::Image::image_id(self, image_id: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn haven::Image::view<State: 'static>(self) -> haven::Drawable<State>
+pub struct haven::KeyEvent
+pub haven::KeyEvent::key: haven::Key
+pub haven::KeyEvent::modifiers: haven::Modifiers
+pub haven::KeyEvent::phase: haven::KeyPhase
+pub struct haven::Modifiers
+impl haven::Modifiers
+pub fn haven::Modifiers::contains(self, modifier: haven::Modifier) -> bool
+pub const fn haven::Modifiers::empty() -> Self
+pub fn haven::Modifiers::from_pressed(modifiers: impl core::iter::traits::collect::IntoIterator<Item = haven::Modifier>) -> Self
+pub fn haven::Modifiers::with(self, modifier: haven::Modifier, pressed: bool) -> Self
+pub struct haven::OwnedBinding<State, T>
+impl<State, T> haven::OwnedBinding<State, T>
+pub fn haven::OwnedBinding<State, T>::get(&self, state: &State) -> core::option::Option<T>
+pub fn haven::OwnedBinding<State, T>::new(get: impl core::ops::function::Fn(&State) -> core::option::Option<T> + 'static, set: impl core::ops::function::Fn(&mut State, T) + 'static) -> Self
+pub fn haven::OwnedBinding<State, T>::set(&self, state: &mut State, value: T)
+pub fn haven::OwnedBinding<State, T>::update(&self, state: &mut State, f: impl core::ops::function::FnOnce(&mut T))
+impl<State, T> core::clone::Clone for haven::OwnedBinding<State, T>
+pub fn haven::OwnedBinding<State, T>::clone(&self) -> Self
+impl<State, T> core::fmt::Debug for haven::OwnedBinding<State, T>
+pub fn haven::OwnedBinding<State, T>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct haven::Pane<State>
+impl<State: 'static> haven::Pane<State>
+pub fn haven::Pane<State>::click(&mut self, state: &mut State, location: kurbo::point::Point) -> alloc::vec::Vec<haven::PaneEffect>
+pub fn haven::Pane<State>::drag(&mut self, state: &mut State, from: kurbo::point::Point, to: kurbo::point::Point) -> alloc::vec::Vec<haven::PaneEffect>
+pub fn haven::Pane<State>::location(&self, id: u64) -> core::option::Option<kurbo::point::Point>
+pub fn haven::Pane<State>::redraw(&mut self, state: &mut State, width: u32, height: u32, scale_factor: f64) -> (haven::render::Frame, alloc::vec::Vec<haven::PaneEffect>)
+impl<State: 'static> haven::Pane<State>
+pub fn haven::Pane<State>::key_pressed(&mut self, state: &mut State, key: impl core::convert::Into<haven::Key>) -> alloc::vec::Vec<haven::PaneEffect>
+pub fn haven::Pane<State>::key_released(&mut self, state: &mut State, key: impl core::convert::Into<haven::Key>) -> alloc::vec::Vec<haven::PaneEffect>
+pub fn haven::Pane<State>::move_to(&mut self, state: &mut State, pos: kurbo::point::Point) -> alloc::vec::Vec<haven::PaneEffect>
+pub fn haven::Pane<State>::press_button(&mut self, state: &mut State, button: haven::MouseButton) -> alloc::vec::Vec<haven::PaneEffect>
+pub fn haven::Pane<State>::release_button(&mut self, state: &mut State, button: haven::MouseButton) -> alloc::vec::Vec<haven::PaneEffect>
+pub struct haven::PaneBuilder<State>
+impl<State> haven::PaneBuilder<State>
+pub fn haven::PaneBuilder<State>::add_font_bytes(self, bytes: alloc::vec::Vec<u8>, family: core::option::Option<&str>) -> Self
+pub fn haven::PaneBuilder<State>::background(self, color: peniko::Color) -> Self
+pub fn haven::PaneBuilder<State>::build(self) -> haven::Pane<State> where State: 'static
+pub fn haven::PaneBuilder<State>::decorations(self, decorations: bool) -> Self
+pub fn haven::PaneBuilder<State>::inner_size(self, width: u32, height: u32) -> Self
+pub fn haven::PaneBuilder<State>::new(name: &'static str, view: for<'a> fn(&'a State, &mut haven::PaneState) -> haven::View<'a, State>) -> Self
+pub fn haven::PaneBuilder<State>::on_exit(self, on_exit: fn(&mut State, &mut haven::PaneState)) -> Self
+pub fn haven::PaneBuilder<State>::on_frame(self, on_frame: fn(&mut State, &mut haven::PaneState)) -> Self
+pub fn haven::PaneBuilder<State>::on_start(self, on_start: fn(&mut State, &mut haven::PaneState)) -> Self
+pub fn haven::PaneBuilder<State>::on_wake(self, on_wake: fn(&mut State, &mut haven::PaneState)) -> Self
+pub fn haven::PaneBuilder<State>::open_at_start(self, open: bool) -> Self
+pub fn haven::PaneBuilder<State>::resizable(self, resizable: bool) -> Self
+pub fn haven::PaneBuilder<State>::title(self, title: &str) -> Self
+pub fn haven::PaneBuilder<State>::transparent(self, transparent: bool) -> Self
+impl<State> core::clone::Clone for haven::PaneBuilder<State>
+pub fn haven::PaneBuilder<State>::clone(&self) -> Self
+pub struct haven::PaneElement<State: ?core::marker::Sized>(_)
+pub struct haven::PaneState
+impl haven::PaneState
+pub fn haven::PaneState::close(&mut self)
+pub fn haven::PaneState::end_editing(&mut self)
+pub fn haven::PaneState::open(&mut self, config: &'static str)
+pub fn haven::PaneState::redraw(&mut self)
+pub fn haven::PaneState::waker(&self) -> haven::PaneWaker
+pub struct haven::PaneWaker
+impl haven::PaneWaker
+pub fn haven::PaneWaker::wake(&self)
+impl core::fmt::Debug for haven::PaneWaker
+pub fn haven::PaneWaker::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct haven::Path
+impl haven::Path
+pub fn haven::Path::build<State: 'static>(self, ctx: &mut haven::PaneState) -> backer::types::Layout<'static, haven::PaneElement<State>, haven::PaneState>
+pub fn haven::Path::fill(self, brush: impl core::convert::Into<haven::BrushSource<()>>) -> Self
+pub fn haven::Path::stroke(self, brush: impl core::convert::Into<haven::BrushSource<()>>, style: kurbo::stroke::Stroke) -> Self
+pub fn haven::Path::view<State: 'static>(self) -> haven::Drawable<State>
+pub struct haven::PathData
+pub struct haven::Rect
+impl haven::Rect
+pub fn haven::Rect::build<State: 'static>(self, ctx: &mut haven::PaneState) -> backer::types::Layout<'static, haven::PaneElement<State>, haven::PaneState>
+pub fn haven::Rect::corner_rounding(self, radius: f32) -> Self
+pub fn haven::Rect::corner_rounding_individual(self, top_left: f32, top_right: f32, bottom_right: f32, bottom_left: f32) -> Self
+pub fn haven::Rect::fill(self, brush: impl core::convert::Into<haven::BrushSource<()>>) -> Self
+pub fn haven::Rect::stroke(self, brush: impl core::convert::Into<haven::BrushSource<()>>, style: impl core::convert::Into<kurbo::stroke::Stroke>) -> Self
+pub fn haven::Rect::view<State: 'static>(self) -> haven::Drawable<State>
+pub struct haven::ScrollDelta
+pub haven::ScrollDelta::x: f32
+pub haven::ScrollDelta::y: f32
+pub struct haven::Shadow
+impl haven::Shadow
+pub fn haven::Shadow::blur(self, blur: f64) -> Self
+pub fn haven::Shadow::build<State: 'static>(self, ctx: &mut haven::PaneState) -> backer::types::Layout<'static, haven::PaneElement<State>, haven::PaneState>
+pub fn haven::Shadow::color(self, color: haven::Color) -> Self
+pub fn haven::Shadow::corner_rounding(self, radius: f32) -> Self
+pub fn haven::Shadow::spread(self, spread: f64) -> Self
+pub fn haven::Shadow::view<State: 'static>(self) -> haven::Drawable<State>
+pub struct haven::Slider<'a, State>
+impl<'a, State> haven::Slider<'a, State>
+pub fn haven::Slider<'a, State>::background(self, f: impl core::ops::function::Fn(haven::SliderState, backer::types::Area, &mut haven::PaneState) -> haven::View<'a, State> + 'a) -> Self
+pub fn haven::Slider<'a, State>::build(self, _ctx: &mut haven::PaneState) -> haven::View<'a, State> where State: 'static
+pub fn haven::Slider<'a, State>::knob(self, f: impl core::ops::function::Fn(haven::SliderState, backer::types::Area, &mut haven::PaneState) -> haven::View<'a, State> + 'a) -> Self
+pub fn haven::Slider<'a, State>::on_change(self, on_change: impl core::ops::function::Fn(&mut State, &mut haven::PaneState, f32) + 'static) -> Self
+pub fn haven::Slider<'a, State>::range(self, min: f32, max: f32) -> Self
+pub fn haven::Slider<'a, State>::track(self, f: impl core::ops::function::Fn(haven::SliderState, backer::types::Area, &mut haven::PaneState) -> haven::View<'a, State> + 'a) -> Self
+pub fn haven::Slider<'a, State>::traveled_track(self, f: impl core::ops::function::Fn(haven::SliderState, backer::types::Area, &mut haven::PaneState) -> haven::View<'a, State> + 'a) -> Self
+pub struct haven::SliderState
+pub haven::SliderState::dragging: bool
+pub haven::SliderState::hovered: bool
+pub haven::SliderState::value: f32
+pub struct haven::Span
+impl haven::Span
+pub fn haven::Span::background(self, b: impl core::convert::Into<peniko::brush::Brush>) -> Self
+pub fn haven::Span::bold(self) -> Self
+pub fn haven::Span::color(self, c: impl core::convert::Into<peniko::brush::Brush>) -> Self
+pub fn haven::Span::family(self, f: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn haven::Span::italic(self) -> Self
+pub fn haven::Span::size(self, s: u32) -> Self
+pub fn haven::Span::strikethrough(self) -> Self
+pub fn haven::Span::style(self, prop: parley::style::StyleProperty<'static, peniko::brush::Brush>) -> Self
+pub fn haven::Span::underline(self) -> Self
+pub fn haven::Span::weight(self, w: fontique::attributes::FontWeight) -> Self
+impl core::convert::From<&str> for haven::Span
+pub fn haven::Span::from(s: &str) -> Self
+impl core::convert::From<alloc::string::String> for haven::Span
+pub fn haven::Span::from(s: alloc::string::String) -> Self
+pub struct haven::Svg
+impl haven::Svg
+pub fn haven::Svg::fill(self, fill: impl core::convert::Into<peniko::brush::Brush>) -> Self
+pub fn haven::Svg::finish<State: 'static>(self, ctx: &mut haven::PaneState) -> backer::types::Layout<'static, haven::PaneElement<State>, haven::PaneState>
+pub fn haven::Svg::svg_id(self, svg_id: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn haven::Svg::unlock_aspect_ratio(self) -> Self
+pub fn haven::Svg::view<State: 'static>(self) -> haven::Drawable<State>
+pub struct haven::Text
+impl haven::Text
+pub fn haven::Text::align(self, align: parley::layout::alignment::Alignment) -> Self
+pub fn haven::Text::fill(self, fill: impl core::convert::Into<haven::BrushSource<()>>) -> Self
+pub fn haven::Text::font_family(self, family: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn haven::Text::font_size(self, size: u32) -> Self
+pub fn haven::Text::font_weight(self, weight: fontique::attributes::FontWeight) -> Self
+pub fn haven::Text::wrap(self) -> Self
+impl haven::Text
+pub fn haven::Text::build<State: 'static>(self, ctx: &mut haven::PaneState) -> backer::types::Layout<'static, haven::PaneElement<State>, haven::PaneState>
+pub fn haven::Text::view<State: 'static>(self) -> haven::Drawable<State>
+impl core::clone::Clone for haven::Text
+pub fn haven::Text::clone(&self) -> Self
+impl core::fmt::Debug for haven::Text
+pub fn haven::Text::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct haven::TextField<'a, State>
+impl<'a, State> haven::TextField<'a, State>
+pub fn haven::TextField<'a, State>::align(self, align: parley::layout::alignment::Alignment) -> Self
+pub fn haven::TextField<'a, State>::background(self, f: impl core::ops::function::Fn(&haven::TextState, backer::types::Area, &mut haven::PaneState) -> haven::View<'a, State> + 'a) -> Self
+pub fn haven::TextField<'a, State>::cursor_fill(self, fill: impl core::convert::Into<haven::BrushSource<haven::TextState>>) -> Self
+pub fn haven::TextField<'a, State>::display(self, display: impl core::ops::function::Fn(&haven::TextState) -> alloc::string::String + 'static) -> Self
+pub fn haven::TextField<'a, State>::enter_end_editing(self) -> Self
+pub fn haven::TextField<'a, State>::esc_end_editing(self) -> Self
+pub fn haven::TextField<'a, State>::font_family(self, family: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn haven::TextField<'a, State>::font_size(self, size: u32) -> Self
+pub fn haven::TextField<'a, State>::font_weight(self, weight: fontique::attributes::FontWeight) -> Self
+pub fn haven::TextField<'a, State>::highlight_fill(self, fill: impl core::convert::Into<haven::BrushSource<haven::TextState>>) -> Self
+pub fn haven::TextField<'a, State>::hint_fill(self, fill: impl core::convert::Into<haven::BrushSource<haven::TextState>>) -> Self
+pub fn haven::TextField<'a, State>::hint_text(self, text: impl core::convert::AsRef<str>) -> Self
+pub fn haven::TextField<'a, State>::multiline(self) -> Self
+pub fn haven::TextField<'a, State>::on_edit(self, on_edit: impl core::ops::function::Fn(&mut State, &mut haven::PaneState, haven::EditInteraction) + 'static) -> Self
+pub fn haven::TextField<'a, State>::padding(self, padding: f32) -> Self
+pub fn haven::TextField<'a, State>::singleline(self) -> Self
+pub fn haven::TextField<'a, State>::text_fill(self, fill: impl core::convert::Into<haven::BrushSource<haven::TextState>>) -> Self
+pub fn haven::TextField<'a, State>::vertical_align(self, align: haven::TextFieldVerticalAlignment) -> Self
+pub fn haven::TextField<'a, State>::wrap(self) -> Self
+impl<'a, State> haven::TextField<'a, State>
+pub fn haven::TextField<'a, State>::build(self, ctx: &mut haven::PaneState) -> haven::View<'a, State> where State: 'static
+impl<State> core::fmt::Debug for haven::TextField<'_, State>
+pub fn haven::TextField<'_, State>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct haven::TextState
+pub haven::TextState::editing: bool
+pub haven::TextState::text: alloc::string::String
+impl haven::TextState
+pub fn haven::TextState::begin_editing(&mut self, app: &mut haven::PaneState)
+pub fn haven::TextState::begin_editing_with(&mut self, app: &mut haven::PaneState, target: haven::InitialSelection)
+pub fn haven::TextState::copy_text(&self) -> core::option::Option<alloc::string::String>
+pub fn haven::TextState::cut_text(&mut self, app: &mut haven::PaneState) -> core::option::Option<alloc::string::String>
+pub fn haven::TextState::end_editing(&mut self, app: &mut haven::PaneState)
+pub fn haven::TextState::new(text: impl core::convert::AsRef<str>) -> Self
+pub fn haven::TextState::paste_text(&mut self, app: &mut haven::PaneState)
+pub fn haven::TextState::select_all_text(&mut self, app: &mut haven::PaneState)
+impl core::default::Default for haven::TextState
+pub fn haven::TextState::default() -> Self
+impl core::fmt::Debug for haven::TextState
+pub fn haven::TextState::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct haven::Toggle<'a, State>
+impl<'a, State> haven::Toggle<'a, State>
+pub fn haven::Toggle<'a, State>::build(self, _ctx: &mut haven::PaneState) -> haven::View<'a, State> where State: 'static
+pub fn haven::Toggle<'a, State>::knob(self, f: impl core::ops::function::Fn(haven::ToggleState, backer::types::Area, &mut haven::PaneState) -> haven::View<'a, State> + 'a) -> Self
+pub fn haven::Toggle<'a, State>::on_toggle(self, on_toggle: impl core::ops::function::Fn(&mut State, &mut haven::PaneState, bool) + 'static) -> Self
+pub fn haven::Toggle<'a, State>::track(self, f: impl core::ops::function::Fn(haven::ToggleState, backer::types::Area, &mut haven::PaneState) -> haven::View<'a, State> + 'a) -> Self
+pub struct haven::ToggleState
+pub haven::ToggleState::depressed: bool
+pub haven::ToggleState::hovered: bool
+pub haven::ToggleState::on: bool
+impl haven::ToggleState
+pub fn haven::ToggleState::off() -> Self
+pub fn haven::ToggleState::on() -> Self
+pub const haven::DEFAULT_CORNER_ROUNDING: f32
+pub const haven::DEFAULT_DARK_GRAY: haven::Color
+pub const haven::DEFAULT_FG: haven::Color
+pub const haven::DEFAULT_FG_COLOR: haven::Color
+pub const haven::DEFAULT_FONT_SIZE: u32
+pub const haven::DEFAULT_GRAY: haven::Color
+pub const haven::DEFAULT_LIGHT_GRAY: haven::Color
+pub const haven::DEFAULT_PADDING: f32
+pub const haven::DEFAULT_PURP: haven::Color
+pub const haven::DEFAULT_STROKE_WIDTH: f32
+pub const haven::TRANSPARENT: haven::Color
+pub trait haven::Compositing<'a, State>
+pub fn haven::Compositing::blend(self, mode: haven::BlendMode) -> Self
+pub fn haven::Compositing::clipped(self, path: impl core::ops::function::Fn(backer::types::Area) -> kurbo::bezpath::BezPath + 'static) -> Self
+pub fn haven::Compositing::opacity(self, alpha: f32) -> Self
+impl<'a, State: 'static> haven::Compositing<'a, State> for haven::View<'a, State>
+pub fn haven::View<'a, State>::blend(self, mode: haven::BlendMode) -> Self
+pub fn haven::View<'a, State>::clipped(self, path: impl core::ops::function::Fn(backer::types::Area) -> kurbo::bezpath::BezPath + 'static) -> Self
+pub fn haven::View<'a, State>::opacity(self, alpha: f32) -> Self
+pub fn haven::button<'a, State>(id: u64, state: (&haven::ButtonState, haven::Binding<State, haven::ButtonState>)) -> haven::Button<'a, State>
+pub fn haven::circle(id: u64) -> haven::Circle
+pub const fn haven::combine_id(seed: u64, part: u64) -> u64
+pub const fn haven::const_hash(s: &str, line: u32, col: u32) -> u64
+pub fn haven::dropdown<'a, State, T: core::clone::Clone + core::cmp::PartialEq + 'static>(id: u64, state: (&'a haven::DropdownState<T>, haven::Binding<State, haven::DropdownState<T>>), options: alloc::vec::Vec<T>, view_fn: impl core::ops::function::Fn(haven::DropdownItemCtx<'_, T>, &mut haven::PaneState) -> haven::View<'a, State> + 'a) -> haven::DropDown<'a, State, T>
+pub fn haven::image(id: u64, source: impl core::convert::Into<haven::ImageSource>) -> haven::Image
+pub fn haven::image_from_bytes(id: u64, bytes: alloc::sync::Arc<alloc::vec::Vec<u8>>) -> haven::Image
+pub fn haven::image_from_path(id: u64, path: impl core::convert::AsRef<str>) -> haven::Image
+pub fn haven::owned_scope<'a, Parent: 'static, Sub: 'static>(layout: haven::View<'a, Sub>, binding: haven::OwnedBinding<Parent, Sub>) -> haven::View<'a, Parent>
+pub fn haven::path(id: u64, builder: impl core::ops::function::Fn(backer::types::Area) -> kurbo::bezpath::BezPath + 'static) -> haven::Path
+pub fn haven::rect(id: u64) -> haven::Rect
+pub fn haven::rect_path(area: backer::types::Area) -> kurbo::bezpath::BezPath
+pub fn haven::rich_text(id: u64, spans: impl core::iter::traits::collect::IntoIterator<Item = haven::Span>) -> haven::Text
+pub fn haven::rounded_rect_path(area: backer::types::Area, radius: f32) -> kurbo::bezpath::BezPath
+pub fn haven::scope<'a, Parent: 'static, Sub: 'static>(layout: haven::View<'a, Sub>, binding: haven::Binding<Parent, Sub>) -> haven::View<'a, Parent>
+pub fn haven::scroller<'a, State: 'static>(id: u64, backing: core::option::Option<haven::View<'a, State>>, cell: impl core::ops::function::Fn(usize, u64, &mut haven::PaneState) -> core::option::Option<haven::View<'a, State>> + 'a, ctx: &mut haven::PaneState) -> haven::View<'a, State>
+pub fn haven::shadow(id: u64) -> haven::Shadow
+pub fn haven::slider<'a, State>(id: u64, state: (&haven::SliderState, haven::Binding<State, haven::SliderState>)) -> haven::Slider<'a, State>
+pub fn haven::span(text: impl core::convert::Into<alloc::string::String>) -> haven::Span
+pub fn haven::svg(id: u64, content: impl core::convert::AsRef<str>) -> haven::Svg
+pub fn haven::text(id: u64, text: impl core::convert::AsRef<str>) -> haven::Text
+pub fn haven::text_field<'a, State>(id: u64, state: (&'a haven::TextState, haven::Binding<State, haven::TextState>)) -> haven::TextField<'a, State>
+pub fn haven::toggle<'a, State>(id: u64, state: (&haven::ToggleState, haven::Binding<State, haven::ToggleState>)) -> haven::Toggle<'a, State>
+pub type haven::ButtonPredicate = haven::gestures::predicates::Predicate<haven::MouseButton>
+pub type haven::Color = color::color::AlphaColor<color::colorspace::Srgb>
+pub type haven::KeyPredicate = haven::gestures::predicates::Predicate<haven::Key>
+pub type haven::ModifierPredicate = haven::gestures::predicates::Predicate<haven::Modifier>
+pub type haven::View<'a, State> = backer::types::Layout<'a, haven::PaneElement<State>, haven::PaneState>

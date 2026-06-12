@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 pub struct Renderer<R: WindowRenderer> {
     window_renderer: R,
-    svg_scenes: HashMap<String, (Scene, f32, f32)>,
+    svg_scenes: HashMap<u64, (String, Scene, f32, f32)>,
     image_data: HashMap<u64, (peniko::ImageData, f32, f32)>,
 }
 
@@ -59,7 +59,7 @@ impl<R: WindowRenderer> Renderer<R> {
 }
 
 fn render_frame<S: PaintScene>(
-    svg_scenes: &mut HashMap<String, (Scene, f32, f32)>,
+    svg_scenes: &mut HashMap<u64, (String, Scene, f32, f32)>,
     image_data: &mut HashMap<u64, (peniko::ImageData, f32, f32)>,
     frame: &Frame,
     scene: &mut S,
@@ -84,6 +84,7 @@ fn render_frame<S: PaintScene>(
                 scene,
                 svg_scenes,
                 frame.scale_factor,
+                svg.cache_key(),
                 &svg.content,
                 *area,
                 svg.unlocked_aspect_ratio,
@@ -205,101 +206,120 @@ fn draw_image<S: PaintScene>(
 
 fn draw_svg<S: PaintScene>(
     scene: &mut S,
-    svg_scenes: &mut HashMap<String, (Scene, f32, f32)>,
+    svg_scenes: &mut HashMap<u64, (String, Scene, f32, f32)>,
     scale_factor: f64,
+    cache_key: u64,
     content: &str,
     area: Area,
     unlocked_aspect_ratio: bool,
     fill: Option<&Brush>,
 ) {
-    if !svg_scenes.contains_key(content) {
-        match anyrender_svg::usvg::Tree::from_data(
+    let (_, svg_scene, width, height) = cached_svg_scene(svg_scenes, cache_key, content);
+    let width = *width as f64;
+    let height = *height as f64;
+    let area_x = area.x as f64 * scale_factor;
+    let area_y = area.y as f64 * scale_factor;
+    let area_width = area.width as f64 * scale_factor;
+    let area_height = area.height as f64 * scale_factor;
+    if fill.is_some() {
+        scene.push_layer(
+            peniko::BlendMode {
+                mix: Mix::Normal,
+                compose: Compose::SrcOver,
+            },
+            1.0,
+            Affine::IDENTITY,
+            &Rect::from_origin_size(
+                Point::new(area_x, area_y),
+                Size::new(area_width, area_height),
+            ),
+            None,
+            None,
+        );
+    }
+    scene.append_scene(
+        svg_scene.clone(),
+        if unlocked_aspect_ratio {
+            Affine::IDENTITY
+                .then_scale_non_uniform(area_width / width, area_height / height)
+                .then_translate(Vec2::new(area_x, area_y))
+        } else {
+            let scale = (area_width / width).min(area_height / height);
+            let dx = area_x + (area_width - width * scale) / 2.0;
+            let dy = area_y + (area_height - height * scale) / 2.0;
+            Affine::IDENTITY
+                .then_scale(scale)
+                .then_translate(Vec2::new(dx, dy))
+        },
+    );
+    if let Some(fill) = fill {
+        scene.push_layer(
+            peniko::BlendMode {
+                mix: Mix::Normal,
+                compose: Compose::SrcIn,
+            },
+            1.0,
+            Affine::IDENTITY,
+            &Rect::from_origin_size(
+                Point::new(area_x, area_y),
+                Size::new(area_width, area_height),
+            ),
+            None,
+            None,
+        );
+
+        scene.fill(
+            Fill::NonZero,
+            Affine::IDENTITY,
+            BrushRef::from(fill),
+            None,
+            &Rect::from_origin_size(
+                Point::new(area_x, area_y),
+                Size::new(area_width, area_height),
+            ),
+        );
+        scene.pop_layer();
+        scene.pop_layer();
+    }
+}
+
+fn cached_svg_scene<'a>(
+    svg_scenes: &'a mut HashMap<u64, (String, Scene, f32, f32)>,
+    cache_key: u64,
+    content: &str,
+) -> &'a (String, Scene, f32, f32) {
+    let needs_update = svg_scenes
+        .get(&cache_key)
+        .is_none_or(|(cached_content, _, _, _)| cached_content != content);
+
+    if needs_update {
+        let cached_svg = match anyrender_svg::usvg::Tree::from_data(
             content.as_bytes(),
             &anyrender_svg::usvg::Options::default(),
         ) {
             Err(err) => {
                 eprintln!("Loading svg failed: {err}");
-                svg_scenes.insert(content.to_string(), (Scene::new(), 0., 0.));
+                (content.to_string(), Scene::new(), 0., 0.)
             }
             Ok(svg) => {
                 let mut svg_scene = Scene::new();
                 anyrender_svg::render_svg_tree(&mut svg_scene, &svg, Affine::IDENTITY);
                 let size = svg.size();
-                svg_scenes.insert(
-                    content.to_string(),
-                    (svg_scene, size.width(), size.height()),
-                );
+                (content.to_string(), svg_scene, size.width(), size.height())
+            }
+        };
+
+        match svg_scenes.entry(cache_key) {
+            std::collections::hash_map::Entry::Occupied(mut entry) => {
+                *entry.get_mut() = cached_svg;
+            }
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(cached_svg);
             }
         }
     }
-    if let Some((svg_scene, width, height)) = svg_scenes.get(content) {
-        let width = *width as f64;
-        let height = *height as f64;
-        let area_x = area.x as f64 * scale_factor;
-        let area_y = area.y as f64 * scale_factor;
-        let area_width = area.width as f64 * scale_factor;
-        let area_height = area.height as f64 * scale_factor;
-        if fill.is_some() {
-            scene.push_layer(
-                peniko::BlendMode {
-                    mix: Mix::Normal,
-                    compose: Compose::SrcOver,
-                },
-                1.0,
-                Affine::IDENTITY,
-                &Rect::from_origin_size(
-                    Point::new(area_x, area_y),
-                    Size::new(area_width, area_height),
-                ),
-                None,
-                None,
-            );
-        }
-        scene.append_scene(
-            svg_scene.clone(),
-            if unlocked_aspect_ratio {
-                Affine::IDENTITY
-                    .then_scale_non_uniform(area_width / width, area_height / height)
-                    .then_translate(Vec2::new(area_x, area_y))
-            } else {
-                let scale = (area_width / width).min(area_height / height);
-                let dx = area_x + (area_width - width * scale) / 2.0;
-                let dy = area_y + (area_height - height * scale) / 2.0;
-                Affine::IDENTITY
-                    .then_scale(scale)
-                    .then_translate(Vec2::new(dx, dy))
-            },
-        );
-        if let Some(fill) = fill {
-            scene.push_layer(
-                peniko::BlendMode {
-                    mix: Mix::Normal,
-                    compose: Compose::SrcIn,
-                },
-                1.0,
-                Affine::IDENTITY,
-                &Rect::from_origin_size(
-                    Point::new(area_x, area_y),
-                    Size::new(area_width, area_height),
-                ),
-                None,
-                None,
-            );
 
-            scene.fill(
-                Fill::NonZero,
-                Affine::IDENTITY,
-                BrushRef::from(fill),
-                None,
-                &Rect::from_origin_size(
-                    Point::new(area_x, area_y),
-                    Size::new(area_width, area_height),
-                ),
-            );
-            scene.pop_layer();
-            scene.pop_layer();
-        }
-    }
+    svg_scenes.get(&cache_key).expect("cached svg")
 }
 
 fn draw_path<S: PaintScene>(scene: &mut S, path: &PathData, area: Area, scale_factor: f64) {
@@ -381,4 +401,46 @@ fn load_image(source: &ImageSource) -> Result<peniko::ImageData, Box<dyn std::er
         width,
         height,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cached_svg_scene;
+    use anyrender::Scene;
+    use std::collections::HashMap;
+
+    const FIRST: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>"#;
+    const SECOND: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="5"><rect width="20" height="5"/></svg>"#;
+
+    #[test]
+    fn svg_cache_replaces_content_for_existing_key() {
+        let mut cache: HashMap<u64, (String, Scene, f32, f32)> = HashMap::new();
+
+        {
+            let (content, _, width, height) = cached_svg_scene(&mut cache, 1, FIRST);
+            assert_eq!(content, FIRST);
+            assert_eq!(*width, 10.);
+            assert_eq!(*height, 10.);
+        }
+        assert_eq!(cache.len(), 1);
+
+        {
+            let (content, _, width, height) = cached_svg_scene(&mut cache, 1, FIRST);
+            assert_eq!(content, FIRST);
+            assert_eq!(*width, 10.);
+            assert_eq!(*height, 10.);
+        }
+        assert_eq!(cache.len(), 1);
+
+        {
+            let (content, _, width, height) = cached_svg_scene(&mut cache, 1, SECOND);
+            assert_eq!(content, SECOND);
+            assert_eq!(*width, 20.);
+            assert_eq!(*height, 5.);
+        }
+        assert_eq!(cache.len(), 1);
+
+        cached_svg_scene(&mut cache, 2, FIRST);
+        assert_eq!(cache.len(), 2);
+    }
 }

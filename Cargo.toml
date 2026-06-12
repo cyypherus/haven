@@ -71,6 +71,7 @@ winit = { version = "0.30.12", optional = true }
 
 [features]
 default = ["renderer-vello"]
+test-api = []
 debug-overlay = ["platform-winit"]
 renderer-skia = ["platform-winit", "dep:anyrender_skia"]
 renderer-vello = ["platform-winit", "dep:anyrender_vello"]
@@ -83,7 +84,11 @@ platform-winit = ["dep:winit", "dep:anyrender", "dep:anyrender_svg"]
 
 [dev-dependencies]
 arboard = "3.4"
+insta = "1.42.1"
+public-api = "0.51.0"
 reqwest = { version = "0.12", features = ["json"] }
+rustdoc-json = "0.9.9"
+rustup-toolchain = "0.1.9"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1.43.0", features = ["fs"] }
