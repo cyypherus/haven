@@ -1,6 +1,6 @@
 ---
 source: src/public_api_test.rs
-expression: public_api_simplified
+expression: public_api
 ---
 pub mod haven
 pub use haven::<<backer::nodes::*>>
