@@ -29,11 +29,16 @@ pub struct PaneBuilder<State> {
     pub(crate) name: &'static str,
     view: ViewFn<State>,
     pub(crate) inner_size: Option<(u32, u32)>,
+    pub(crate) initial_bounds: Option<(i32, i32, u32, u32)>,
     pub(crate) resizable: Option<bool>,
     pub(crate) title: Option<String>,
+    pub(crate) window_level: Option<WindowLevel>,
     pub(crate) transparent: Option<bool>,
     background: Option<Color>,
     pub(crate) decorations: Option<bool>,
+    pub(crate) initially_active: Option<bool>,
+    pub(crate) skip_taskbar: Option<bool>,
+    pub(crate) cursor_visible: Option<bool>,
     pub(crate) open_at_start: bool,
     on_frame: fn(&mut State, &mut PaneState) -> (),
     on_start: fn(&mut State, &mut PaneState) -> (),
@@ -48,11 +53,16 @@ impl<State> Clone for PaneBuilder<State> {
             name: self.name,
             view: self.view,
             inner_size: self.inner_size,
+            initial_bounds: self.initial_bounds,
             resizable: self.resizable,
             title: self.title.clone(),
+            window_level: self.window_level,
             transparent: self.transparent,
             background: self.background,
             decorations: self.decorations,
+            initially_active: self.initially_active,
+            skip_taskbar: self.skip_taskbar,
+            cursor_visible: self.cursor_visible,
             open_at_start: self.open_at_start,
             on_frame: self.on_frame,
             on_start: self.on_start,
@@ -134,11 +144,16 @@ impl<State> PaneBuilder<State> {
             name,
             view,
             inner_size: None,
+            initial_bounds: None,
             resizable: None,
             title: None,
+            window_level: None,
             transparent: None,
             background: None,
             decorations: None,
+            initially_active: None,
+            skip_taskbar: None,
+            cursor_visible: None,
             open_at_start: true,
             on_frame: |_, _| {},
             on_start: |_, _| {},
@@ -153,6 +168,11 @@ impl<State> PaneBuilder<State> {
         self
     }
 
+    pub fn initial_bounds(mut self, x: i32, y: i32, width: u32, height: u32) -> Self {
+        self.initial_bounds = Some((x, y, width, height));
+        self
+    }
+
     pub fn resizable(mut self, resizable: bool) -> Self {
         self.resizable = Some(resizable);
         self
@@ -160,6 +180,11 @@ impl<State> PaneBuilder<State> {
 
     pub fn title(mut self, title: &str) -> Self {
         self.title = Some(title.to_string());
+        self
+    }
+
+    pub fn window_level(mut self, level: WindowLevel) -> Self {
+        self.window_level = Some(level);
         self
     }
 
@@ -175,6 +200,21 @@ impl<State> PaneBuilder<State> {
 
     pub fn decorations(mut self, decorations: bool) -> Self {
         self.decorations = Some(decorations);
+        self
+    }
+
+    pub fn initially_active(mut self, active: bool) -> Self {
+        self.initially_active = Some(active);
+        self
+    }
+
+    pub fn skip_taskbar(mut self, skip: bool) -> Self {
+        self.skip_taskbar = Some(skip);
+        self
+    }
+
+    pub fn cursor_visible(mut self, visible: bool) -> Self {
+        self.cursor_visible = Some(visible);
         self
     }
 
@@ -237,6 +277,14 @@ pub enum PaneEffect {
     Open(&'static str),
     Close,
     Redraw,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum WindowLevel {
+    AlwaysOnBottom,
+    #[default]
+    Normal,
+    AlwaysOnTop,
 }
 
 #[derive(Clone)]
