@@ -14,7 +14,6 @@ pub use haven::FontWeight
 pub use haven::Gradient
 pub use haven::Join
 pub use haven::Layout
-pub use haven::Point
 pub use haven::Stroke
 pub use haven::StyleProperty
 pub mod haven::gesture
@@ -89,22 +88,22 @@ pub haven::ClickPhase::Completed
 pub haven::ClickPhase::Started
 pub enum haven::DragPhase
 pub haven::DragPhase::Began
-pub haven::DragPhase::Began::start: kurbo::point::Point
-pub haven::DragPhase::Began::start_global: kurbo::point::Point
+pub haven::DragPhase::Began::start: haven::Point
+pub haven::DragPhase::Began::start_global: haven::Point
 pub haven::DragPhase::Completed
-pub haven::DragPhase::Completed::current: kurbo::point::Point
-pub haven::DragPhase::Completed::current_global: kurbo::point::Point
-pub haven::DragPhase::Completed::delta: kurbo::point::Point
+pub haven::DragPhase::Completed::current: haven::Point
+pub haven::DragPhase::Completed::current_global: haven::Point
+pub haven::DragPhase::Completed::delta: haven::Point
 pub haven::DragPhase::Completed::distance: f32
-pub haven::DragPhase::Completed::start: kurbo::point::Point
-pub haven::DragPhase::Completed::start_global: kurbo::point::Point
+pub haven::DragPhase::Completed::start: haven::Point
+pub haven::DragPhase::Completed::start_global: haven::Point
 pub haven::DragPhase::Updated
-pub haven::DragPhase::Updated::current: kurbo::point::Point
-pub haven::DragPhase::Updated::current_global: kurbo::point::Point
-pub haven::DragPhase::Updated::delta: kurbo::point::Point
+pub haven::DragPhase::Updated::current: haven::Point
+pub haven::DragPhase::Updated::current_global: haven::Point
+pub haven::DragPhase::Updated::delta: haven::Point
 pub haven::DragPhase::Updated::distance: f32
-pub haven::DragPhase::Updated::start: kurbo::point::Point
-pub haven::DragPhase::Updated::start_global: kurbo::point::Point
+pub haven::DragPhase::Updated::start: haven::Point
+pub haven::DragPhase::Updated::start_global: haven::Point
 pub enum haven::EditInteraction
 pub haven::EditInteraction::End
 pub haven::EditInteraction::Start
@@ -276,8 +275,8 @@ pub haven::ClickEvent::location: haven::ClickLocation
 pub haven::ClickEvent::state: haven::ClickPhase
 pub struct haven::ClickLocation
 impl haven::ClickLocation
-pub fn haven::ClickLocation::global(&self) -> kurbo::point::Point
-pub fn haven::ClickLocation::local(&self) -> kurbo::point::Point
+pub fn haven::ClickLocation::global(&self) -> haven::Point
+pub fn haven::ClickLocation::local(&self) -> haven::Point
 pub struct haven::Drawable<State>
 impl<State: 'static> haven::Drawable<State>
 pub fn haven::Drawable<State>::build<'a>(self, ctx: &mut haven::PaneState) -> haven::View<'a, State>
@@ -336,14 +335,14 @@ impl<State, T> core::fmt::Debug for haven::OwnedBinding<State, T>
 pub fn haven::OwnedBinding<State, T>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct haven::Pane<State>
 impl<State: 'static> haven::Pane<State>
-pub fn haven::Pane<State>::click(&mut self, state: &mut State, location: kurbo::point::Point) -> alloc::vec::Vec<haven::PaneEffect>
-pub fn haven::Pane<State>::drag(&mut self, state: &mut State, from: kurbo::point::Point, to: kurbo::point::Point) -> alloc::vec::Vec<haven::PaneEffect>
-pub fn haven::Pane<State>::location(&self, id: u64) -> core::option::Option<kurbo::point::Point>
+pub fn haven::Pane<State>::click(&mut self, state: &mut State, location: haven::Point) -> alloc::vec::Vec<haven::PaneEffect>
+pub fn haven::Pane<State>::drag(&mut self, state: &mut State, from: haven::Point, to: haven::Point) -> alloc::vec::Vec<haven::PaneEffect>
+pub fn haven::Pane<State>::location(&self, id: u64) -> core::option::Option<haven::Point>
 pub fn haven::Pane<State>::redraw(&mut self, state: &mut State, width: u32, height: u32, scale_factor: f64) -> (haven::render::Frame, alloc::vec::Vec<haven::PaneEffect>)
 impl<State: 'static> haven::Pane<State>
 pub fn haven::Pane<State>::key_pressed(&mut self, state: &mut State, key: impl core::convert::Into<haven::Key>) -> alloc::vec::Vec<haven::PaneEffect>
 pub fn haven::Pane<State>::key_released(&mut self, state: &mut State, key: impl core::convert::Into<haven::Key>) -> alloc::vec::Vec<haven::PaneEffect>
-pub fn haven::Pane<State>::move_to(&mut self, state: &mut State, pos: kurbo::point::Point) -> alloc::vec::Vec<haven::PaneEffect>
+pub fn haven::Pane<State>::move_to(&mut self, state: &mut State, pos: haven::Point) -> alloc::vec::Vec<haven::PaneEffect>
 pub fn haven::Pane<State>::press_button(&mut self, state: &mut State, button: haven::MouseButton) -> alloc::vec::Vec<haven::PaneEffect>
 pub fn haven::Pane<State>::release_button(&mut self, state: &mut State, button: haven::MouseButton) -> alloc::vec::Vec<haven::PaneEffect>
 pub struct haven::PaneBuilder<State>
@@ -384,6 +383,13 @@ pub fn haven::Path::fill(self, brush: impl core::convert::Into<haven::BrushSourc
 pub fn haven::Path::stroke(self, brush: impl core::convert::Into<haven::BrushSource<()>>, style: kurbo::stroke::Stroke) -> Self
 pub fn haven::Path::view<State: 'static>(self) -> haven::Drawable<State>
 pub struct haven::PathData
+pub struct haven::Point
+pub haven::Point::x: f32
+pub haven::Point::y: f32
+impl haven::Point
+pub const haven::Point::ZERO: Self
+pub fn haven::Point::distance(self, other: Self) -> f32
+pub const fn haven::Point::new(x: f32, y: f32) -> Self
 pub struct haven::Rect
 impl haven::Rect
 pub fn haven::Rect::build<State: 'static>(self, ctx: &mut haven::PaneState) -> backer::types::Layout<'static, haven::PaneElement<State>, haven::PaneState>

@@ -590,10 +590,12 @@ impl<State: 'static> ApplicationHandler<WinitEvent> for WinitApp<State> {
             winit::event::WindowEvent::CursorMoved { position, .. } => {
                 if let Some(surface) = self.windows.get_mut(&window_id) {
                     redraw_all_now = true;
-                    let position = position.to_logical(surface.window.scale_factor());
-                    surface
-                        .pane
-                        .move_to(&mut self.state, kurbo::Point::new(position.x, position.y))
+                    let position: winit::dpi::LogicalPosition<f64> =
+                        position.to_logical(surface.window.scale_factor());
+                    surface.pane.move_to(
+                        &mut self.state,
+                        crate::Point::new(position.x as f32, position.y as f32),
+                    )
                 } else {
                     Vec::new()
                 }

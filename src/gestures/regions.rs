@@ -1,7 +1,7 @@
 use backer::Area;
 use kurbo::Rect;
 
-pub(crate) fn area_rect(area: Area) -> Rect {
+fn area_rect(area: Area) -> Rect {
     Rect::new(
         area.x as f64,
         area.y as f64,
@@ -10,7 +10,20 @@ pub(crate) fn area_rect(area: Area) -> Rect {
     )
 }
 
-pub(crate) fn valid_rect(rect: Rect) -> Option<Rect> {
+fn rect_area(rect: Rect) -> Area {
+    Area {
+        x: rect.x0 as f32,
+        y: rect.y0 as f32,
+        width: rect.width() as f32,
+        height: rect.height() as f32,
+    }
+}
+
+pub(crate) fn valid_area(area: Area) -> Option<Area> {
+    valid_rect(area_rect(area)).map(rect_area)
+}
+
+fn valid_rect(rect: Rect) -> Option<Rect> {
     let rect = rect.abs();
     if rect.x0.is_finite()
         && rect.y0.is_finite()
@@ -25,20 +38,27 @@ pub(crate) fn valid_rect(rect: Rect) -> Option<Rect> {
     }
 }
 
-pub(crate) fn intersect(rect: Rect, other: Rect) -> Option<Rect> {
-    valid_rect(valid_rect(rect)?.intersect(valid_rect(other)?))
+pub(crate) fn contains(area: Area, point: crate::Point) -> bool {
+    point.x >= area.x
+        && point.y >= area.y
+        && point.x < area.x + area.width
+        && point.y < area.y + area.height
 }
 
-pub(crate) fn subtract(rect: Rect, other: Rect) -> Vec<Rect> {
-    let Some(rect) = valid_rect(rect) else {
+pub(crate) fn intersect(area: Area, other: Area) -> Option<Area> {
+    valid_rect(area_rect(valid_area(area)?).intersect(area_rect(valid_area(other)?))).map(rect_area)
+}
+
+pub(crate) fn subtract(area: Area, other: Area) -> Vec<Area> {
+    let Some(rect) = valid_area(area).map(area_rect) else {
         return Vec::new();
     };
-    let Some(other) = valid_rect(other) else {
-        return vec![rect];
+    let Some(other) = valid_area(other).map(area_rect) else {
+        return vec![rect_area(rect)];
     };
     let cut = rect.intersect(other);
     if valid_rect(cut).is_none() {
-        return vec![rect];
+        return vec![rect_area(rect)];
     }
 
     [
@@ -49,6 +69,7 @@ pub(crate) fn subtract(rect: Rect, other: Rect) -> Vec<Rect> {
     ]
     .into_iter()
     .filter_map(valid_rect)
+    .map(rect_area)
     .collect()
 }
 
@@ -56,19 +77,24 @@ pub(crate) fn subtract(rect: Rect, other: Rect) -> Vec<Rect> {
 mod tests {
     use super::*;
 
-    fn rect(left: f64, top: f64, right: f64, bottom: f64) -> Rect {
-        Rect::new(left, top, right, bottom)
+    fn area(left: f32, top: f32, right: f32, bottom: f32) -> Area {
+        Area {
+            x: left,
+            y: top,
+            width: right - left,
+            height: bottom - top,
+        }
     }
 
     #[test]
     fn subtracts_inner_rect() {
         assert_eq!(
-            subtract(rect(0., 0., 10., 10.), rect(2., 3., 7., 8.)),
+            subtract(area(0., 0., 10., 10.), area(2., 3., 7., 8.)),
             vec![
-                rect(0., 0., 10., 3.),
-                rect(0., 8., 10., 10.),
-                rect(0., 3., 2., 8.),
-                rect(7., 3., 10., 8.),
+                area(0., 0., 10., 3.),
+                area(0., 8., 10., 10.),
+                area(0., 3., 2., 8.),
+                area(7., 3., 10., 8.),
             ]
         );
     }
@@ -76,15 +102,15 @@ mod tests {
     #[test]
     fn subtracting_non_overlapping_rect_keeps_source() {
         assert_eq!(
-            subtract(rect(0., 0., 10., 10.), rect(20., 20., 30., 30.)),
-            vec![rect(0., 0., 10., 10.)]
+            subtract(area(0., 0., 10., 10.), area(20., 20., 30., 30.)),
+            vec![area(0., 0., 10., 10.)]
         );
     }
 
     #[test]
     fn intersect_rejects_empty_rects() {
         assert_eq!(
-            intersect(rect(0., 0., 10., 10.), rect(10., 0., 20., 10.)),
+            intersect(area(0., 0., 10., 10.), area(10., 0., 20., 10.)),
             None
         );
     }

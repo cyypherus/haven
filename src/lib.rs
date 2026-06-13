@@ -44,7 +44,7 @@ pub use view::{
     rounded_rect_path, scope,
 };
 
-pub use kurbo::{BezPath, Cap, Join, Point, Stroke};
+pub use kurbo::{BezPath, Cap, Join, Stroke};
 pub use peniko::{Brush, Gradient};
 
 pub use models::*;

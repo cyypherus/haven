@@ -1,6 +1,5 @@
-use crate::{Key, Modifier, Modifiers, NamedKey};
+use crate::{Key, Modifier, Modifiers, NamedKey, Point};
 use core::default::Default;
-use kurbo::Point;
 use parley::{GenericFamily, StyleProperty, editing::SplitString};
 use peniko::{Brush, color::palette};
 use std::time::{Duration, Instant};
@@ -322,7 +321,7 @@ impl Editor {
         font_cx: &mut FontContext,
     ) {
         let prev_pos = self.cursor_pos;
-        self.cursor_pos = (position.x as f32, position.y as f32);
+        self.cursor_pos = (position.x, position.y);
         // macOS seems to generate a spurious move after selecting word?
         if self.pointer_down && prev_pos != self.cursor_pos && !self.editor.is_composing() {
             self.cursor_reset();

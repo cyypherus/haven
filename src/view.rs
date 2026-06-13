@@ -1,7 +1,6 @@
 use crate::gestures::{
     EditInteraction, Gesture, GestureAreaComponent, GestureAreaOperation, GestureHandler,
-    Interaction,
-    regions::{area_rect, intersect},
+    Interaction, regions::intersect,
 };
 use crate::pane::{EditHandler, PaneElement, PaneElementKind, PaneState, View};
 use crate::primitives::{Image, PathData, Shadow, Svg, Text};
@@ -177,7 +176,7 @@ fn wrap_layer<'a, State: 'static>(
         );
         let child_views = content.draw(area, ctx);
         if clip_gestures {
-            let clip_rect = area_rect(area);
+            let clip_area = area;
             views.extend(child_views.into_iter().map(move |view| {
                 match view.into_kind() {
                     PaneElementKind::Draw {
@@ -190,11 +189,13 @@ fn wrap_layer<'a, State: 'static>(
                         gestures: gestures
                             .into_iter()
                             .filter_map(|component| {
-                                let rect = component.rect.unwrap_or_else(|| area_rect(area));
-                                intersect(rect, clip_rect).map(|rect| GestureAreaComponent {
-                                    operation: component.operation,
-                                    gesture: component.gesture,
-                                    rect: Some(rect),
+                                let gesture_area = component.rect.unwrap_or(area);
+                                intersect(gesture_area, clip_area).map(|rect| {
+                                    GestureAreaComponent {
+                                        operation: component.operation,
+                                        gesture: component.gesture,
+                                        rect: Some(rect),
+                                    }
                                 })
                             })
                             .collect(),

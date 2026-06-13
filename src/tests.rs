@@ -788,14 +788,8 @@ fn clipping_limits_pointer_gestures() {
     pane.redraw(&mut state, 300, 200, 1.0);
 
     let target = pane.elements[&TARGET];
-    let inside_clip = Point::new(
-        target.x as f64 + target.width as f64 * 0.5,
-        target.y as f64 + 5.,
-    );
-    let outside_clip = Point::new(
-        target.x as f64 + target.width as f64 * 0.5,
-        target.y as f64 + 20.,
-    );
+    let inside_clip = Point::new(target.x + target.width * 0.5, target.y + 5.);
+    let outside_clip = Point::new(target.x + target.width * 0.5, target.y + 20.);
 
     pane.move_to(&mut state, inside_clip);
     pane.redraw(&mut state, 300, 200, 1.0);
@@ -858,10 +852,7 @@ fn blend_layer_does_not_clip_pointer_gestures() {
     pane.redraw(&mut state, 300, 200, 1.0);
 
     let target = pane.elements[&TARGET];
-    let outside_layer = Point::new(
-        target.x as f64 + target.width as f64 * 0.5,
-        target.y as f64 + 75.,
-    );
+    let outside_layer = Point::new(target.x + target.width * 0.5, target.y + 75.);
     pane.click(&mut state, outside_layer);
 
     assert_eq!(state.clicks, 1);
@@ -912,10 +903,7 @@ fn clipping_limits_layered_pointer_gestures() {
     pane.redraw(&mut state, 300, 200, 1.0);
 
     let target = pane.elements[&TARGET];
-    let outside_clip = Point::new(
-        target.x as f64 + target.width as f64 * 0.5,
-        target.y as f64 + 75.,
-    );
+    let outside_clip = Point::new(target.x + target.width * 0.5, target.y + 75.);
     pane.click(&mut state, outside_clip);
 
     assert_eq!(state.clicks, 0);
@@ -1999,8 +1987,8 @@ fn text_field_click_uses_rendered_text_origin() {
             _ => None,
         })
         .expect("text layout rendered");
-    let click_x = (origin.0 - 5.).max(editor_area.x as f64 + 1.);
-    let click_y = origin.1 + 5.;
+    let click_x = (origin.0 as f32 - 5.).max(editor_area.x + 1.);
+    let click_y = origin.1 as f32 + 5.;
 
     pane.click(&mut state, Point::new(click_x, click_y));
     pane.key_pressed(&mut state, "x");

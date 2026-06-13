@@ -274,15 +274,15 @@ const ROUNDING: f32 = 8.;
 const PLAYFIELD: f32 = 170.;
 const PUCK: f32 = 32.;
 
-fn centered_puck() -> f64 {
-    ((PLAYFIELD - PUCK) * 0.5) as f64
+fn centered_puck() -> f32 {
+    (PLAYFIELD - PUCK) * 0.5
 }
 
 fn puck_position(point: Point) -> Point {
-    let max = (PLAYFIELD - PUCK) as f64;
+    let max = PLAYFIELD - PUCK;
     Point::new(
-        (point.x - (PUCK * 0.5) as f64).clamp(0., max),
-        (point.y - (PUCK * 0.5) as f64).clamp(0., max),
+        (point.x - PUCK * 0.5).clamp(0., max),
+        (point.y - PUCK * 0.5).clamp(0., max),
     )
 }
 
