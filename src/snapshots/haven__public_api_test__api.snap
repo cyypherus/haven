@@ -356,7 +356,7 @@ pub fn haven::PaneBuilder<State>::background(self, color: peniko::Color) -> Self
 pub fn haven::PaneBuilder<State>::build(self) -> haven::Pane<State> where State: 'static
 pub fn haven::PaneBuilder<State>::cursor_visible(self, visible: bool) -> Self
 pub fn haven::PaneBuilder<State>::decorations(self, decorations: bool) -> Self
-pub fn haven::PaneBuilder<State>::initial_bounds(self, x: i32, y: i32, width: u32, height: u32) -> Self
+pub fn haven::PaneBuilder<State>::initial_position(self, x: i32, y: i32) -> Self
 pub fn haven::PaneBuilder<State>::initially_active(self, active: bool) -> Self
 pub fn haven::PaneBuilder<State>::inner_size(self, width: u32, height: u32) -> Self
 pub fn haven::PaneBuilder<State>::new(name: &'static str, view: for<'a> fn(&'a State, &mut haven::PaneState) -> haven::View<'a, State>) -> Self
@@ -366,7 +366,6 @@ pub fn haven::PaneBuilder<State>::on_start(self, on_start: fn(&mut State, &mut h
 pub fn haven::PaneBuilder<State>::on_wake(self, on_wake: fn(&mut State, &mut haven::PaneState)) -> Self
 pub fn haven::PaneBuilder<State>::open_at_start(self, open: bool) -> Self
 pub fn haven::PaneBuilder<State>::resizable(self, resizable: bool) -> Self
-pub fn haven::PaneBuilder<State>::skip_taskbar(self, skip: bool) -> Self
 pub fn haven::PaneBuilder<State>::title(self, title: &str) -> Self
 pub fn haven::PaneBuilder<State>::transparent(self, transparent: bool) -> Self
 pub fn haven::PaneBuilder<State>::window_level(self, level: haven::WindowLevel) -> Self

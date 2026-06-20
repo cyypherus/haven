@@ -29,14 +29,16 @@ pub struct PaneBuilder<State> {
     pub(crate) name: &'static str,
     view: ViewFn<State>,
     pub(crate) inner_size: Option<(u32, u32)>,
-    pub(crate) initial_bounds: Option<(i32, i32, u32, u32)>,
+    pub(crate) initial_position: Option<(i32, i32)>,
     pub(crate) resizable: Option<bool>,
     pub(crate) title: Option<String>,
     pub(crate) window_level: Option<WindowLevel>,
     pub(crate) transparent: Option<bool>,
     background: Option<Color>,
     pub(crate) decorations: Option<bool>,
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub(crate) initially_active: Option<bool>,
+    #[cfg(target_os = "windows")]
     pub(crate) skip_taskbar: Option<bool>,
     pub(crate) cursor_visible: Option<bool>,
     pub(crate) open_at_start: bool,
@@ -53,14 +55,16 @@ impl<State> Clone for PaneBuilder<State> {
             name: self.name,
             view: self.view,
             inner_size: self.inner_size,
-            initial_bounds: self.initial_bounds,
+            initial_position: self.initial_position,
             resizable: self.resizable,
             title: self.title.clone(),
             window_level: self.window_level,
             transparent: self.transparent,
             background: self.background,
             decorations: self.decorations,
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             initially_active: self.initially_active,
+            #[cfg(target_os = "windows")]
             skip_taskbar: self.skip_taskbar,
             cursor_visible: self.cursor_visible,
             open_at_start: self.open_at_start,
@@ -144,14 +148,16 @@ impl<State> PaneBuilder<State> {
             name,
             view,
             inner_size: None,
-            initial_bounds: None,
+            initial_position: None,
             resizable: None,
             title: None,
             window_level: None,
             transparent: None,
             background: None,
             decorations: None,
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             initially_active: None,
+            #[cfg(target_os = "windows")]
             skip_taskbar: None,
             cursor_visible: None,
             open_at_start: true,
@@ -168,8 +174,8 @@ impl<State> PaneBuilder<State> {
         self
     }
 
-    pub fn initial_bounds(mut self, x: i32, y: i32, width: u32, height: u32) -> Self {
-        self.initial_bounds = Some((x, y, width, height));
+    pub fn initial_position(mut self, x: i32, y: i32) -> Self {
+        self.initial_position = Some((x, y));
         self
     }
 
@@ -203,11 +209,13 @@ impl<State> PaneBuilder<State> {
         self
     }
 
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub fn initially_active(mut self, active: bool) -> Self {
         self.initially_active = Some(active);
         self
     }
 
+    #[cfg(target_os = "windows")]
     pub fn skip_taskbar(mut self, skip: bool) -> Self {
         self.skip_taskbar = Some(skip);
         self

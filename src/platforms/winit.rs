@@ -23,7 +23,7 @@ use std::time::Instant;
 #[cfg(feature = "platform-winit")]
 use winit::application::ApplicationHandler;
 #[cfg(feature = "platform-winit")]
-use winit::dpi::{LogicalSize, PhysicalPosition, PhysicalSize};
+use winit::dpi::{LogicalSize, PhysicalPosition};
 #[cfg(feature = "platform-winit")]
 use winit::event::MouseScrollDelta;
 #[cfg(feature = "platform-winit")]
@@ -376,9 +376,11 @@ impl<State: 'static> WinitApp<State> {
         if let Some(window_id) = self.pane_windows.get(name).copied()
             && let Some(surface) = self.windows.get(&window_id)
         {
-            if config.initially_active.unwrap_or(true) {
-                surface.window.focus_window();
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            if !config.initially_active.unwrap_or(true) {
+                return;
             }
+            surface.window.focus_window();
             return;
         }
 
@@ -386,6 +388,7 @@ impl<State: 'static> WinitApp<State> {
         let resizable = config.resizable.unwrap_or(true);
         let transparent = config.transparent.unwrap_or(false);
         let decorations = config.decorations.unwrap_or(true);
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
         let initially_active = config.initially_active.unwrap_or(true);
         let window_level = config.window_level.unwrap_or_default();
 
@@ -423,13 +426,10 @@ impl<State: 'static> WinitApp<State> {
             .with_resizable(resizable)
             .with_transparent(transparent)
             .with_decorations(decorations)
-            .with_active(initially_active)
             .with_window_icon(self.window_icon.clone());
 
-        if let Some((x, y, width, height)) = config.initial_bounds {
-            attributes = attributes
-                .with_inner_size(PhysicalSize::new(width, height))
-                .with_position(PhysicalPosition::new(x, y));
+        if let Some((x, y)) = config.initial_position {
+            attributes = attributes.with_position(PhysicalPosition::new(x, y));
         }
 
         if let Some(ref title) = config.title {
