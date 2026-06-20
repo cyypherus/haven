@@ -466,6 +466,9 @@ impl<State: 'static> WinitApp<State> {
                 debug_overlay: DebugOverlayState::default(),
             },
         );
+        if let Some(surface) = self.windows.get(&window_id) {
+            surface.window.request_redraw();
+        }
     }
 
     fn apply_effects(
@@ -596,7 +599,6 @@ impl<State: 'static> ApplicationHandler<WinitEvent> for WinitApp<State> {
         event: winit::event::WindowEvent,
     ) {
         let mut invalidate_all = false;
-        let mut redraw_all_now = false;
         let effects = match event {
             winit::event::WindowEvent::Moved(_) => Vec::new(),
             winit::event::WindowEvent::KeyboardInput { event, .. } => {
@@ -619,7 +621,7 @@ impl<State: 'static> ApplicationHandler<WinitEvent> for WinitApp<State> {
             }
             winit::event::WindowEvent::CursorMoved { position, .. } => {
                 if let Some(surface) = self.windows.get_mut(&window_id) {
-                    redraw_all_now = true;
+                    invalidate_all = true;
                     let position: winit::dpi::LogicalPosition<f64> =
                         position.to_logical(surface.window.scale_factor());
                     surface.pane.move_to(
@@ -706,13 +708,7 @@ impl<State: 'static> ApplicationHandler<WinitEvent> for WinitApp<State> {
             | winit::event::WindowEvent::RotationGesture { .. } => Vec::new(),
         };
         self.apply_effects(event_loop, window_id, effects);
-        if redraw_all_now {
-            let window_ids = self.windows.keys().copied().collect::<Vec<_>>();
-            for window_id in window_ids {
-                let effects = self.redraw(window_id);
-                self.apply_effects(event_loop, window_id, effects);
-            }
-        } else if invalidate_all {
+        if invalidate_all {
             self.request_all_redraws();
         }
     }
