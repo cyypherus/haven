@@ -481,11 +481,7 @@ impl<State: 'static> WinitApp<State> {
             match effect {
                 PaneEffect::Open(name) => self.create_window(event_loop, name),
                 PaneEffect::Close => self.close_window(event_loop, window_id),
-                PaneEffect::Redraw => {
-                    if let Some(surface) = self.windows.get(&window_id) {
-                        surface.window.request_redraw();
-                    }
-                }
+                PaneEffect::Redraw => self.request_all_redraws(),
             }
         }
     }
@@ -621,7 +617,6 @@ impl<State: 'static> ApplicationHandler<WinitEvent> for WinitApp<State> {
             }
             winit::event::WindowEvent::CursorMoved { position, .. } => {
                 if let Some(surface) = self.windows.get_mut(&window_id) {
-                    invalidate_all = true;
                     let position: winit::dpi::LogicalPosition<f64> =
                         position.to_logical(surface.window.scale_factor());
                     surface.pane.move_to(

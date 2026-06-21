@@ -960,6 +960,7 @@ impl<State: 'static> Pane<State> {
     pub fn move_to(&mut self, state: &mut State, pos: Point) -> Vec<PaneEffect> {
         self.cursor_position = Some(pos);
         self.pane_state.cursor_position = Some(pos);
+        let mut needs_redraw = false;
         let gesture_state = self.gesture_state.clone();
         match gesture_state {
             GestureState::Pressing {
@@ -989,6 +990,7 @@ impl<State: 'static> Pane<State> {
                             if !matches!(active.gesture.handler().kind, GestureKind::Click { .. }) {
                                 continue;
                             }
+                            needs_redraw = true;
                             (active.gesture.handler().interaction_handler)(
                                 state,
                                 &mut self.pane_state,
@@ -1012,6 +1014,7 @@ impl<State: 'static> Pane<State> {
                         if !matches!(active.gesture.handler().kind, GestureKind::Drag { .. }) {
                             continue;
                         }
+                        needs_redraw = true;
                         (active.gesture.handler().interaction_handler)(
                             state,
                             &mut self.pane_state,
@@ -1071,6 +1074,7 @@ impl<State: 'static> Pane<State> {
                     if !matches!(active.gesture.handler().kind, GestureKind::Drag { .. }) {
                         continue;
                     }
+                    needs_redraw = true;
                     (active.gesture.handler().interaction_handler)(
                         state,
                         &mut self.pane_state,
@@ -1092,6 +1096,12 @@ impl<State: 'static> Pane<State> {
                 };
             }
             GestureState::None => {}
+        }
+        if self.update_hover(state) {
+            needs_redraw = true;
+        }
+        if needs_redraw && !self.pane_state.effects.contains(&PaneEffect::Redraw) {
+            self.pane_state.redraw();
         }
         self.dispatch_text_edit_lifecycle_events(state);
         self.take_effects()
