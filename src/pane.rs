@@ -1,7 +1,7 @@
 use crate::gestures::{
     ClickEvent, ClickLocation, EditInteraction, Gesture, GestureAreaComponent,
     GestureAreaOperation, GestureId, GestureKind, GesturePropagation, Interaction, ScrollDelta,
-    regions::{area_rect, subtract, valid_rect},
+    regions::{contains, subtract, valid_area},
 };
 use crate::prebuilts::TextEditCommand;
 use crate::render::{Frame, RenderItem};
@@ -10,7 +10,6 @@ use crate::primitives::TextLayout;
 use crate::view::DrawableType;
 use crate::{ClickPhase, DragPhase, Key, KeyPhase, Modifiers, MouseButton, Point, RUBIK_FONT};
 use backer::{Area, Layout};
-use kurbo::Rect;
 use parley::fontique::Blob;
 use parley::fontique::FontInfoOverride;
 use parley::{FontContext, LayoutContext};
@@ -24,17 +23,24 @@ pub(crate) type EditHandler<State> = Rc<dyn Fn(&mut State, &mut PaneState, EditI
 
 type ViewFn<State> = for<'a> fn(&'a State, &mut PaneState) -> View<'a, State>;
 
-const DRAG_START_DISTANCE: f64 = 3.0;
+const DRAG_START_DISTANCE: f32 = 3.0;
 
 pub struct PaneBuilder<State> {
     pub(crate) name: &'static str,
     view: ViewFn<State>,
     pub(crate) inner_size: Option<(u32, u32)>,
+    pub(crate) initial_position: Option<(i32, i32)>,
     pub(crate) resizable: Option<bool>,
     pub(crate) title: Option<String>,
+    pub(crate) window_level: Option<WindowLevel>,
     pub(crate) transparent: Option<bool>,
     background: Option<Color>,
     pub(crate) decorations: Option<bool>,
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    pub(crate) initially_active: Option<bool>,
+    #[cfg(target_os = "windows")]
+    pub(crate) skip_taskbar: Option<bool>,
+    pub(crate) cursor_visible: Option<bool>,
     pub(crate) open_at_start: bool,
     on_frame: fn(&mut State, &mut PaneState) -> (),
     on_start: fn(&mut State, &mut PaneState) -> (),
@@ -49,11 +55,18 @@ impl<State> Clone for PaneBuilder<State> {
             name: self.name,
             view: self.view,
             inner_size: self.inner_size,
+            initial_position: self.initial_position,
             resizable: self.resizable,
             title: self.title.clone(),
+            window_level: self.window_level,
             transparent: self.transparent,
             background: self.background,
             decorations: self.decorations,
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            initially_active: self.initially_active,
+            #[cfg(target_os = "windows")]
+            skip_taskbar: self.skip_taskbar,
+            cursor_visible: self.cursor_visible,
             open_at_start: self.open_at_start,
             on_frame: self.on_frame,
             on_start: self.on_start,
@@ -85,7 +98,7 @@ pub struct Pane<State> {
 
 struct ActiveGesture<State> {
     gesture: Gesture<State>,
-    hit_rect: Rect,
+    hit_rect: Area,
     local_area: Area,
 }
 
@@ -93,7 +106,7 @@ struct ActiveGesture<State> {
 struct CapturedGesture {
     id: GestureId,
     local_area: Area,
-    hit_rect: Rect,
+    hit_rect: Area,
 }
 
 #[derive(Debug, Clone)]
@@ -135,11 +148,18 @@ impl<State> PaneBuilder<State> {
             name,
             view,
             inner_size: None,
+            initial_position: None,
             resizable: None,
             title: None,
+            window_level: None,
             transparent: None,
             background: None,
             decorations: None,
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            initially_active: None,
+            #[cfg(target_os = "windows")]
+            skip_taskbar: None,
+            cursor_visible: None,
             open_at_start: true,
             on_frame: |_, _| {},
             on_start: |_, _| {},
@@ -154,6 +174,11 @@ impl<State> PaneBuilder<State> {
         self
     }
 
+    pub fn initial_position(mut self, x: i32, y: i32) -> Self {
+        self.initial_position = Some((x, y));
+        self
+    }
+
     pub fn resizable(mut self, resizable: bool) -> Self {
         self.resizable = Some(resizable);
         self
@@ -161,6 +186,11 @@ impl<State> PaneBuilder<State> {
 
     pub fn title(mut self, title: &str) -> Self {
         self.title = Some(title.to_string());
+        self
+    }
+
+    pub fn window_level(mut self, level: WindowLevel) -> Self {
+        self.window_level = Some(level);
         self
     }
 
@@ -176,6 +206,23 @@ impl<State> PaneBuilder<State> {
 
     pub fn decorations(mut self, decorations: bool) -> Self {
         self.decorations = Some(decorations);
+        self
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    pub fn initially_active(mut self, active: bool) -> Self {
+        self.initially_active = Some(active);
+        self
+    }
+
+    #[cfg(target_os = "windows")]
+    pub fn skip_taskbar(mut self, skip: bool) -> Self {
+        self.skip_taskbar = Some(skip);
+        self
+    }
+
+    pub fn cursor_visible(mut self, visible: bool) -> Self {
+        self.cursor_visible = Some(visible);
         self
     }
 
@@ -238,6 +285,14 @@ pub enum PaneEffect {
     Open(&'static str),
     Close,
     Redraw,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum WindowLevel {
+    AlwaysOnBottom,
+    #[default]
+    Normal,
+    AlwaysOnTop,
 }
 
 #[derive(Clone)]
@@ -482,8 +537,8 @@ impl<State: 'static> Pane<State> {
     pub fn location(&self, id: u64) -> Option<Point> {
         let area = *self.elements.get(&id)?;
         Some(Point::new(
-            area.x as f64 + area.width as f64 * 0.5,
-            area.y as f64 + area.height as f64 * 0.5,
+            area.x + area.width * 0.5,
+            area.y + area.height * 0.5,
         ))
     }
 
@@ -650,15 +705,15 @@ impl<State: 'static> Pane<State> {
         }
         let mut seen_gestures = HashSet::new();
         for (area, component) in gesture_area_components {
-            let rect = component.rect.unwrap_or_else(|| area_rect(area));
-            let Some(rect) = valid_rect(rect) else {
+            let rect = component.rect.unwrap_or(area);
+            let Some(rect) = valid_area(rect) else {
                 continue;
             };
             let gesture = component.gesture;
             if gesture.handler().positive_by_default && seen_gestures.insert(gesture.id()) {
                 self.gestures.push(ActiveGesture {
                     gesture: gesture.clone(),
-                    hit_rect: area_rect(pane_area),
+                    hit_rect: pane_area,
                     local_area: pane_area,
                 });
             }
@@ -730,10 +785,7 @@ impl<State: 'static> Pane<State> {
         {
             return None;
         }
-        active
-            .hit_rect
-            .contains(position)
-            .then_some(active.local_area)
+        contains(active.hit_rect, position).then_some(active.local_area)
     }
 
     fn pointer_gestures_at(
@@ -768,8 +820,8 @@ impl<State: 'static> Pane<State> {
 
     fn point_in_area(area: Area, point: Point) -> Point {
         Point {
-            x: point.x - area.x as f64,
-            y: point.y - area.y as f64,
+            x: point.x - area.x,
+            y: point.y - area.y,
         }
     }
 
@@ -908,6 +960,7 @@ impl<State: 'static> Pane<State> {
     pub fn move_to(&mut self, state: &mut State, pos: Point) -> Vec<PaneEffect> {
         self.cursor_position = Some(pos);
         self.pane_state.cursor_position = Some(pos);
+        let mut needs_redraw = false;
         let gesture_state = self.gesture_state.clone();
         match gesture_state {
             GestureState::Pressing {
@@ -937,6 +990,7 @@ impl<State: 'static> Pane<State> {
                             if !matches!(active.gesture.handler().kind, GestureKind::Click { .. }) {
                                 continue;
                             }
+                            needs_redraw = true;
                             (active.gesture.handler().interaction_handler)(
                                 state,
                                 &mut self.pane_state,
@@ -960,6 +1014,7 @@ impl<State: 'static> Pane<State> {
                         if !matches!(active.gesture.handler().kind, GestureKind::Drag { .. }) {
                             continue;
                         }
+                        needs_redraw = true;
                         (active.gesture.handler().interaction_handler)(
                             state,
                             &mut self.pane_state,
@@ -977,7 +1032,7 @@ impl<State: 'static> Pane<State> {
                                 start_global: start,
                                 current_global: pos,
                                 delta,
-                                distance: distance as f32,
+                                distance,
                             }),
                         );
                     }
@@ -1019,6 +1074,7 @@ impl<State: 'static> Pane<State> {
                     if !matches!(active.gesture.handler().kind, GestureKind::Drag { .. }) {
                         continue;
                     }
+                    needs_redraw = true;
                     (active.gesture.handler().interaction_handler)(
                         state,
                         &mut self.pane_state,
@@ -1028,7 +1084,7 @@ impl<State: 'static> Pane<State> {
                             start_global: start,
                             current_global: pos,
                             delta,
-                            distance: distance as f32,
+                            distance,
                         }),
                     );
                 }
@@ -1040,6 +1096,12 @@ impl<State: 'static> Pane<State> {
                 };
             }
             GestureState::None => {}
+        }
+        if self.update_hover(state) {
+            needs_redraw = true;
+        }
+        if needs_redraw && !self.pane_state.effects.contains(&PaneEffect::Redraw) {
+            self.pane_state.redraw();
         }
         self.dispatch_text_edit_lifecycle_events(state);
         self.take_effects()
@@ -1143,7 +1205,7 @@ impl<State: 'static> Pane<State> {
                             if !matches!(active.gesture.handler().kind, GestureKind::Click { .. }) {
                                 continue;
                             }
-                            let phase = if captured.hit_rect.contains(current) {
+                            let phase = if contains(captured.hit_rect, current) {
                                 ClickPhase::Completed
                             } else {
                                 ClickPhase::Cancelled
@@ -1199,7 +1261,7 @@ impl<State: 'static> Pane<State> {
                                 start_global: start,
                                 current_global: current,
                                 delta,
-                                distance: distance as f32,
+                                distance,
                             }),
                         );
                     }

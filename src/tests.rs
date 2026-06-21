@@ -6,6 +6,50 @@ fn test_pane<State: 'static>(builder: PaneBuilder<State>) -> crate::pane::Pane<S
 }
 
 #[test]
+fn cursor_move_redraws_only_when_hover_callback_runs() {
+    #[derive(Default)]
+    struct State {
+        hovered: bool,
+        hover_calls: usize,
+    }
+
+    const TARGET: u64 = 1;
+
+    fn view<'a>(_: &'a State, app: &mut PaneState) -> View<'a, State> {
+        rect(TARGET)
+            .fill(TRANSPARENT)
+            .view()
+            .gesture(gesture::hover(id!(TARGET, 1u64)).run(|state: &mut State, _, hovered| {
+                state.hovered = hovered;
+                state.hover_calls += 1;
+            }))
+            .build(app)
+            .width(100.)
+            .height(100.)
+    }
+
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    pane.redraw(&mut state, 300, 200, 1.0);
+
+    let location = pane.location(TARGET).expect("target present");
+    let effects = pane.move_to(&mut state, location);
+    assert_eq!(effects, vec![PaneEffect::Redraw]);
+    assert!(state.hovered);
+    assert_eq!(state.hover_calls, 1);
+
+    let effects = pane.move_to(&mut state, Point::new(location.x + 10., location.y));
+    assert!(effects.is_empty(), "unexpected effects: {effects:?}");
+    assert!(state.hovered);
+    assert_eq!(state.hover_calls, 1);
+
+    let effects = pane.move_to(&mut state, Point::new(location.x + 100., location.y));
+    assert_eq!(effects, vec![PaneEffect::Redraw]);
+    assert!(!state.hovered);
+    assert_eq!(state.hover_calls, 2);
+}
+
+#[test]
 fn dropdown_expands_and_selects_an_option() {
     struct State {
         dropdown: DropdownState<&'static str>,
@@ -50,14 +94,14 @@ fn dropdown_expands_and_selects_an_option() {
     assert!(!state.dropdown.expanded);
 
     let location = pane.location(OPTIONS[0].0).expect("dropdown present");
-    assert!(pane.click(&mut state, location).is_empty());
+    assert_eq!(pane.click(&mut state, location), vec![PaneEffect::Redraw]);
     assert!(state.dropdown.expanded);
 
     let (_, effects) = pane.redraw(&mut state, 300, 200, 1.0);
     assert!(effects.is_empty(), "unexpected effects: {effects:?}");
 
     let location = pane.location(OPTIONS[1].0).expect("option present");
-    assert!(pane.click(&mut state, location).is_empty());
+    assert_eq!(pane.click(&mut state, location), vec![PaneEffect::Redraw]);
     assert_eq!(state.dropdown.selected, "two");
     assert_eq!(state.selected, Some("two"));
     assert!(!state.dropdown.expanded);
@@ -113,7 +157,7 @@ fn dropdown_hover_captures_overlapping_button() {
     assert!(effects.is_empty(), "unexpected effects: {effects:?}");
 
     let location = pane.location(OPTIONS[1].0).expect("option present");
-    assert!(pane.move_to(&mut state, location).is_empty());
+    assert_eq!(pane.move_to(&mut state, location), vec![PaneEffect::Redraw]);
     let (_, effects) = pane.redraw(&mut state, 300, 200, 1.0);
     assert!(effects.is_empty(), "unexpected effects: {effects:?}");
 
@@ -146,7 +190,7 @@ fn toggle_click_updates_state() {
     assert!(effects.is_empty(), "unexpected effects: {effects:?}");
 
     let location = pane.location(TOGGLE).expect("toggle present");
-    assert!(pane.move_to(&mut state, location).is_empty());
+    assert_eq!(pane.move_to(&mut state, location), vec![PaneEffect::Redraw]);
     let (_, effects) = pane.redraw(&mut state, 300, 200, 1.0);
     assert!(effects.is_empty(), "unexpected effects: {effects:?}");
     assert!(state.toggle.hovered);
@@ -183,26 +227,26 @@ fn toggle_drag_updates_state_from_position() {
     assert!(effects.is_empty(), "unexpected effects: {effects:?}");
 
     let center = pane.location(TOGGLE).expect("toggle present");
-    assert!(
+    assert_eq!(
         pane.drag(
             &mut state,
             Point::new(center.x - 20., center.y),
             Point::new(center.x + 20., center.y),
-        )
-        .is_empty()
+        ),
+        vec![PaneEffect::Redraw, PaneEffect::Redraw]
     );
     assert!(state.toggle.on);
     assert!(!state.toggle.depressed);
     assert_eq!(state.toggled, Some(true));
 
     state.toggled = None;
-    assert!(
+    assert_eq!(
         pane.drag(
             &mut state,
             Point::new(center.x + 20., center.y),
             Point::new(center.x - 20., center.y),
-        )
-        .is_empty()
+        ),
+        vec![PaneEffect::Redraw]
     );
     assert!(!state.toggle.on);
     assert!(!state.toggle.depressed);
@@ -788,14 +832,8 @@ fn clipping_limits_pointer_gestures() {
     pane.redraw(&mut state, 300, 200, 1.0);
 
     let target = pane.elements[&TARGET];
-    let inside_clip = Point::new(
-        target.x as f64 + target.width as f64 * 0.5,
-        target.y as f64 + 5.,
-    );
-    let outside_clip = Point::new(
-        target.x as f64 + target.width as f64 * 0.5,
-        target.y as f64 + 20.,
-    );
+    let inside_clip = Point::new(target.x + target.width * 0.5, target.y + 5.);
+    let outside_clip = Point::new(target.x + target.width * 0.5, target.y + 20.);
 
     pane.move_to(&mut state, inside_clip);
     pane.redraw(&mut state, 300, 200, 1.0);
@@ -858,10 +896,7 @@ fn blend_layer_does_not_clip_pointer_gestures() {
     pane.redraw(&mut state, 300, 200, 1.0);
 
     let target = pane.elements[&TARGET];
-    let outside_layer = Point::new(
-        target.x as f64 + target.width as f64 * 0.5,
-        target.y as f64 + 75.,
-    );
+    let outside_layer = Point::new(target.x + target.width * 0.5, target.y + 75.);
     pane.click(&mut state, outside_layer);
 
     assert_eq!(state.clicks, 1);
@@ -912,10 +947,7 @@ fn clipping_limits_layered_pointer_gestures() {
     pane.redraw(&mut state, 300, 200, 1.0);
 
     let target = pane.elements[&TARGET];
-    let outside_clip = Point::new(
-        target.x as f64 + target.width as f64 * 0.5,
-        target.y as f64 + 75.,
-    );
+    let outside_clip = Point::new(target.x + target.width * 0.5, target.y + 75.);
     pane.click(&mut state, outside_clip);
 
     assert_eq!(state.clicks, 0);
@@ -1330,7 +1362,7 @@ fn slider_click_updates_value() {
     pane.redraw(&mut state, 300, 200, 1.0);
 
     let location = pane.location(SLIDER).expect("slider present");
-    assert!(pane.click(&mut state, location).is_empty());
+    assert_eq!(pane.click(&mut state, location), vec![PaneEffect::Redraw]);
 
     assert!((state.slider.value - 0.5).abs() < 0.001);
     assert!((state.changed.unwrap() - 0.5).abs() < 0.001);
@@ -1360,18 +1392,21 @@ fn slider_drag_updates_value() {
     assert!(effects.is_empty(), "unexpected effects: {effects:?}");
 
     let location = pane.location(SLIDER).expect("slider present");
-    assert!(pane.move_to(&mut state, location).is_empty());
+    assert_eq!(pane.move_to(&mut state, location), vec![PaneEffect::Redraw]);
     let (_, effects) = pane.redraw(&mut state, 300, 200, 1.0);
     assert!(effects.is_empty(), "unexpected effects: {effects:?}");
     assert!(state.slider.hovered);
     assert!(pane.press(&mut state).is_empty());
     assert!(!state.slider.dragging);
-    assert!(
-        pane.move_to(&mut state, Point::new(location.x + 10., location.y))
-            .is_empty()
+    assert_eq!(
+        pane.move_to(&mut state, Point::new(location.x + 10., location.y)),
+        vec![PaneEffect::Redraw]
     );
     assert!(state.slider.dragging);
-    assert!(pane.move_to(&mut state, Point::new(190., 100.)).is_empty());
+    assert_eq!(
+        pane.move_to(&mut state, Point::new(190., 100.)),
+        vec![PaneEffect::Redraw]
+    );
     assert!(pane.release(&mut state).is_empty());
 
     assert!((state.slider.value - 1.0).abs() < 0.001);
@@ -1999,8 +2034,8 @@ fn text_field_click_uses_rendered_text_origin() {
             _ => None,
         })
         .expect("text layout rendered");
-    let click_x = (origin.0 - 5.).max(editor_area.x as f64 + 1.);
-    let click_y = origin.1 + 5.;
+    let click_x = (origin.0 as f32 - 5.).max(editor_area.x + 1.);
+    let click_y = origin.1 as f32 + 5.;
 
     pane.click(&mut state, Point::new(click_x, click_y));
     pane.key_pressed(&mut state, "x");

@@ -137,7 +137,7 @@ fn draw_image<S: PaintScene>(
     unlocked_aspect_ratio: bool,
     corner_rounding: f32,
 ) {
-    if !image_data.contains_key(&cache_key) {
+    if matches!(source, ImageSource::Buffer(_, _, _)) || !image_data.contains_key(&cache_key) {
         let image = match load_image(source) {
             Ok(img) => img,
             Err(err) => {
@@ -405,9 +405,11 @@ fn load_image(source: &ImageSource) -> Result<peniko::ImageData, Box<dyn std::er
 
 #[cfg(test)]
 mod tests {
-    use super::cached_svg_scene;
+    use super::{cached_svg_scene, draw_image};
+    use crate::{Area, primitives::ImageSource};
     use anyrender::Scene;
     use std::collections::HashMap;
+    use std::sync::Arc;
 
     const FIRST: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>"#;
     const SECOND: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="5"><rect width="20" height="5"/></svg>"#;
@@ -442,5 +444,43 @@ mod tests {
 
         cached_svg_scene(&mut cache, 2, FIRST);
         assert_eq!(cache.len(), 2);
+    }
+
+    #[test]
+    fn buffer_cache_replaces_content_for_existing_key() {
+        let mut cache = HashMap::new();
+        let mut scene = Scene::new();
+        let area = Area {
+            x: 0.,
+            y: 0.,
+            width: 1.,
+            height: 1.,
+        };
+
+        draw_image(
+            &mut scene,
+            &mut cache,
+            1.,
+            1,
+            &ImageSource::Buffer(1, 1, Arc::new(vec![255, 0, 0, 255])),
+            area,
+            true,
+            0.,
+        );
+        assert_eq!(cache.len(), 1);
+        assert_eq!(cache.get(&1).unwrap().0.data.as_ref(), &[255, 0, 0, 255]);
+
+        draw_image(
+            &mut scene,
+            &mut cache,
+            1.,
+            1,
+            &ImageSource::Buffer(1, 1, Arc::new(vec![0, 0, 255, 255])),
+            area,
+            true,
+            0.,
+        );
+        assert_eq!(cache.len(), 1);
+        assert_eq!(cache.get(&1).unwrap().0.data.as_ref(), &[0, 0, 255, 255]);
     }
 }

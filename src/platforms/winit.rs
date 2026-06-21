@@ -23,13 +23,13 @@ use std::time::Instant;
 #[cfg(feature = "platform-winit")]
 use winit::application::ApplicationHandler;
 #[cfg(feature = "platform-winit")]
-use winit::dpi::LogicalSize;
+use winit::dpi::{LogicalSize, PhysicalPosition};
 #[cfg(feature = "platform-winit")]
 use winit::event::MouseScrollDelta;
 #[cfg(feature = "platform-winit")]
 use winit::event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy};
 #[cfg(feature = "platform-winit")]
-use winit::window::{Icon, Window as WinitWindow, WindowId};
+use winit::window::{Icon, Window as WinitWindow, WindowId, WindowLevel as WinitWindowLevel};
 
 #[cfg(all(feature = "platform-winit", target_os = "macos"))]
 use winit::platform::macos::WindowAttributesExtMacOS;
@@ -369,28 +369,37 @@ impl<State: 'static> WinitApp<State> {
     }
 
     fn create_window(&mut self, event_loop: &ActiveEventLoop, name: &'static str) {
-        if let Some(window_id) = self.pane_windows.get(name).copied()
-            && let Some(surface) = self.windows.get(&window_id)
-        {
-            surface.window.focus_window();
-            return;
-        }
-
         let Some(config) = self.panes.get(name).cloned() else {
             return;
         };
+
+        if let Some(window_id) = self.pane_windows.get(name).copied()
+            && let Some(surface) = self.windows.get(&window_id)
+        {
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            if !config.initially_active.unwrap_or(true) {
+                return;
+            }
+            surface.window.focus_window();
+            return;
+        }
 
         let inner_size = config.inner_size.unwrap_or((1044, 800));
         let resizable = config.resizable.unwrap_or(true);
         let transparent = config.transparent.unwrap_or(false);
         let decorations = config.decorations.unwrap_or(true);
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        let initially_active = config.initially_active.unwrap_or(true);
+        let window_level = config.window_level.unwrap_or_default();
 
         #[cfg(target_os = "macos")]
         let mut attributes = WinitWindow::default_attributes()
             .with_inner_size(LogicalSize::new(inner_size.0, inner_size.1))
+            .with_window_level(winit_window_level(window_level))
             .with_resizable(resizable)
             .with_transparent(transparent)
             .with_decorations(decorations)
+            .with_active(initially_active)
             .with_window_icon(self.window_icon.clone())
             .with_titlebar_hidden(false)
             .with_titlebar_transparent(true)
@@ -400,20 +409,28 @@ impl<State: 'static> WinitApp<State> {
         #[cfg(target_os = "windows")]
         let mut attributes = WinitWindow::default_attributes()
             .with_inner_size(LogicalSize::new(inner_size.0, inner_size.1))
+            .with_window_level(winit_window_level(window_level))
             .with_resizable(resizable)
             .with_transparent(transparent)
             .with_decorations(decorations)
+            .with_active(initially_active)
             .with_window_icon(self.window_icon.clone())
             .with_taskbar_icon(self.window_icon.clone())
+            .with_skip_taskbar(config.skip_taskbar.unwrap_or(false))
             .with_visible(false);
 
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         let mut attributes = WinitWindow::default_attributes()
             .with_inner_size(LogicalSize::new(inner_size.0, inner_size.1))
+            .with_window_level(winit_window_level(window_level))
             .with_resizable(resizable)
             .with_transparent(transparent)
             .with_decorations(decorations)
             .with_window_icon(self.window_icon.clone());
+
+        if let Some((x, y)) = config.initial_position {
+            attributes = attributes.with_position(PhysicalPosition::new(x, y));
+        }
 
         if let Some(ref title) = config.title {
             attributes = attributes.with_title(title.to_string());
@@ -423,6 +440,10 @@ impl<State: 'static> WinitApp<State> {
         let size = window.inner_size();
         let window_id = window.id();
         let renderer = Renderer::new(window_renderer(), window.clone(), size.width, size.height);
+
+        if let Some(cursor_visible) = config.cursor_visible {
+            window.set_cursor_visible(cursor_visible);
+        }
 
         #[cfg(target_os = "windows")]
         window.set_visible(true);
@@ -445,6 +466,9 @@ impl<State: 'static> WinitApp<State> {
                 debug_overlay: DebugOverlayState::default(),
             },
         );
+        if let Some(surface) = self.windows.get(&window_id) {
+            surface.window.request_redraw();
+        }
     }
 
     fn apply_effects(
@@ -457,11 +481,7 @@ impl<State: 'static> WinitApp<State> {
             match effect {
                 PaneEffect::Open(name) => self.create_window(event_loop, name),
                 PaneEffect::Close => self.close_window(event_loop, window_id),
-                PaneEffect::Redraw => {
-                    if let Some(surface) = self.windows.get(&window_id) {
-                        surface.window.request_redraw();
-                    }
-                }
+                PaneEffect::Redraw => self.request_all_redraws(),
             }
         }
     }
@@ -533,6 +553,15 @@ impl<State: 'static> WinitApp<State> {
 }
 
 #[cfg(feature = "platform-winit")]
+fn winit_window_level(level: crate::WindowLevel) -> WinitWindowLevel {
+    match level {
+        crate::WindowLevel::AlwaysOnBottom => WinitWindowLevel::AlwaysOnBottom,
+        crate::WindowLevel::Normal => WinitWindowLevel::Normal,
+        crate::WindowLevel::AlwaysOnTop => WinitWindowLevel::AlwaysOnTop,
+    }
+}
+
+#[cfg(feature = "platform-winit")]
 impl<State: 'static> ApplicationHandler<WinitEvent> for WinitApp<State> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let panes: Vec<_> = self
@@ -566,7 +595,6 @@ impl<State: 'static> ApplicationHandler<WinitEvent> for WinitApp<State> {
         event: winit::event::WindowEvent,
     ) {
         let mut invalidate_all = false;
-        let mut redraw_all_now = false;
         let effects = match event {
             winit::event::WindowEvent::Moved(_) => Vec::new(),
             winit::event::WindowEvent::KeyboardInput { event, .. } => {
@@ -589,11 +617,12 @@ impl<State: 'static> ApplicationHandler<WinitEvent> for WinitApp<State> {
             }
             winit::event::WindowEvent::CursorMoved { position, .. } => {
                 if let Some(surface) = self.windows.get_mut(&window_id) {
-                    redraw_all_now = true;
-                    let position = position.to_logical(surface.window.scale_factor());
-                    surface
-                        .pane
-                        .move_to(&mut self.state, kurbo::Point::new(position.x, position.y))
+                    let position: winit::dpi::LogicalPosition<f64> =
+                        position.to_logical(surface.window.scale_factor());
+                    surface.pane.move_to(
+                        &mut self.state,
+                        crate::Point::new(position.x as f32, position.y as f32),
+                    )
                 } else {
                     Vec::new()
                 }
@@ -674,13 +703,7 @@ impl<State: 'static> ApplicationHandler<WinitEvent> for WinitApp<State> {
             | winit::event::WindowEvent::RotationGesture { .. } => Vec::new(),
         };
         self.apply_effects(event_loop, window_id, effects);
-        if redraw_all_now {
-            let window_ids = self.windows.keys().copied().collect::<Vec<_>>();
-            for window_id in window_ids {
-                let effects = self.redraw(window_id);
-                self.apply_effects(event_loop, window_id, effects);
-            }
-        } else if invalidate_all {
+        if invalidate_all {
             self.request_all_redraws();
         }
     }

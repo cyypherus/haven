@@ -1,5 +1,4 @@
 use backer::Area;
-use kurbo::Rect;
 
 use crate::{Key, Modifiers, PaneState, Point};
 pub use predicates::{ButtonPredicate, KeyPredicate, ModifierPredicate};
@@ -67,8 +66,8 @@ impl ClickLocation {
     }
     pub fn local(&self) -> Point {
         Point {
-            x: self.global.x - self.area.x as f64,
-            y: self.global.y - self.area.y as f64,
+            x: self.global.x - self.area.x,
+            y: self.global.y - self.area.y,
         }
     }
 }
@@ -229,7 +228,7 @@ pub(crate) enum GestureAreaOperation {
 pub(crate) struct GestureAreaComponent<State: ?Sized> {
     pub(crate) operation: GestureAreaOperation,
     pub(crate) gesture: Gesture<State>,
-    pub(crate) rect: Option<Rect>,
+    pub(crate) rect: Option<Area>,
 }
 
 impl<State: ?Sized> Clone for GestureAreaComponent<State> {

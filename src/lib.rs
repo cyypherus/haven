@@ -30,7 +30,9 @@ pub use gestures::{
     GestureId, KeyEvent, KeyPhase, KeyPredicate, ModifierPredicate, MouseButton, ScrollDelta,
     gesture,
 };
-pub use pane::{Pane, PaneBuilder, PaneEffect, PaneElement, PaneState, PaneWaker, View};
+pub use pane::{
+    Pane, PaneBuilder, PaneEffect, PaneElement, PaneState, PaneWaker, View, WindowLevel,
+};
 pub use parley::{Alignment, FontWeight, StyleProperty};
 use peniko::color::AlphaColor;
 use peniko::color::Srgb;
@@ -44,7 +46,7 @@ pub use view::{
     rounded_rect_path, scope,
 };
 
-pub use kurbo::{BezPath, Cap, Join, Point, Stroke};
+pub use kurbo::{BezPath, Cap, Join, Stroke};
 pub use peniko::{Brush, Gradient};
 
 pub use models::*;

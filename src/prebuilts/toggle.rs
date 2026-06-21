@@ -212,7 +212,7 @@ impl<'a, State> Toggle<'a, State> {
                                         app,
                                         &binding,
                                         &on_toggle,
-                                        x >= width as f64 * 0.5,
+                                        x >= width * 0.5,
                                     );
                                 }
                             }),

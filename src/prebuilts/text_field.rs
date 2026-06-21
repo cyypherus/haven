@@ -260,10 +260,7 @@ fn text_field_local_point(
         alignment,
         vertical_alignment,
     );
-    crate::Point::new(
-        point.x - placement.origin_x as f64,
-        point.y - placement.origin_y as f64,
-    )
+    crate::Point::new(point.x - placement.origin_x, point.y - placement.origin_y)
 }
 
 fn text_field_cursor(editor: &mut Editor, cursor_width: f32) -> Option<KRect> {
@@ -1158,17 +1155,15 @@ impl<'a, State> TextField<'a, State> {
                                             let mut viewport = ts.viewport;
                                             let right = editor_area.x + editor_area.width;
                                             let bottom = editor_area.y + editor_area.height;
-                                            if current_global.x < editor_area.x as f64 {
-                                                viewport.x -=
-                                                    editor_area.x - current_global.x as f32;
-                                            } else if current_global.x > right as f64 {
-                                                viewport.x += current_global.x as f32 - right;
+                                            if current_global.x < editor_area.x {
+                                                viewport.x -= editor_area.x - current_global.x;
+                                            } else if current_global.x > right {
+                                                viewport.x += current_global.x - right;
                                             }
-                                            if current_global.y < editor_area.y as f64 {
-                                                viewport.y -=
-                                                    editor_area.y - current_global.y as f32;
-                                            } else if current_global.y > bottom as f64 {
-                                                viewport.y += current_global.y as f32 - bottom;
+                                            if current_global.y < editor_area.y {
+                                                viewport.y -= editor_area.y - current_global.y;
+                                            } else if current_global.y > bottom {
+                                                viewport.y += current_global.y - bottom;
                                             }
 
                                             let (content_width, content_height) =

@@ -44,6 +44,11 @@ name = "text_fields"
 path = "examples/text_fields.rs"
 required-features = ["platform-winit"]
 
+[[example]]
+name = "multi_window"
+path = "examples/multi_window.rs"
+required-features = ["platform-winit"]
+
 [dependencies]
 backer = "0.12.0"
 # backer = { path = "../backer" }

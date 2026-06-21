@@ -34,12 +34,12 @@ pub struct Slider<'a, State> {
     background: Option<ViewFn<'a, State>>,
 }
 
-fn value_at_x(x: f64, width: f32, height: f32, min: f32, max: f32) -> f32 {
+fn value_at_x(x: f32, width: f32, height: f32, min: f32, max: f32) -> f32 {
     let gesture_padding = height / width;
     let padded_start = gesture_padding * width;
     let padded_end = width - (gesture_padding * width);
     let padded_width = padded_end - padded_start;
-    let normalized = ((x - padded_start as f64) / padded_width as f64).clamp(0.0, 1.0) as f32;
+    let normalized = ((x - padded_start) / padded_width).clamp(0.0, 1.0);
     min + normalized * (max - min)
 }
 

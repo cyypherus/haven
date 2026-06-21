@@ -2,6 +2,10 @@
 
 # Haven
 
+![rust](https://github.com/cyypherus/haven/actions/workflows/rust.yml/badge.svg)
+[![crates.io](https://img.shields.io/crates/v/haven-ui.svg)](https://crates.io/crates/haven-ui)
+[![downloads](https://img.shields.io/crates/d/haven-ui.svg)](https://crates.io/crates/haven-ui)
+
 **A declarative UI crate for native applications.**
 
 </div>
@@ -84,6 +88,7 @@ Examples can be run directly with `cargo run --example <name>`.
 - `gestures`: Click, hover, drag, predicates, and gesture regions
 - `image`: Loading and drawing image content
 - `async`: Waking panes from async callbacks
+- `multi_window`: Opening and closing panes with shared app state
 - `productivity`: A larger app-shaped example
 
 ## Status

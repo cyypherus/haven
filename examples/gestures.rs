@@ -190,8 +190,6 @@ fn predicate_buttons<'a>(state: &'a State, app: &mut PaneState) -> View<'a, Stat
 }
 
 fn gated_drag<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
-    let puck_x = state.puck.x as f32;
-    let puck_y = state.puck.y as f32;
     panel(
         stack(vec![
             rect(id!())
@@ -230,9 +228,9 @@ fn gated_drag<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
                 .width(PLAYFIELD)
                 .height(PLAYFIELD),
             column(vec![
-                space().height(puck_y),
+                space().height(state.puck.y),
                 row(vec![
-                    space().width(puck_x),
+                    space().width(state.puck.x),
                     rect(id!())
                         .fill(fill_for(state.space_down && state.gated_hovered))
                         .stroke(border(), Stroke::new(3.))
@@ -274,15 +272,15 @@ const ROUNDING: f32 = 8.;
 const PLAYFIELD: f32 = 170.;
 const PUCK: f32 = 32.;
 
-fn centered_puck() -> f64 {
-    ((PLAYFIELD - PUCK) * 0.5) as f64
+fn centered_puck() -> f32 {
+    (PLAYFIELD - PUCK) * 0.5
 }
 
 fn puck_position(point: Point) -> Point {
-    let max = (PLAYFIELD - PUCK) as f64;
+    let max = PLAYFIELD - PUCK;
     Point::new(
-        (point.x - (PUCK * 0.5) as f64).clamp(0., max),
-        (point.y - (PUCK * 0.5) as f64).clamp(0., max),
+        (point.x - PUCK * 0.5).clamp(0., max),
+        (point.y - PUCK * 0.5).clamp(0., max),
     )
 }
 
