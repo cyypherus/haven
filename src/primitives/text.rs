@@ -7,7 +7,7 @@ use backer::{Area, Layout};
 use kurbo::{Affine, Rect};
 use parley::{Affinity, Cursor};
 use parley::{
-    Alignment, AlignmentOptions, FontContext, FontStack, FontWeight, Layout as ParleyLayout,
+    Alignment, AlignmentOptions, FontContext, FontFamily, FontWeight, Layout as ParleyLayout,
     LayoutContext, LineHeight, StyleProperty, TextStyle,
 };
 use peniko::Brush;
@@ -92,8 +92,8 @@ impl Span {
         self.style(StyleProperty::FontWeight(w))
     }
     pub fn family(self, f: impl Into<String>) -> Self {
-        self.style(StyleProperty::FontStack(FontStack::Single(
-            parley::FontFamily::Named(f.into().into()),
+        self.style(StyleProperty::FontFamily(FontFamily::Single(
+            parley::FontFamilyName::Named(f.into().into()),
         )))
     }
     pub fn background(mut self, b: impl Into<Brush>) -> Self {
@@ -246,7 +246,7 @@ impl TextLayout {
             .unwrap_or_else(|| DEFAULT_FONT_FAMILY.to_string());
         let root_style = TextStyle {
             brush: current_fill.clone(),
-            font_stack: FontStack::Single(parley::FontFamily::Named(font_family.into())),
+            font_family: FontFamily::Single(parley::FontFamilyName::Named(font_family.into())),
             font_weight: text.font_weight,
             line_height: LineHeight::FontSizeRelative(text.line_height),
             font_size: text.font_size as f32,
@@ -261,7 +261,7 @@ impl TextLayout {
         } else {
             let mut builder = layout_cx.ranged_builder(font_cx, &current_text, 1., true);
             builder.push_default(StyleProperty::Brush(root_style.brush.clone()));
-            builder.push_default(StyleProperty::FontStack(root_style.font_stack));
+            builder.push_default(StyleProperty::FontFamily(root_style.font_family));
             builder.push_default(StyleProperty::FontWeight(root_style.font_weight));
             builder.push_default(StyleProperty::LineHeight(root_style.line_height));
             builder.push_default(StyleProperty::FontSize(root_style.font_size));
@@ -273,7 +273,6 @@ impl TextLayout {
         };
         layout.break_all_lines(Some(available_width));
         layout.align(
-            Some(available_width),
             text.alignment,
             AlignmentOptions {
                 align_when_overflowing: true,

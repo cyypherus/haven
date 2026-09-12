@@ -9,6 +9,7 @@ fn public_api() {
         .unwrap();
 
     let public_api = public_api::Builder::from_rustdoc_json(rustdoc_json)
+        .include_function_parameter_names(true)
         .omit_blanket_impls(true)
         .omit_auto_trait_impls(true)
         .omit_auto_derived_impls(true)

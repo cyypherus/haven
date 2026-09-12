@@ -427,7 +427,7 @@ pub fn haven::Span::size(self, s: u32) -> Self
 pub fn haven::Span::strikethrough(self) -> Self
 pub fn haven::Span::style(self, prop: parley::style::StyleProperty<'static, peniko::brush::Brush>) -> Self
 pub fn haven::Span::underline(self) -> Self
-pub fn haven::Span::weight(self, w: fontique::attributes::FontWeight) -> Self
+pub fn haven::Span::weight(self, w: parlance::font::FontWeight) -> Self
 impl core::convert::From<&str> for haven::Span
 pub fn haven::Span::from(s: &str) -> Self
 impl core::convert::From<alloc::string::String> for haven::Span
@@ -445,7 +445,7 @@ pub fn haven::Text::align(self, align: parley::layout::alignment::Alignment) -> 
 pub fn haven::Text::fill(self, fill: impl core::convert::Into<haven::BrushSource<()>>) -> Self
 pub fn haven::Text::font_family(self, family: impl core::convert::Into<alloc::string::String>) -> Self
 pub fn haven::Text::font_size(self, size: u32) -> Self
-pub fn haven::Text::font_weight(self, weight: fontique::attributes::FontWeight) -> Self
+pub fn haven::Text::font_weight(self, weight: parlance::font::FontWeight) -> Self
 pub fn haven::Text::wrap(self) -> Self
 impl haven::Text
 pub fn haven::Text::build<State: 'static>(self, ctx: &mut haven::PaneState) -> backer::types::Layout<'static, haven::PaneElement<State>, haven::PaneState>
@@ -464,7 +464,7 @@ pub fn haven::TextField<'a, State>::enter_end_editing(self) -> Self
 pub fn haven::TextField<'a, State>::esc_end_editing(self) -> Self
 pub fn haven::TextField<'a, State>::font_family(self, family: impl core::convert::Into<alloc::string::String>) -> Self
 pub fn haven::TextField<'a, State>::font_size(self, size: u32) -> Self
-pub fn haven::TextField<'a, State>::font_weight(self, weight: fontique::attributes::FontWeight) -> Self
+pub fn haven::TextField<'a, State>::font_weight(self, weight: parlance::font::FontWeight) -> Self
 pub fn haven::TextField<'a, State>::highlight_fill(self, fill: impl core::convert::Into<haven::BrushSource<haven::TextState>>) -> Self
 pub fn haven::TextField<'a, State>::hint_fill(self, fill: impl core::convert::Into<haven::BrushSource<haven::TextState>>) -> Self
 pub fn haven::TextField<'a, State>::hint_text(self, text: impl core::convert::AsRef<str>) -> Self
