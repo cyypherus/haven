@@ -377,6 +377,7 @@ fn task_row<'a>(
             ),
         ),
     )
+    .accessibility_label(&task.title)
     .surface(move |button_state, app| {
         rect(id!(index as u64))
             .fill(if selected {
@@ -659,6 +660,7 @@ fn panel_form<'a>(state: &'a PanelState, app: &mut PaneState) -> View<'a, PanelS
                 app,
             ),
             text_field(id!(), binding!(state.draft))
+                .accessibility_label("Task title")
                 .hint_text("Enter a task title...")
                 .align(Alignment::Start)
                 .enter_end_editing()
@@ -680,6 +682,8 @@ fn panel_form<'a>(state: &'a PanelState, app: &mut PaneState) -> View<'a, PanelS
                             )
                         },
                     )
+                    .accessibility_label("Project")
+                    .option_label(|project| project.label().to_string())
                     .build(app),
                     dropdown(
                         id!(),
@@ -695,6 +699,8 @@ fn panel_form<'a>(state: &'a PanelState, app: &mut PaneState) -> View<'a, PanelS
                             )
                         },
                     )
+                    .accessibility_label("Priority")
+                    .option_label(|priority| priority.label().to_string())
                     .build(app),
                 ],
             ),

@@ -1,4 +1,5 @@
 use crate::DEFAULT_FG;
+use crate::Role;
 use crate::utils::adjust_brush;
 use crate::{
     Binding, ClickPhase, DEFAULT_CORNER_ROUNDING, DEFAULT_FONT_SIZE, DEFAULT_PURP, MouseButton,
@@ -24,6 +25,7 @@ pub struct Button<'a, State> {
     surface: Option<ViewFn<'a, State>>,
     label: Option<ViewFn<'a, State>>,
     text_label: Option<String>,
+    accessibility_label: Option<String>,
     on_click: Option<Rc<dyn Fn(&mut State, &mut PaneState)>>,
     state: ButtonState,
     binding: Binding<State, ButtonState>,
@@ -38,6 +40,7 @@ pub fn button<'a, State>(
         surface: None,
         label: None,
         text_label: None,
+        accessibility_label: None,
         on_click: None,
         state: *state.0,
         binding: state.1,
@@ -63,6 +66,10 @@ impl<'a, State> Button<'a, State> {
         self.text_label = Some(text_label.as_ref().to_string());
         self
     }
+    pub fn accessibility_label(mut self, label: impl Into<String>) -> Self {
+        self.accessibility_label = Some(label.into());
+        self
+    }
     pub fn on_click(mut self, on_click: impl Fn(&mut State, &mut PaneState) + 'static) -> Self {
         self.on_click = Some(Rc::new(on_click));
         self
@@ -75,6 +82,9 @@ impl<'a, State> Button<'a, State> {
         let surface_fn = self.surface;
         let label_fn = self.label;
         let text_label = self.text_label.unwrap_or_default();
+        let accessibility_label = self
+            .accessibility_label
+            .unwrap_or_else(|| text_label.clone());
         let id = self.id;
 
         let surface = if let Some(ref f) = surface_fn {
@@ -110,6 +120,8 @@ impl<'a, State> Button<'a, State> {
             rect(id)
                 .fill(TRANSPARENT)
                 .view()
+                .accessibility_role(Role::Button)
+                .accessibility_label(accessibility_label)
                 .gesture(gesture::hover(crate::id!(id, 1u64)).run({
                     let binding = self.binding.clone();
                     move |state, _app: &mut PaneState, h| binding.update(state, |s| s.hovered = h)

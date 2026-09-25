@@ -1,6 +1,312 @@
 use crate::pane::PaneEffect;
 use crate::*;
 
+#[test]
+fn accessibility_uses_drawable_ids_and_existing_button_action() {
+    struct State {
+        button: ButtonState,
+        clicks: usize,
+    }
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        column(vec![
+            button(100, binding!(state.button))
+                .text_label("Export")
+                .on_click(|state, _| state.clicks += 1)
+                .build(app)
+                .width(100.)
+                .height(30.),
+            rect(101)
+                .fill(Color::WHITE)
+                .view()
+                .accessibility_label("Status")
+                .accessibility_role(Role::Label)
+                .accessibility_value("Ready")
+                .build(app)
+                .width(100.)
+                .height(20.),
+        ])
+    }
+
+    let mut state = State {
+        button: ButtonState::default(),
+        clicks: 0,
+    };
+    let mut pane = PaneBuilder::new("test", view).build();
+    pane.redraw(&mut state, 300, 200, 2.0);
+    let update = pane.accessibility_update(300, 200, 2.0);
+    let button = update
+        .nodes
+        .iter()
+        .find(|(id, _)| *id == accesskit::NodeId(100))
+        .unwrap();
+    assert_eq!(button.1.role(), Role::Button);
+    assert_eq!(button.1.label(), Some("Export"));
+    assert!(button.1.supports_action(accesskit::Action::Click));
+    assert_eq!(button.1.bounds().unwrap().width(), 200.0);
+    let status = update
+        .nodes
+        .iter()
+        .find(|(id, _)| *id == accesskit::NodeId(101))
+        .unwrap();
+    assert_eq!(status.1.role(), Role::Label);
+    assert_eq!(status.1.value(), Some("Ready"));
+    pane.accessibility_action(
+        &mut state,
+        accesskit::ActionRequest {
+            action: accesskit::Action::Click,
+            target_tree: accesskit::TreeId::ROOT,
+            target_node: accesskit::NodeId(100),
+            data: None,
+        },
+    );
+    assert_eq!(state.clicks, 1);
+}
+
+#[test]
+fn accessibility_slider_set_value_uses_existing_click_gesture() {
+    struct State {
+        slider: SliderState,
+    }
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        slider(200, binding!(state.slider))
+            .build(app)
+            .width(200.)
+            .height(20.)
+    }
+
+    let mut state = State {
+        slider: SliderState::default(),
+    };
+    let mut pane = PaneBuilder::new("test", view).build();
+    pane.redraw(&mut state, 300, 200, 1.0);
+    let update = pane.accessibility_update(300, 200, 1.0);
+    let node = update
+        .nodes
+        .iter()
+        .find(|(id, _)| *id == accesskit::NodeId(200))
+        .unwrap();
+    assert_eq!(node.1.role(), Role::Slider);
+    assert_eq!(node.1.numeric_value(), Some(0.0));
+    pane.accessibility_action(
+        &mut state,
+        accesskit::ActionRequest {
+            action: accesskit::Action::SetValue,
+            target_tree: accesskit::TreeId::ROOT,
+            target_node: accesskit::NodeId(200),
+            data: Some(accesskit::ActionData::NumericValue(0.75)),
+        },
+    );
+    assert!((state.slider.value - 0.75).abs() < 0.001);
+}
+
+#[test]
+fn accessibility_text_field_focuses_its_editor_id() {
+    struct State {
+        text: TextState,
+    }
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(300, binding!(state.text))
+            .hint_text("Name")
+            .build(app)
+            .width(150.)
+            .height(30.)
+    }
+
+    let mut state = State {
+        text: TextState::new("Ada"),
+    };
+    let mut pane = PaneBuilder::new("test", view).build();
+    pane.redraw(&mut state, 300, 200, 1.0);
+    let update = pane.accessibility_update(300, 200, 1.0);
+    let node = update
+        .nodes
+        .iter()
+        .find(|(id, _)| *id == accesskit::NodeId(300))
+        .unwrap();
+    assert_eq!(node.1.role(), Role::TextInput);
+    assert_eq!(node.1.value(), Some("Ada"));
+    assert_eq!(node.1.placeholder(), Some("Name"));
+    pane.accessibility_action(
+        &mut state,
+        accesskit::ActionRequest {
+            action: accesskit::Action::Focus,
+            target_tree: accesskit::TreeId::ROOT,
+            target_node: accesskit::NodeId(300),
+            data: None,
+        },
+    );
+    assert!(pane.pane_state.text_field_is_focused(300));
+    assert_eq!(
+        pane.accessibility_update(300, 200, 1.0).focus,
+        accesskit::NodeId(300)
+    );
+}
+
+#[test]
+fn accessibility_text_field_uses_displayed_value() {
+    struct State {
+        text: TextState,
+    }
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        text_field(301, binding!(state.text))
+            .display(|text| "*".repeat(text.text.chars().count()))
+            .build(app)
+            .width(150.)
+            .height(30.)
+    }
+
+    let mut state = State {
+        text: TextState::new("secret"),
+    };
+    let mut pane = PaneBuilder::new("test", view).build();
+    pane.redraw(&mut state, 300, 200, 1.0);
+    let update = pane.accessibility_update(300, 200, 1.0);
+    let node = update
+        .nodes
+        .iter()
+        .find(|(id, _)| *id == accesskit::NodeId(301))
+        .unwrap();
+    assert_eq!(node.1.value(), Some("******"));
+}
+
+#[test]
+fn accessibility_dropdown_uses_distinct_visible_and_popup_ids() {
+    struct State {
+        dropdown: DropdownState<&'static str>,
+    }
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        dropdown(
+            400,
+            binding!(state.dropdown),
+            vec!["One", "Two"],
+            |item, app| text(410 + item.index as u64, item.value).build(app),
+        )
+        .accessibility_label("Choice")
+        .option_label(|value| value.to_string())
+        .build(app)
+        .width(120.)
+        .height(30.)
+    }
+
+    let mut state = State {
+        dropdown: DropdownState {
+            selected: "One",
+            hovered: None,
+            expanded: false,
+            depressed: false,
+        },
+    };
+    let mut pane = PaneBuilder::new("test", view).build();
+    pane.redraw(&mut state, 300, 200, 1.0);
+    let closed = pane.accessibility_update(300, 200, 1.0);
+    let combo = closed
+        .nodes
+        .iter()
+        .find(|(id, _)| *id == accesskit::NodeId(400))
+        .unwrap();
+    assert_eq!(combo.1.role(), Role::ComboBox);
+    assert_eq!(combo.1.value(), Some("One"));
+    pane.accessibility_action(
+        &mut state,
+        accesskit::ActionRequest {
+            action: accesskit::Action::Expand,
+            target_tree: accesskit::TreeId::ROOT,
+            target_node: accesskit::NodeId(400),
+            data: None,
+        },
+    );
+    assert!(state.dropdown.expanded);
+    pane.redraw(&mut state, 300, 200, 1.0);
+    let open = pane.accessibility_update(300, 200, 1.0);
+    let ids: std::collections::HashSet<_> = open.nodes.iter().map(|(id, _)| *id).collect();
+    assert_eq!(ids.len(), open.nodes.len());
+    assert_eq!(
+        open.nodes
+            .iter()
+            .filter(|(_, node)| node.role() == Role::ListBoxOption)
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn accessibility_switch_and_scroll_actions_use_built_in_handlers() {
+    struct State {
+        toggle: ToggleState,
+    }
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        column(vec![
+            toggle(500, binding!(state.toggle))
+                .accessibility_label("Enabled")
+                .build(app)
+                .width(60.)
+                .height(30.),
+            scroller(
+                501,
+                None,
+                |index, _, app| {
+                    (index < 10).then(|| rect(600 + index as u64).build(app).height(20.))
+                },
+                app,
+            )
+            .width(100.)
+            .height(80.),
+        ])
+    }
+
+    let mut state = State {
+        toggle: ToggleState::off(),
+    };
+    let mut pane = PaneBuilder::new("test", view).build();
+    pane.redraw(&mut state, 300, 200, 1.0);
+    let update = pane.accessibility_update(300, 200, 1.0);
+    let toggle = update
+        .nodes
+        .iter()
+        .find(|(id, _)| *id == accesskit::NodeId(500))
+        .unwrap();
+    assert_eq!(toggle.1.role(), Role::Switch);
+    assert_eq!(toggle.1.toggled(), Some(accesskit::Toggled::False));
+    let scroll = update
+        .nodes
+        .iter()
+        .find(|(id, _)| *id == accesskit::NodeId(501))
+        .unwrap();
+    assert_eq!(scroll.1.role(), Role::ScrollView);
+    assert!(scroll.1.supports_action(accesskit::Action::ScrollDown));
+    assert!(pane.location(600).is_some());
+    pane.accessibility_action(
+        &mut state,
+        accesskit::ActionRequest {
+            action: accesskit::Action::Click,
+            target_tree: accesskit::TreeId::ROOT,
+            target_node: accesskit::NodeId(500),
+            data: None,
+        },
+    );
+    assert!(state.toggle.on);
+    pane.accessibility_action(
+        &mut state,
+        accesskit::ActionRequest {
+            action: accesskit::Action::ScrollDown,
+            target_tree: accesskit::TreeId::ROOT,
+            target_node: accesskit::NodeId(501),
+            data: Some(accesskit::ActionData::ScrollUnit(
+                accesskit::ScrollUnit::Page,
+            )),
+        },
+    );
+    pane.redraw(&mut state, 300, 200, 1.0);
+    assert!(pane.location(600).is_none());
+    assert!(pane.location(604).is_some());
+}
+
 fn test_pane<State: 'static>(builder: PaneBuilder<State>) -> crate::pane::Pane<State> {
     builder.build()
 }

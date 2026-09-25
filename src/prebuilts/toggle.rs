@@ -1,7 +1,9 @@
+use crate::Role;
 use crate::pane::{PaneState, View};
 use crate::utils::adjust_brush;
 use crate::{Binding, ClickPhase, DragPhase, MouseButton, gesture, id, rect};
 use crate::{DEFAULT_FG, DEFAULT_GRAY, DEFAULT_LIGHT_GRAY, TRANSPARENT, circle};
+use accesskit::Node as AccessibilityNode;
 use backer::{
     Area,
     nodes::{draw, stack},
@@ -55,6 +57,7 @@ fn set_toggle_on<State>(
 
 pub struct Toggle<'a, State> {
     id: u64,
+    accessibility_label: Option<String>,
     on_toggle: Option<OnToggle<State>>,
     state: ToggleState,
     binding: Binding<State, ToggleState>,
@@ -68,6 +71,7 @@ pub fn toggle<'a, State>(
 ) -> Toggle<'a, State> {
     Toggle {
         id,
+        accessibility_label: None,
         on_toggle: None,
         state: *state.0,
         binding: state.1,
@@ -77,6 +81,10 @@ pub fn toggle<'a, State>(
 }
 
 impl<'a, State> Toggle<'a, State> {
+    pub fn accessibility_label(mut self, label: impl Into<String>) -> Self {
+        self.accessibility_label = Some(label.into());
+        self
+    }
     pub fn on_toggle(
         mut self,
         on_toggle: impl Fn(&mut State, &mut PaneState, bool) + 'static,
@@ -109,6 +117,11 @@ impl<'a, State> Toggle<'a, State> {
         let track_fn = self.track;
         let on_toggle = self.on_toggle;
         let id = self.id;
+        let mut accessibility = AccessibilityNode::new(Role::Switch);
+        accessibility.set_toggled(state.on.into());
+        if let Some(label) = self.accessibility_label {
+            accessibility.set_label(label);
+        }
         draw(move |area, ctx: &mut PaneState| {
             let width = area.width;
             let height = area.height;
@@ -157,6 +170,7 @@ impl<'a, State> Toggle<'a, State> {
                 rect(id)
                     .fill(TRANSPARENT)
                     .view()
+                    .accessibility_node(accessibility)
                     .gesture(gesture::hover(id!(id, 1u64)).run({
                         let binding = self.binding.clone();
                         move |state: &mut State, _app: &mut PaneState, h| {

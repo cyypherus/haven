@@ -1,9 +1,11 @@
+use crate::Role;
 use crate::pane::{PaneState, View};
 use crate::utils::adjust_brush;
 use crate::{
     Binding, ClickPhase, DEFAULT_CORNER_ROUNDING, DEFAULT_GRAY, MouseButton, gesture, rect,
 };
 use crate::{Color, TRANSPARENT};
+use accesskit::Node as AccessibilityNode;
 use backer::{Align, nodes::*};
 use kurbo::Stroke;
 use peniko::Brush;
@@ -44,6 +46,8 @@ pub struct DropDown<'a, State, T> {
     view_fn: Rc<dyn Fn(DropdownItemCtx<T>, &mut PaneState) -> View<'a, State> + 'a>,
     background: Option<Rc<dyn Fn(&DropdownState<T>, &mut PaneState) -> View<'a, State> + 'a>>,
     on_select: Option<Rc<dyn Fn(&mut State, &mut PaneState, &T)>>,
+    accessibility_label: Option<String>,
+    option_label: Option<Box<dyn Fn(&T) -> String + 'a>>,
 }
 
 pub fn dropdown<'a, State, T: Clone + PartialEq + 'static>(
@@ -60,6 +64,8 @@ pub fn dropdown<'a, State, T: Clone + PartialEq + 'static>(
         view_fn: Rc::new(view_fn),
         background: None,
         on_select: None,
+        accessibility_label: None,
+        option_label: None,
     }
 }
 
@@ -77,6 +83,16 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
         on_select: impl Fn(&mut State, &mut PaneState, &T) + 'static,
     ) -> Self {
         self.on_select = Some(Rc::new(on_select));
+        self
+    }
+
+    pub fn accessibility_label(mut self, label: impl Into<String>) -> Self {
+        self.accessibility_label = Some(label.into());
+        self
+    }
+
+    pub fn option_label(mut self, label: impl Fn(&T) -> String + 'a) -> Self {
+        self.option_label = Some(Box::new(label));
         self
     }
 
@@ -101,94 +117,124 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
         let options = self.options.clone();
         let view_fn = self.view_fn.clone();
         let row_binding = binding.clone();
+        let accessibility_label = self.accessibility_label;
+        let option_label = self.option_label;
 
-        let row = move |index: usize, option: &T, ctx: &mut PaneState| -> View<'a, State> {
-            let item_ctx = DropdownItemCtx {
-                index,
-                value: option,
-                selected: selected_index == index,
-                hovered: hovered == Some(index),
-                expanded,
-            };
-            let content = (view_fn)(item_ctx, ctx);
-            let hovered = hovered == Some(index);
-            let depressed = depressed && hovered;
-            let background = if expanded {
-                rect(crate::id!(id, index as u64))
-                    .fill(adjust_brush(
-                        &Brush::Solid(DEFAULT_GRAY),
-                        depressed,
-                        hovered,
-                    ))
-                    .corner_rounding(DEFAULT_CORNER_ROUNDING)
-                    .build(ctx)
-            } else {
-                empty()
-            };
-            let row_id = crate::id!(id, index as u64);
+        let row =
+            move |index: usize, option: &T, popup: bool, ctx: &mut PaneState| -> View<'a, State> {
+                let item_ctx = DropdownItemCtx {
+                    index,
+                    value: option,
+                    selected: selected_index == index,
+                    hovered: hovered == Some(index),
+                    expanded,
+                };
+                let content = (view_fn)(item_ctx, ctx);
+                let hovered = hovered == Some(index);
+                let depressed = depressed && hovered;
+                let background = if expanded {
+                    rect(crate::id!(id, index as u64))
+                        .fill(adjust_brush(
+                            &Brush::Solid(DEFAULT_GRAY),
+                            depressed,
+                            hovered,
+                        ))
+                        .corner_rounding(DEFAULT_CORNER_ROUNDING)
+                        .build(ctx)
+                } else {
+                    empty()
+                };
+                let row_id = if popup {
+                    crate::id!(id, index as u64)
+                } else {
+                    id
+                };
+                let mut accessibility = AccessibilityNode::new(if popup {
+                    Role::ListBoxOption
+                } else {
+                    Role::ComboBox
+                });
+                if !popup && let Some(label) = &accessibility_label {
+                    accessibility.set_label(label.clone());
+                }
+                if let Some(label) = &option_label {
+                    let label = label(option);
+                    if popup {
+                        accessibility.set_label(label);
+                    } else {
+                        accessibility.set_value(label);
+                    }
+                }
+                if popup {
+                    accessibility.set_selected(selected_index == index);
+                }
+                if !popup {
+                    accessibility.set_expanded(expanded);
+                }
 
-            stack(vec![
-                background.inert(),
-                {
-                    rect(row_id)
-                        .fill(TRANSPARENT)
-                        .view()
-                        .gesture(
-                            gesture::click(crate::id!(row_id, 1u64))
-                                .button(MouseButton::Left)
-                                .run({
-                                    let binding = row_binding.clone();
-                                    let on_select = on_select.clone();
-                                    let option = option.clone();
-                                    move |state: &mut State, app, event| match event.state {
-                                        ClickPhase::Started => {
-                                            binding.update(state, |s| s.depressed = true)
-                                        }
-                                        ClickPhase::Cancelled => {
-                                            binding.update(state, |s| s.depressed = false)
-                                        }
-                                        ClickPhase::Completed => {
-                                            if expanded {
-                                                if let Some(ref on_select) = on_select {
-                                                    on_select(state, app, &option);
-                                                }
-                                                binding.update(state, {
-                                                    let option = option.clone();
-                                                    move |s| {
-                                                        s.selected = option.clone();
-                                                        s.expanded = false;
-                                                        s.depressed = false;
+                stack(vec![
+                    background.inert(),
+                    {
+                        rect(row_id)
+                            .fill(TRANSPARENT)
+                            .view()
+                            .accessibility_node(accessibility)
+                            .gesture(
+                                gesture::click(crate::id!(row_id, 1u64))
+                                    .button(MouseButton::Left)
+                                    .run({
+                                        let binding = row_binding.clone();
+                                        let on_select = on_select.clone();
+                                        let option = option.clone();
+                                        move |state: &mut State, app, event| match event.state {
+                                            ClickPhase::Started => {
+                                                binding.update(state, |s| s.depressed = true)
+                                            }
+                                            ClickPhase::Cancelled => {
+                                                binding.update(state, |s| s.depressed = false)
+                                            }
+                                            ClickPhase::Completed => {
+                                                if expanded {
+                                                    if let Some(ref on_select) = on_select {
+                                                        on_select(state, app, &option);
                                                     }
-                                                });
-                                            } else {
-                                                binding.update(state, |s| {
-                                                    s.expanded = true;
-                                                    s.depressed = false;
-                                                });
+                                                    binding.update(state, {
+                                                        let option = option.clone();
+                                                        move |s| {
+                                                            s.selected = option.clone();
+                                                            s.expanded = false;
+                                                            s.depressed = false;
+                                                        }
+                                                    });
+                                                } else {
+                                                    binding.update(state, |s| {
+                                                        s.expanded = true;
+                                                        s.depressed = false;
+                                                    });
+                                                }
                                             }
                                         }
-                                    }
-                                }),
-                        )
-                        .gesture(gesture::hover(crate::id!(row_id, 2u64)).run({
-                            let binding = row_binding.clone();
-                            move |state: &mut State, _app, hovered| {
-                                binding.update(state, move |s| {
-                                    if hovered {
-                                        s.hovered = Some(index)
-                                    } else if s.hovered == Some(index) {
-                                        s.hovered = None
-                                    }
-                                });
-                            }
-                        }))
-                        .build(ctx)
-                        .inert()
-                },
-                content,
-            ])
-            .expand_x()
-        };
+                                    }),
+                            )
+                            .gesture(gesture::hover(crate::id!(row_id, 2u64)).run({
+                                let binding = row_binding.clone();
+                                move |state: &mut State, _app, hovered| {
+                                    binding.update(state, move |s| {
+                                        if hovered {
+                                            s.hovered = Some(index)
+                                        } else if s.hovered == Some(index) {
+                                            s.hovered = None
+                                        }
+                                    });
+                                }
+                            }))
+                            .build(ctx)
+                            .inert()
+                    },
+                    content,
+                ])
+                .expand_x()
+            };
 
         let surface = |ctx: &mut PaneState| -> View<'a, State> {
             if let Some(ref f) = background_fn {
@@ -208,7 +254,7 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
 
         let visible_layer = stack(vec![
             surface(ctx).inert(),
-            row(selected_index, &options[selected_index], ctx),
+            row(selected_index, &options[selected_index], false, ctx),
         ]);
 
         if !expanded {
@@ -248,7 +294,7 @@ impl<'a, State, T: Clone + PartialEq + 'static> DropDown<'a, State, T> {
         let all_rows: Vec<_> = options
             .iter()
             .enumerate()
-            .map(|(index, option)| row(index, option, ctx))
+            .map(|(index, option)| row(index, option, true, ctx))
             .collect();
 
         let popup = stack(vec![

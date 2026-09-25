@@ -23,6 +23,7 @@ mod tests;
 #[cfg(feature = "platform-winit")]
 pub use platforms::winit;
 
+pub use accesskit::Role;
 pub use backer::{Area, Layout, nodes::*};
 pub use brush_source::BrushSource;
 pub use gestures::{

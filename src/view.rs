@@ -6,6 +6,7 @@ use crate::gestures::{
 use crate::pane::{EditHandler, PaneElement, PaneElementKind, PaneState, View};
 use crate::primitives::{Image, PathData, Shadow, Svg, Text};
 use crate::{Binding, OwnedBinding};
+use accesskit::{Node as AccessibilityNode, Role};
 use backer::{Area, nodes::*};
 use kurbo::{Affine, BezPath};
 use parley::Layout as TextLayout;
@@ -171,6 +172,7 @@ fn wrap_layer<'a, State: 'static>(
                     alpha,
                 },
                 gestures: Vec::new(),
+                accessibility: None,
             }
             .build(ctx)
             .draw(area, ctx),
@@ -184,9 +186,11 @@ fn wrap_layer<'a, State: 'static>(
                         view,
                         area,
                         gestures,
+                        accessibility,
                     } => PaneElement(PaneElementKind::Draw {
                         view,
                         area,
+                        accessibility,
                         gestures: gestures
                             .into_iter()
                             .filter_map(|component| {
@@ -203,10 +207,12 @@ fn wrap_layer<'a, State: 'static>(
                         id,
                         area,
                         edit_handler,
+                        accessibility,
                     } => PaneElement(PaneElementKind::EditorArea {
                         id,
                         area,
                         edit_handler,
+                        accessibility,
                     }),
                     PaneElementKind::Empty => PaneElement::empty(),
                 }
@@ -218,6 +224,7 @@ fn wrap_layer<'a, State: 'static>(
             Drawable {
                 view_type: DrawableType::PopLayer,
                 gestures: Vec::new(),
+                accessibility: None,
             }
             .build(ctx)
             .draw(area, ctx),
@@ -229,6 +236,7 @@ fn wrap_layer<'a, State: 'static>(
 pub struct Drawable<State> {
     pub(crate) view_type: DrawableType,
     gestures: Vec<GestureAreaComponent<State>>,
+    accessibility: Option<AccessibilityNode>,
 }
 
 pub(crate) enum DrawableType {
@@ -270,6 +278,7 @@ impl<State: 'static> Drawable<State> {
         Self {
             view_type,
             gestures: Vec::new(),
+            accessibility: None,
         }
     }
 
@@ -285,6 +294,7 @@ impl<State: 'static> Drawable<State> {
                 view: Box::new(self.view_type.clone()),
                 area,
                 gestures: self.gestures.clone(),
+                accessibility: self.accessibility.clone(),
             })]
         });
 
@@ -319,6 +329,32 @@ impl<State: 'static> Drawable<State> {
             gesture,
             rect: None,
         });
+        self
+    }
+
+    pub fn accessibility_label(mut self, label: impl Into<String>) -> Self {
+        self.accessibility
+            .get_or_insert_with(|| AccessibilityNode::new(Role::Group))
+            .set_label(label.into());
+        self
+    }
+
+    pub fn accessibility_role(mut self, role: Role) -> Self {
+        self.accessibility
+            .get_or_insert_with(|| AccessibilityNode::new(role))
+            .set_role(role);
+        self
+    }
+
+    pub fn accessibility_value(mut self, value: impl Into<String>) -> Self {
+        self.accessibility
+            .get_or_insert_with(|| AccessibilityNode::new(Role::Group))
+            .set_value(value.into());
+        self
+    }
+
+    pub(crate) fn accessibility_node(mut self, node: AccessibilityNode) -> Self {
+        self.accessibility = Some(node);
         self
     }
 }
@@ -374,9 +410,11 @@ fn map_scope<'a, Parent: 'static, Sub: 'static>(
             view,
             area,
             gestures,
+            accessibility,
         } => PaneElement(PaneElementKind::Draw {
             view,
             area,
+            accessibility,
             gestures: gestures
                 .into_iter()
                 .map(|component| GestureAreaComponent {
@@ -408,9 +446,11 @@ fn map_scope<'a, Parent: 'static, Sub: 'static>(
             id,
             area,
             edit_handler,
+            accessibility,
         } => PaneElement(PaneElementKind::EditorArea {
             id,
             area,
+            accessibility,
             edit_handler: if let Some(edit_handler) = edit_handler {
                 Some(Rc::new({
                     let callback_f = callback_f.clone();

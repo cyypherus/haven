@@ -1,3 +1,4 @@
+use crate::Role;
 use crate::utils::adjust_brush;
 use crate::{
     Binding, ClickPhase, DEFAULT_DARK_GRAY, DEFAULT_FG, DEFAULT_GRAY, DEFAULT_PURP, DragPhase,
@@ -5,6 +6,7 @@ use crate::{
     pane::{PaneState, View},
     rect,
 };
+use accesskit::Node as AccessibilityNode;
 use backer::{
     Area,
     nodes::{draw, stack},
@@ -23,6 +25,7 @@ type ViewFn<'a, State> = Rc<dyn Fn(SliderState, Area, &mut PaneState) -> View<'a
 
 pub struct Slider<'a, State> {
     id: u64,
+    accessibility_label: Option<String>,
     state: SliderState,
     binding: Binding<State, SliderState>,
     min: f32,
@@ -49,6 +52,7 @@ pub fn slider<'a, State>(
 ) -> Slider<'a, State> {
     Slider {
         id,
+        accessibility_label: None,
         state: *state.0,
         binding: state.1,
         min: 0.0,
@@ -62,6 +66,10 @@ pub fn slider<'a, State>(
 }
 
 impl<'a, State> Slider<'a, State> {
+    pub fn accessibility_label(mut self, label: impl Into<String>) -> Self {
+        self.accessibility_label = Some(label.into());
+        self
+    }
     pub fn range(mut self, min: f32, max: f32) -> Self {
         self.min = min;
         self.max = max;
@@ -118,6 +126,14 @@ impl<'a, State> Slider<'a, State> {
         let traveled_track_fn = self.traveled_track;
         let background_fn = self.background;
         let id = self.id;
+        let mut accessibility = AccessibilityNode::new(Role::Slider);
+        accessibility.set_numeric_value(state.value as f64);
+        accessibility.set_min_numeric_value(self.min as f64);
+        accessibility.set_max_numeric_value(self.max as f64);
+        accessibility.set_value(state.value.to_string());
+        if let Some(label) = self.accessibility_label {
+            accessibility.set_label(label);
+        }
         draw(move |area, ctx: &mut PaneState| {
             let width = area.width;
             let height = area.height;
@@ -176,6 +192,7 @@ impl<'a, State> Slider<'a, State> {
                 rect(id)
                     .fill(TRANSPARENT)
                     .view()
+                    .accessibility_node(accessibility)
                     .gesture(gesture::hover(id!(id, 1u64)).run({
                         let binding = self.binding.clone();
                         move |state: &mut State, _app: &mut PaneState, h| {

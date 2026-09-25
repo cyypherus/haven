@@ -1,5 +1,6 @@
 ---
 source: src/public_api_test.rs
+assertion_line: 19
 expression: public_api
 ---
 pub mod haven
@@ -15,6 +16,7 @@ pub use haven::Gradient
 pub use haven::Join
 pub use haven::Layout
 pub use haven::Point
+pub use haven::Role
 pub use haven::Stroke
 pub use haven::StyleProperty
 pub mod haven::gesture
@@ -256,6 +258,7 @@ impl<State, T> core::fmt::Debug for haven::Binding<State, T>
 pub fn haven::Binding<State, T>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct haven::Button<'a, State>
 impl<'a, State> haven::Button<'a, State>
+pub fn haven::Button<'a, State>::accessibility_label(self, label: impl core::convert::Into<alloc::string::String>) -> Self
 pub fn haven::Button<'a, State>::build(self, ctx: &mut haven::PaneState) -> haven::View<'a, State> where State: 'static
 pub fn haven::Button<'a, State>::label(self, f: impl core::ops::function::Fn(haven::ButtonState, &mut haven::PaneState) -> haven::View<'a, State> + 'a) -> Self
 pub fn haven::Button<'a, State>::on_click(self, on_click: impl core::ops::function::Fn(&mut State, &mut haven::PaneState) + 'static) -> Self
@@ -280,15 +283,20 @@ pub fn haven::ClickLocation::global(&self) -> kurbo::point::Point
 pub fn haven::ClickLocation::local(&self) -> kurbo::point::Point
 pub struct haven::Drawable<State>
 impl<State: 'static> haven::Drawable<State>
+pub fn haven::Drawable<State>::accessibility_label(self, label: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn haven::Drawable<State>::accessibility_role(self, role: accesskit::Role) -> Self
+pub fn haven::Drawable<State>::accessibility_value(self, value: impl core::convert::Into<alloc::string::String>) -> Self
 pub fn haven::Drawable<State>::build<'a>(self, ctx: &mut haven::PaneState) -> haven::View<'a, State>
 pub fn haven::Drawable<State>::gesture(self, gesture: haven::Gesture<State>) -> Self
 pub fn haven::Drawable<State>::include(self, gesture: &haven::Gesture<State>) -> Self
 pub fn haven::Drawable<State>::occlude(self, gesture: &haven::Gesture<State>) -> Self
 pub struct haven::DropDown<'a, State, T>
 impl<'a, State, T: core::clone::Clone + core::cmp::PartialEq + 'static> haven::DropDown<'a, State, T>
+pub fn haven::DropDown<'a, State, T>::accessibility_label(self, label: impl core::convert::Into<alloc::string::String>) -> Self
 pub fn haven::DropDown<'a, State, T>::background(self, f: impl core::ops::function::Fn(&haven::DropdownState<T>, &mut haven::PaneState) -> haven::View<'a, State> + 'a) -> Self
 pub fn haven::DropDown<'a, State, T>::build(self, ctx: &mut haven::PaneState) -> haven::View<'a, State> where State: 'static
 pub fn haven::DropDown<'a, State, T>::on_select(self, on_select: impl core::ops::function::Fn(&mut State, &mut haven::PaneState, &T) + 'static) -> Self
+pub fn haven::DropDown<'a, State, T>::option_label(self, label: impl core::ops::function::Fn(&T) -> alloc::string::String + 'a) -> Self
 pub struct haven::DropdownItemCtx<'a, T>
 pub haven::DropdownItemCtx::expanded: bool
 pub haven::DropdownItemCtx::hovered: bool
@@ -405,6 +413,7 @@ pub fn haven::Shadow::spread(self, spread: f64) -> Self
 pub fn haven::Shadow::view<State: 'static>(self) -> haven::Drawable<State>
 pub struct haven::Slider<'a, State>
 impl<'a, State> haven::Slider<'a, State>
+pub fn haven::Slider<'a, State>::accessibility_label(self, label: impl core::convert::Into<alloc::string::String>) -> Self
 pub fn haven::Slider<'a, State>::background(self, f: impl core::ops::function::Fn(haven::SliderState, backer::types::Area, &mut haven::PaneState) -> haven::View<'a, State> + 'a) -> Self
 pub fn haven::Slider<'a, State>::build(self, _ctx: &mut haven::PaneState) -> haven::View<'a, State> where State: 'static
 pub fn haven::Slider<'a, State>::knob(self, f: impl core::ops::function::Fn(haven::SliderState, backer::types::Area, &mut haven::PaneState) -> haven::View<'a, State> + 'a) -> Self
@@ -456,6 +465,7 @@ impl core::fmt::Debug for haven::Text
 pub fn haven::Text::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct haven::TextField<'a, State>
 impl<'a, State> haven::TextField<'a, State>
+pub fn haven::TextField<'a, State>::accessibility_label(self, label: impl core::convert::Into<alloc::string::String>) -> Self
 pub fn haven::TextField<'a, State>::align(self, align: parley::layout::alignment::Alignment) -> Self
 pub fn haven::TextField<'a, State>::background(self, f: impl core::ops::function::Fn(&haven::TextState, backer::types::Area, &mut haven::PaneState) -> haven::View<'a, State> + 'a) -> Self
 pub fn haven::TextField<'a, State>::cursor_fill(self, fill: impl core::convert::Into<haven::BrushSource<haven::TextState>>) -> Self
@@ -497,6 +507,7 @@ impl core::fmt::Debug for haven::TextState
 pub fn haven::TextState::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct haven::Toggle<'a, State>
 impl<'a, State> haven::Toggle<'a, State>
+pub fn haven::Toggle<'a, State>::accessibility_label(self, label: impl core::convert::Into<alloc::string::String>) -> Self
 pub fn haven::Toggle<'a, State>::build(self, _ctx: &mut haven::PaneState) -> haven::View<'a, State> where State: 'static
 pub fn haven::Toggle<'a, State>::knob(self, f: impl core::ops::function::Fn(haven::ToggleState, backer::types::Area, &mut haven::PaneState) -> haven::View<'a, State> + 'a) -> Self
 pub fn haven::Toggle<'a, State>::on_toggle(self, on_toggle: impl core::ops::function::Fn(&mut State, &mut haven::PaneState, bool) + 'static) -> Self

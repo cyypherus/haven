@@ -9,6 +9,7 @@ use crate::render::{Frame, RenderItem};
 use crate::primitives::TextLayout;
 use crate::view::DrawableType;
 use crate::{ClickPhase, DragPhase, Key, KeyPhase, Modifiers, MouseButton, Point, RUBIK_FONT};
+use accesskit::{Action, ActionData, ActionRequest, Node, NodeId, Role, Tree, TreeId, TreeUpdate};
 use backer::{Area, Layout};
 use kurbo::Rect;
 use parley::fontique::Blob;
@@ -25,6 +26,7 @@ pub(crate) type EditHandler<State> = Rc<dyn Fn(&mut State, &mut PaneState, EditI
 type ViewFn<State> = for<'a> fn(&'a State, &mut PaneState) -> View<'a, State>;
 
 const DRAG_START_DISTANCE: f64 = 3.0;
+const ACCESSIBILITY_ROOT: NodeId = NodeId(u64::MAX);
 
 pub struct PaneBuilder<State> {
     pub(crate) name: &'static str,
@@ -69,6 +71,7 @@ pub struct Pane<State> {
     base_color: Color,
     view: ViewFn<State>,
     gestures: Vec<ActiveGesture<State>>,
+    accessibility: Vec<AccessibleElement>,
     pressed_buttons: Vec<MouseButton>,
     pub(crate) elements: HashMap<u64, Area>,
     edit_handlers: HashMap<u64, EditHandler<State>>,
@@ -87,6 +90,14 @@ struct ActiveGesture<State> {
     gesture: Gesture<State>,
     hit_rect: Rect,
     local_area: Area,
+}
+
+struct AccessibleElement {
+    id: NodeId,
+    node: Node,
+    area: Area,
+    click: Option<GestureId>,
+    scroll: Option<GestureId>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -281,11 +292,13 @@ pub(crate) enum PaneElementKind<State: ?Sized> {
         view: Box<DrawableType>,
         area: Area,
         gestures: Vec<GestureAreaComponent<State>>,
+        accessibility: Option<accesskit::Node>,
     },
     EditorArea {
         id: u64,
         area: Area,
         edit_handler: Option<EditHandler<State>>,
+        accessibility: accesskit::Node,
     },
     Empty,
 }
@@ -296,6 +309,7 @@ impl<State: ?Sized> PaneElement<State> {
             view,
             area,
             gestures: Vec::new(),
+            accessibility: None,
         })
     }
 
@@ -303,11 +317,13 @@ impl<State: ?Sized> PaneElement<State> {
         id: u64,
         area: Area,
         edit_handler: Option<EditHandler<State>>,
+        accessibility: accesskit::Node,
     ) -> Self {
         Self(PaneElementKind::EditorArea {
             id,
             area,
             edit_handler,
+            accessibility,
         })
     }
 
@@ -443,6 +459,7 @@ impl<State: 'static> Pane<State> {
             base_color,
             view: config.view,
             gestures: Vec::new(),
+            accessibility: Vec::new(),
             pressed_buttons: Vec::new(),
             elements: HashMap::new(),
             edit_handlers: HashMap::new(),
@@ -492,6 +509,215 @@ impl<State: 'static> Pane<State> {
         effects.extend(self.press(state));
         effects.extend(self.release(state));
         effects
+    }
+
+    pub(crate) fn accessibility_update(&self, width: u32, height: u32, scale: f64) -> TreeUpdate {
+        let mut root = Node::new(Role::Window);
+        root.set_bounds(accesskit::Rect::new(0.0, 0.0, width as f64, height as f64));
+        root.set_children(
+            self.accessibility
+                .iter()
+                .map(|element| element.id)
+                .collect::<Vec<_>>(),
+        );
+        let mut nodes = vec![(ACCESSIBILITY_ROOT, root)];
+        for element in &self.accessibility {
+            let mut node = element.node.clone();
+            let area = element.area;
+            node.set_bounds(accesskit::Rect::new(
+                area.x as f64 * scale,
+                area.y as f64 * scale,
+                (area.x + area.width) as f64 * scale,
+                (area.y + area.height) as f64 * scale,
+            ));
+            nodes.push((element.id, node));
+        }
+        let focus = self
+            .pane_state
+            .text_editing
+            .focused_field
+            .map(NodeId)
+            .filter(|id| self.accessibility.iter().any(|element| element.id == *id))
+            .unwrap_or(ACCESSIBILITY_ROOT);
+        TreeUpdate {
+            nodes,
+            tree: Some(Tree::new(ACCESSIBILITY_ROOT)),
+            tree_id: TreeId::ROOT,
+            focus,
+        }
+    }
+
+    fn add_accessible_element(
+        &mut self,
+        id: u64,
+        mut node: Node,
+        area: Area,
+        click: Option<GestureId>,
+        scroll: Option<GestureId>,
+    ) {
+        assert_ne!(
+            id, ACCESSIBILITY_ROOT.0,
+            "accessibility root id is reserved"
+        );
+        assert!(
+            !self
+                .accessibility
+                .iter()
+                .any(|element| element.id == NodeId(id)),
+            "duplicate accessibility id: {id}"
+        );
+        if click.is_some() {
+            node.add_action(Action::Click);
+        }
+        if click.is_some() && node.role() == Role::ComboBox {
+            node.add_action(if node.is_expanded() == Some(true) {
+                Action::Collapse
+            } else {
+                Action::Expand
+            });
+        }
+        if scroll.is_some() {
+            node.add_action(Action::ScrollUp);
+            node.add_action(Action::ScrollDown);
+        }
+        if node.numeric_value().is_some()
+            && node.min_numeric_value().is_some()
+            && node.max_numeric_value().is_some()
+        {
+            node.add_action(Action::SetValue);
+            node.add_action(Action::Increment);
+            node.add_action(Action::Decrement);
+        }
+        self.accessibility.push(AccessibleElement {
+            id: NodeId(id),
+            node,
+            area,
+            click,
+            scroll,
+        });
+    }
+
+    pub(crate) fn accessibility_action(
+        &mut self,
+        state: &mut State,
+        request: ActionRequest,
+    ) -> Vec<PaneEffect> {
+        if request.target_tree != TreeId::ROOT {
+            return Vec::new();
+        }
+        let Some(element) = self
+            .accessibility
+            .iter()
+            .find(|element| element.id == request.target_node)
+        else {
+            return Vec::new();
+        };
+        if !element.node.supports_action(request.action) {
+            return Vec::new();
+        }
+        if request.action == Action::Focus && self.edit_handlers.contains_key(&element.id.0) {
+            self.pane_state.begin_editing(element.id.0);
+            self.dispatch_text_edit_lifecycle_events(state);
+            self.pane_state.request_redraw();
+            return self.take_effects();
+        }
+        if matches!(request.action, Action::ScrollUp | Action::ScrollDown)
+            && let Some(id) = element.scroll
+            && let Some(gesture) = self
+                .gestures
+                .iter()
+                .find(|active| active.gesture.id() == id)
+                .cloned()
+        {
+            let direction = if request.action == Action::ScrollUp {
+                1.0
+            } else {
+                -1.0
+            };
+            let amount = if matches!(
+                request.data,
+                Some(ActionData::ScrollUnit(accesskit::ScrollUnit::Page))
+            ) {
+                element.area.height * 2.0
+            } else {
+                6.0
+            };
+            (gesture.gesture.handler().interaction_handler)(
+                state,
+                &mut self.pane_state,
+                Interaction::Scroll(ScrollDelta {
+                    x: 0.0,
+                    y: direction * amount,
+                }),
+            );
+            self.pane_state.request_redraw();
+            return self.take_effects();
+        }
+        let Some(id) = element.click else {
+            return Vec::new();
+        };
+        let Some(gesture) = self
+            .gestures
+            .iter()
+            .find(|active| active.gesture.id() == id)
+            .cloned()
+        else {
+            return Vec::new();
+        };
+        let area = element.area;
+        let mut point = Point::new(
+            area.x as f64 + area.width as f64 * 0.5,
+            area.y as f64 + area.height as f64 * 0.5,
+        );
+        if matches!(
+            request.action,
+            Action::SetValue | Action::Increment | Action::Decrement
+        ) {
+            let (Some(value), Some(min), Some(max)) = (
+                element.node.numeric_value(),
+                element.node.min_numeric_value(),
+                element.node.max_numeric_value(),
+            ) else {
+                return Vec::new();
+            };
+            let next = match request.action {
+                Action::SetValue => match request.data {
+                    Some(ActionData::NumericValue(value)) => value,
+                    _ => return Vec::new(),
+                },
+                Action::Increment => value + (max - min) / 100.0,
+                Action::Decrement => value - (max - min) / 100.0,
+                _ => unreachable!(),
+            }
+            .clamp(min, max);
+            let fraction = if max > min {
+                (next - min) / (max - min)
+            } else {
+                0.0
+            };
+            point.x = area.x as f64
+                + area.height as f64
+                + (area.width as f64 - 2.0 * area.height as f64).max(0.0) * fraction;
+        } else if !matches!(
+            request.action,
+            Action::Click | Action::Expand | Action::Collapse
+        ) {
+            return Vec::new();
+        }
+        for phase in [ClickPhase::Started, ClickPhase::Completed] {
+            (gesture.gesture.handler().interaction_handler)(
+                state,
+                &mut self.pane_state,
+                Interaction::Click(ClickEvent {
+                    state: phase,
+                    button: MouseButton::Left,
+                    location: ClickLocation::new(point, gesture.local_area),
+                }),
+            );
+        }
+        self.dispatch_text_edit_lifecycle_events(state);
+        self.pane_state.request_redraw();
+        self.take_effects()
     }
 
     pub fn drag(&mut self, state: &mut State, from: Point, to: Point) -> Vec<PaneEffect> {
@@ -556,6 +782,7 @@ impl<State: 'static> Pane<State> {
         self.update_hover(state);
 
         self.gestures.clear();
+        self.accessibility.clear();
         self.elements.clear();
         self.edit_handlers.clear();
         self.pane_state.scale_factor = scale_factor;
@@ -584,7 +811,11 @@ impl<State: 'static> Pane<State> {
                     id,
                     area,
                     edit_handler,
+                    accessibility,
                 } => {
+                    let mut node = accessibility;
+                    node.add_action(Action::Focus);
+                    self.add_accessible_element(id, node, area, None, None);
                     self.elements.insert(id, area);
                     self.pane_state.editor_areas.insert(id, area);
                     if let Some(edit_handler) = edit_handler {
@@ -595,6 +826,7 @@ impl<State: 'static> Pane<State> {
                     view,
                     area,
                     gestures,
+                    accessibility,
                 } => {
                     let id = match &*view {
                         DrawableType::Text(view) => Some(view.id),
@@ -608,6 +840,27 @@ impl<State: 'static> Pane<State> {
                     let draw_area = area;
                     if let Some(id) = id {
                         self.elements.insert(id, draw_area);
+                    }
+                    if let Some(node) = accessibility {
+                        let id = id.expect("accessible drawable requires an id");
+                        let click = gestures
+                            .iter()
+                            .find(|component| {
+                                component.operation == GestureAreaOperation::Include
+                                    && matches!(component.gesture.handler().kind, GestureKind::Click { ref buttons } if buttons.matches(&[MouseButton::Left]))
+                            })
+                            .map(|component| component.gesture.id());
+                        let scroll = gestures
+                            .iter()
+                            .find(|component| {
+                                component.operation == GestureAreaOperation::Include
+                                    && matches!(
+                                        component.gesture.handler().kind,
+                                        GestureKind::Scroll { .. }
+                                    )
+                            })
+                            .map(|component| component.gesture.id());
+                        self.add_accessible_element(id, node, draw_area, click, scroll);
                     }
                     gesture_area_components
                         .extend(gestures.into_iter().map(|gesture| (draw_area, gesture)));

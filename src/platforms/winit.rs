@@ -75,6 +75,14 @@ fn named_key_from_winit(value: winit::keyboard::NamedKey) -> Option<NamedKey> {
 #[cfg(feature = "platform-winit")]
 enum WinitEvent {
     Wake(WindowId),
+    Accessibility(accesskit_winit::Event),
+}
+
+#[cfg(feature = "platform-winit")]
+impl From<accesskit_winit::Event> for WinitEvent {
+    fn from(event: accesskit_winit::Event) -> Self {
+        Self::Accessibility(event)
+    }
 }
 
 #[cfg(feature = "platform-winit")]
@@ -142,6 +150,7 @@ pub struct WinitApp<State> {
 struct WinitSurface<State> {
     renderer: Renderer<SelectedWindowRenderer>,
     window: Arc<WinitWindow>,
+    accessibility: accesskit_winit::Adapter,
     pane: Pane<State>,
     #[cfg(feature = "debug-overlay")]
     debug_overlay: DebugOverlayState,
@@ -391,6 +400,7 @@ impl<State: 'static> WinitApp<State> {
             .with_transparent(transparent)
             .with_decorations(decorations)
             .with_window_icon(self.window_icon.clone())
+            .with_visible(false)
             .with_titlebar_hidden(false)
             .with_titlebar_transparent(true)
             .with_title_hidden(true)
@@ -413,18 +423,21 @@ impl<State: 'static> WinitApp<State> {
             .with_transparent(transparent)
             .with_decorations(decorations)
             .with_window_icon(self.window_icon.clone());
+        attributes = attributes.with_visible(false);
 
         if let Some(ref title) = config.title {
             attributes = attributes.with_title(title.to_string());
         }
 
         let window = Arc::new(event_loop.create_window(attributes).unwrap());
+        let accessibility = accesskit_winit::Adapter::with_event_loop_proxy(
+            event_loop,
+            &window,
+            self.proxy.clone().expect("event loop proxy"),
+        );
         let size = window.inner_size();
         let window_id = window.id();
         let renderer = Renderer::new(window_renderer(), window.clone(), size.width, size.height);
-
-        #[cfg(target_os = "windows")]
-        window.set_visible(true);
 
         let pane_name = config.name;
         let mut pane = config.build();
@@ -439,11 +452,15 @@ impl<State: 'static> WinitApp<State> {
             WinitSurface {
                 renderer,
                 window,
+                accessibility,
                 pane,
                 #[cfg(feature = "debug-overlay")]
                 debug_overlay: DebugOverlayState::default(),
             },
         );
+        if let Some(surface) = self.windows.get(&window_id) {
+            surface.window.set_visible(true);
+        }
     }
 
     fn apply_effects(
@@ -502,6 +519,11 @@ impl<State: 'static> WinitApp<State> {
             height,
             surface.window.scale_factor(),
         );
+        surface.accessibility.update_if_active(|| {
+            surface
+                .pane
+                .accessibility_update(width, height, surface.window.scale_factor())
+        });
 
         #[cfg(feature = "debug-overlay")]
         let mut frame = frame;
@@ -555,6 +577,26 @@ impl<State: 'static> ApplicationHandler<WinitEvent> for WinitApp<State> {
                 };
                 self.apply_effects(event_loop, window_id, effects);
             }
+            WinitEvent::Accessibility(event) => {
+                let window_id = event.window_id;
+                let effects = match event.window_event {
+                    accesskit_winit::WindowEvent::InitialTreeRequested => {
+                        if let Some(surface) = self.windows.get(&window_id) {
+                            surface.window.request_redraw();
+                        }
+                        Vec::new()
+                    }
+                    accesskit_winit::WindowEvent::ActionRequested(request) => {
+                        if let Some(surface) = self.windows.get_mut(&window_id) {
+                            surface.pane.accessibility_action(&mut self.state, request)
+                        } else {
+                            Vec::new()
+                        }
+                    }
+                    accesskit_winit::WindowEvent::AccessibilityDeactivated => Vec::new(),
+                };
+                self.apply_effects(event_loop, window_id, effects);
+            }
         }
     }
 
@@ -564,6 +606,9 @@ impl<State: 'static> ApplicationHandler<WinitEvent> for WinitApp<State> {
         window_id: WindowId,
         event: winit::event::WindowEvent,
     ) {
+        if let Some(surface) = self.windows.get_mut(&window_id) {
+            surface.accessibility.process_event(&surface.window, &event);
+        }
         let mut invalidate_all = false;
         let mut redraw_all_now = false;
         let effects = match event {

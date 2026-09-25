@@ -1,3 +1,4 @@
+use crate::Role;
 use crate::{
     DEFAULT_CORNER_ROUNDING, TRANSPARENT, gesture,
     pane::{PaneState, View},
@@ -223,6 +224,7 @@ pub fn scroller<'a, State: 'static>(
             .corner_rounding(DEFAULT_CORNER_ROUNDING)
             .fill(TRANSPARENT)
             .view()
+            .accessibility_role(Role::ScrollView)
             .gesture(gesture::scroll(crate::id!(id, 1u64)).vertical().run(
                 move |_s: &mut State, app: &mut PaneState, dt| {
                     let entry = app.scrollers.entry(id).or_default();

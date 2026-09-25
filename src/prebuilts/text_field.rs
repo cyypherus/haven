@@ -1,3 +1,4 @@
+use crate::Role;
 use crate::brush_source::BrushSource;
 use crate::editor::Editor;
 use crate::pane::{PaneElement, PaneState, View};
@@ -10,6 +11,7 @@ use crate::{
     DragPhase, EditInteraction, Gesture, Key, KeyPhase, Modifier, MouseButton, NamedKey, gesture,
     rect,
 };
+use accesskit::Node as AccessibilityNode;
 use backer::{Area, nodes::*};
 use kurbo::{Affine, Rect as KRect, Stroke};
 use parley::{Alignment, FontWeight, LineHeight, StyleProperty};
@@ -482,6 +484,7 @@ pub fn text_field<'a, State>(
         hint_fill: BrushSource::Static(Brush::Solid(DEFAULT_FG_COLOR.with_alpha(0.55))),
         display: None,
         on_edit: None,
+        accessibility_label: None,
         esc_end_editing: false,
         enter_end_editing: false,
     }
@@ -513,6 +516,7 @@ pub struct TextField<'a, State> {
     pub(crate) hint_fill: BrushSource<TextState>,
     display: Option<Rc<dyn Fn(&TextState) -> String>>,
     on_edit: Option<Rc<dyn Fn(&mut State, &mut PaneState, EditInteraction)>>,
+    accessibility_label: Option<String>,
 }
 
 impl<State> Debug for TextField<'_, State> {
@@ -536,6 +540,7 @@ impl<State> Debug for TextField<'_, State> {
             .field("hint_fill", &self.hint_fill)
             .field("display", &self.display.is_some())
             .field("on_edit", &self.on_edit.is_some())
+            .field("accessibility_label", &self.accessibility_label)
             .finish()
     }
 }
@@ -551,6 +556,10 @@ impl<'a, State> TextField<'a, State> {
     }
     pub fn hint_text(mut self, text: impl AsRef<str>) -> Self {
         self.hint_text = Some(text.as_ref().to_string());
+        self
+    }
+    pub fn accessibility_label(mut self, label: impl Into<String>) -> Self {
+        self.accessibility_label = Some(label.into());
         self
     }
     pub fn hint_fill(mut self, fill: impl Into<BrushSource<TextState>>) -> Self {
@@ -651,14 +660,27 @@ impl<'a, State> TextField<'a, State> {
         let wrap = self.wrap;
         let line_mode = self.line_mode;
         let root_id = id;
+        let display_text = display
+            .as_ref()
+            .map(|display| display(self.state))
+            .unwrap_or_else(|| self.state.text.clone());
+        let mut accessibility = AccessibilityNode::new(Role::TextInput);
+        accessibility.set_value(display_text.clone());
+        if let Some(label) = &self.accessibility_label {
+            accessibility.set_label(label.clone());
+        }
+        if !editable {
+            accessibility.set_read_only();
+        }
+        if let Some(hint) = &hint_text {
+            accessibility.set_placeholder(hint.clone());
+        }
         ctx.apply_text_edit_command(root_id, self.state.edit_command);
         let show_hint = self.state.text.trim().is_empty() && hint_text.is_some();
         let render_text = if show_hint {
             hint_text.unwrap()
-        } else if let Some(display) = display {
-            display(self.state)
         } else {
-            self.state.text.clone()
+            display_text
         };
         let render_fill = if show_hint { hint_fill } else { fill.clone() };
         let viewport = if show_hint {
@@ -849,6 +871,7 @@ impl<'a, State> TextField<'a, State> {
                     root_id,
                     area,
                     edit_callback.clone(),
+                    accessibility.clone(),
                 )]
             })
             .inert(),
