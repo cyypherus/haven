@@ -90,7 +90,6 @@ renderer-vello-cpu = [
 platform-winit = ["dep:winit", "dep:anyrender_svg"]
 
 [dev-dependencies]
-anyrender_vello_cpu = { version = "0.17.0", features = ["filters"] }
 arboard = "3.4"
 insta = "1.42.1"
 public-api = "0.51.0"
