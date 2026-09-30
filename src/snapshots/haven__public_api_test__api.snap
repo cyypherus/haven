@@ -38,6 +38,7 @@ pub haven::render::RenderItem::PopLayer
 pub haven::render::RenderItem::PushLayer
 pub haven::render::RenderItem::PushLayer::alpha: f32
 pub haven::render::RenderItem::PushLayer::blend: peniko::blend::BlendMode
+pub haven::render::RenderItem::PushLayer::filter: core::option::Option<alloc::sync::Arc<anyrender::filters::Filter>>
 pub haven::render::RenderItem::PushLayer::path: kurbo::bezpath::BezPath
 pub haven::render::RenderItem::Shadow
 pub haven::render::RenderItem::Shadow::area: backer::types::Area
@@ -427,7 +428,7 @@ pub fn haven::Span::size(self, s: u32) -> Self
 pub fn haven::Span::strikethrough(self) -> Self
 pub fn haven::Span::style(self, prop: parley::style::StyleProperty<'static, peniko::brush::Brush>) -> Self
 pub fn haven::Span::underline(self) -> Self
-pub fn haven::Span::weight(self, w: fontique::attributes::FontWeight) -> Self
+pub fn haven::Span::weight(self, w: parlance::font::FontWeight) -> Self
 impl core::convert::From<&str> for haven::Span
 pub fn haven::Span::from(s: &str) -> Self
 impl core::convert::From<alloc::string::String> for haven::Span
@@ -445,7 +446,7 @@ pub fn haven::Text::align(self, align: parley::layout::alignment::Alignment) -> 
 pub fn haven::Text::fill(self, fill: impl core::convert::Into<haven::BrushSource<()>>) -> Self
 pub fn haven::Text::font_family(self, family: impl core::convert::Into<alloc::string::String>) -> Self
 pub fn haven::Text::font_size(self, size: u32) -> Self
-pub fn haven::Text::font_weight(self, weight: fontique::attributes::FontWeight) -> Self
+pub fn haven::Text::font_weight(self, weight: parlance::font::FontWeight) -> Self
 pub fn haven::Text::wrap(self) -> Self
 impl haven::Text
 pub fn haven::Text::build<State: 'static>(self, ctx: &mut haven::PaneState) -> backer::types::Layout<'static, haven::PaneElement<State>, haven::PaneState>
@@ -464,7 +465,7 @@ pub fn haven::TextField<'a, State>::enter_end_editing(self) -> Self
 pub fn haven::TextField<'a, State>::esc_end_editing(self) -> Self
 pub fn haven::TextField<'a, State>::font_family(self, family: impl core::convert::Into<alloc::string::String>) -> Self
 pub fn haven::TextField<'a, State>::font_size(self, size: u32) -> Self
-pub fn haven::TextField<'a, State>::font_weight(self, weight: fontique::attributes::FontWeight) -> Self
+pub fn haven::TextField<'a, State>::font_weight(self, weight: parlance::font::FontWeight) -> Self
 pub fn haven::TextField<'a, State>::highlight_fill(self, fill: impl core::convert::Into<haven::BrushSource<haven::TextState>>) -> Self
 pub fn haven::TextField<'a, State>::hint_fill(self, fill: impl core::convert::Into<haven::BrushSource<haven::TextState>>) -> Self
 pub fn haven::TextField<'a, State>::hint_text(self, text: impl core::convert::AsRef<str>) -> Self
@@ -521,12 +522,16 @@ pub const haven::DEFAULT_STROKE_WIDTH: f32
 pub const haven::TRANSPARENT: haven::Color
 pub trait haven::Compositing<'a, State>
 pub fn haven::Compositing::blend(self, mode: haven::BlendMode) -> Self
+pub fn haven::Compositing::blur(self, radius: f32) -> Self
 pub fn haven::Compositing::clipped(self, path: impl core::ops::function::Fn(backer::types::Area) -> kurbo::bezpath::BezPath + 'static) -> Self
 pub fn haven::Compositing::opacity(self, alpha: f32) -> Self
+pub fn haven::Compositing::shadow(self, offset: impl core::convert::Into<kurbo::vec2::Vec2>, blur: f32, color: haven::Color) -> Self
 impl<'a, State: 'static> haven::Compositing<'a, State> for haven::View<'a, State>
 pub fn haven::View<'a, State>::blend(self, mode: haven::BlendMode) -> Self
+pub fn haven::View<'a, State>::blur(self, radius: f32) -> Self
 pub fn haven::View<'a, State>::clipped(self, path: impl core::ops::function::Fn(backer::types::Area) -> kurbo::bezpath::BezPath + 'static) -> Self
 pub fn haven::View<'a, State>::opacity(self, alpha: f32) -> Self
+pub fn haven::View<'a, State>::shadow(self, offset: impl core::convert::Into<kurbo::vec2::Vec2>, blur: f32, color: haven::Color) -> Self
 pub fn haven::button<'a, State>(id: u64, state: (&haven::ButtonState, haven::Binding<State, haven::ButtonState>)) -> haven::Button<'a, State>
 pub fn haven::circle(id: u64) -> haven::Circle
 pub const fn haven::combine_id(seed: u64, part: u64) -> u64

@@ -17,6 +17,7 @@ pub enum RenderItem {
         path: BezPath,
         blend: peniko::BlendMode,
         alpha: f32,
+        filter: Option<std::sync::Arc<anyrender::Filter>>,
     },
     PopLayer,
     Text(TextRenderLayout),

@@ -183,7 +183,7 @@ fn style_text_field_editor(
     let styles = editor.editor.edit_styles();
 
     styles.insert(parley::StyleProperty::Brush(fill));
-    styles.insert(parley::FontFamily::Named(font_family.into()).into());
+    styles.insert(parley::FontFamilyName::Named(font_family.into()).into());
     styles.insert(StyleProperty::FontWeight(font_weight));
     styles.insert(StyleProperty::LineHeight(LineHeight::FontSizeRelative(
         line_height,
