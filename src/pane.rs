@@ -876,20 +876,35 @@ impl<State: 'static> Pane<State> {
                             RenderItem::Layout { layout, transform }
                         }
                         DrawableType::Path(path) => RenderItem::Path {
-                            path,
+                            path: (path.builder)(draw_area),
                             area: draw_area,
+                            fill: path
+                                .fill
+                                .map(|brush| brush.resolve(draw_area, &()))
+                                .or_else(|| path.stroke.is_none().then_some(Color::BLACK.into())),
+                            stroke: path
+                                .stroke
+                                .map(|(brush, stroke)| (brush.resolve(draw_area, &()), stroke)),
                         },
                         DrawableType::Svg(svg) => RenderItem::Svg {
-                            svg,
+                            cache_key: svg.cache_key(),
+                            content: svg.content,
                             area: draw_area,
+                            unlocked_aspect_ratio: svg.unlocked_aspect_ratio,
+                            fill: svg.fill,
                         },
                         DrawableType::Image(image) => RenderItem::Image {
-                            image,
+                            cache_key: image.cache_key(),
+                            source: image.source,
                             area: draw_area,
+                            unlocked_aspect_ratio: image.unlocked_aspect_ratio,
+                            corner_rounding: image.corner_rounding,
                         },
                         DrawableType::Shadow(shadow) => RenderItem::Shadow {
-                            shadow,
-                            area: draw_area,
+                            rect: shadow.rect(draw_area, self.pane_state.scale_factor),
+                            color: shadow.color,
+                            blur: shadow.blur * self.pane_state.scale_factor,
+                            corner_rounding: shadow.corner_rounding * self.pane_state.scale_factor,
                         },
                         DrawableType::PushLayer { path, blend, alpha } => {
                             RenderItem::PushLayer { path, blend, alpha }
@@ -955,20 +970,20 @@ impl<State: 'static> Pane<State> {
             self.pane_state.end_editing();
         }
 
-        let frame = Frame {
-            base_color: self.base_color,
-            width,
-            height,
-            scale_factor: self.pane_state.scale_factor,
-            items,
-        };
-
         (self.on_frame)(state, &mut self.pane_state);
 
         if continue_animating {
             self.pane_state.request_redraw();
         }
         self.dispatch_text_edit_lifecycle_events(state);
+        let frame = Frame {
+            base_color: self.base_color,
+            width,
+            height,
+            scale_factor: self.pane_state.scale_factor,
+            items,
+            semantics: self.accessibility_update(width, height, scale_factor),
+        };
         (frame, self.take_effects())
     }
 }

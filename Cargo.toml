@@ -44,6 +44,11 @@ name = "text_fields"
 path = "examples/text_fields.rs"
 required-features = ["platform-winit"]
 
+[[example]]
+name = "alternate_outputs"
+path = "examples/alternate_outputs.rs"
+required-features = ["paint-anyrender"]
+
 [dependencies]
 accesskit = "0.24.1"
 accesskit_winit = { version = "0.33.2", optional = true }
@@ -76,6 +81,7 @@ default = ["renderer-vello"]
 test-api = []
 debug-overlay = ["platform-winit"]
 renderer-skia = ["platform-winit", "dep:anyrender_skia"]
+paint-anyrender = ["dep:anyrender", "dep:anyrender_svg"]
 renderer-vello = ["platform-winit", "dep:anyrender_vello"]
 renderer-vello-cpu = [
     "platform-winit",
@@ -85,6 +91,8 @@ renderer-vello-cpu = [
 platform-winit = ["dep:winit", "dep:anyrender", "dep:anyrender_svg", "dep:accesskit_winit"]
 
 [dev-dependencies]
+accesskit = { version = "0.24.1", features = ["serde"] }
+anyrender_vello_cpu = "0.17.0"
 arboard = "3.4"
 insta = "1.42.1"
 public-api = "0.52.2"

@@ -1,20 +1,46 @@
 use crate::Area;
 use crate::draw_layout::draw_layout;
-use crate::primitives::{ImageSource, PathData};
+use crate::primitives::ImageSource;
+#[cfg(feature = "platform-winit")]
+use crate::render::FrameOutput;
 use crate::render::{Frame, RenderItem, TextRenderLayout};
-use anyrender::{PaintScene, Scene, WindowRenderer};
+#[cfg(feature = "platform-winit")]
+use anyrender::WindowRenderer;
+use anyrender::{PaintScene, Scene};
 use image::{DynamicImage, ImageBuffer, Rgba};
 use kurbo::{Affine, Point, Rect, RoundedRect, Size, Vec2};
 use peniko::{self, Brush, BrushRef, Compose, Fill, Mix};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub struct Renderer<R: WindowRenderer> {
-    window_renderer: R,
+#[derive(Default)]
+pub struct FramePainter {
     svg_scenes: HashMap<u64, (String, Scene, f32, f32)>,
     image_data: HashMap<u64, (peniko::ImageData, f32, f32)>,
 }
 
+impl FramePainter {
+    pub fn paint<S: PaintScene>(&mut self, frame: &Frame, scene: &mut S) {
+        scene.reset();
+        scene.fill(
+            Fill::NonZero,
+            Affine::IDENTITY,
+            frame.base_color,
+            None,
+            &Rect::new(0., 0., frame.width as f64, frame.height as f64),
+        );
+        render_frame(&mut self.svg_scenes, &mut self.image_data, frame, scene);
+    }
+}
+
+#[cfg(feature = "platform-winit")]
+pub struct Renderer<R: WindowRenderer> {
+    window_renderer: R,
+    window: Arc<winit::window::Window>,
+    painter: FramePainter,
+}
+
+#[cfg(feature = "platform-winit")]
 impl<R: WindowRenderer> Renderer<R> {
     pub fn new(
         mut window_renderer: R,
@@ -22,12 +48,12 @@ impl<R: WindowRenderer> Renderer<R> {
         width: u32,
         height: u32,
     ) -> Self {
-        window_renderer.resume(window, width, height, || {});
+        window_renderer.resume(window.clone(), width, height, || {});
         window_renderer.complete_resume();
         Self {
             window_renderer,
-            svg_scenes: HashMap::new(),
-            image_data: HashMap::new(),
+            window,
+            painter: FramePainter::default(),
         }
     }
 
@@ -35,25 +61,22 @@ impl<R: WindowRenderer> Renderer<R> {
         self.window_renderer.complete_resume();
         self.window_renderer.set_size(width, height);
     }
+}
 
-    pub(crate) fn render(&mut self, frame: &Frame, pre_present_notify: impl FnOnce()) {
+#[cfg(feature = "platform-winit")]
+impl<R: WindowRenderer> FrameOutput for Renderer<R> {
+    type Output = ();
+
+    fn render(&mut self, frame: &Frame) {
         if !self.window_renderer.complete_resume() {
             return;
         }
 
-        let svg_scenes = &mut self.svg_scenes;
-        let image_data = &mut self.image_data;
+        let painter = &mut self.painter;
+        let window = &self.window;
         self.window_renderer.render(|scene| {
-            scene.reset();
-            scene.fill(
-                Fill::NonZero,
-                Affine::IDENTITY,
-                frame.base_color,
-                None,
-                &Rect::new(0., 0., frame.width as f64, frame.height as f64),
-            );
-            render_frame(svg_scenes, image_data, frame, scene);
-            pre_present_notify();
+            painter.paint(frame, scene);
+            window.pre_present_notify();
         });
     }
 }
@@ -79,36 +102,54 @@ fn render_frame<S: PaintScene>(
             RenderItem::PopLayer => scene.pop_layer(),
             RenderItem::Text(text) => draw_text(scene, text),
             RenderItem::Layout { layout, transform } => draw_layout(*transform, layout, scene),
-            RenderItem::Path { path, area } => draw_path(scene, path, *area, frame.scale_factor),
-            RenderItem::Svg { svg, area } => draw_svg(
+            RenderItem::Path {
+                path, fill, stroke, ..
+            } => draw_path(
+                scene,
+                path,
+                fill.as_ref(),
+                stroke.as_ref(),
+                frame.scale_factor,
+            ),
+            RenderItem::Svg {
+                cache_key,
+                content,
+                area,
+                unlocked_aspect_ratio,
+                fill,
+            } => draw_svg(
                 scene,
                 svg_scenes,
                 frame.scale_factor,
-                svg.cache_key(),
-                &svg.content,
+                *cache_key,
+                content,
                 *area,
-                svg.unlocked_aspect_ratio,
-                svg.fill.as_ref(),
+                *unlocked_aspect_ratio,
+                fill.as_ref(),
             ),
-            RenderItem::Image { image, area } => draw_image(
+            RenderItem::Image {
+                cache_key,
+                source,
+                area,
+                unlocked_aspect_ratio,
+                corner_rounding,
+            } => draw_image(
                 scene,
                 image_data,
                 frame.scale_factor,
-                image.cache_key(),
-                &image.source,
+                *cache_key,
+                source,
                 *area,
-                image.unlocked_aspect_ratio,
-                image.corner_rounding,
+                *unlocked_aspect_ratio,
+                *corner_rounding,
             ),
-            RenderItem::Shadow { shadow, area } => {
-                let rect = shadow.rect(*area, frame.scale_factor);
-                scene.draw_box_shadow(
-                    Affine::IDENTITY,
-                    rect,
-                    shadow.color,
-                    shadow.corner_rounding * frame.scale_factor,
-                    shadow.blur * frame.scale_factor,
-                );
+            RenderItem::Shadow {
+                rect,
+                color,
+                blur,
+                corner_rounding,
+            } => {
+                scene.draw_box_shadow(Affine::IDENTITY, *rect, *color, *corner_rounding, *blur);
             }
         }
     }
@@ -322,40 +363,19 @@ fn cached_svg_scene<'a>(
     svg_scenes.get(&cache_key).expect("cached svg")
 }
 
-fn draw_path<S: PaintScene>(scene: &mut S, path: &PathData, area: Area, scale_factor: f64) {
-    let user_path = (path.builder)(area);
+fn draw_path<S: PaintScene>(
+    scene: &mut S,
+    user_path: &kurbo::BezPath,
+    fill: Option<&Brush>,
+    stroke: Option<&(Brush, kurbo::Stroke)>,
+    scale_factor: f64,
+) {
     let scale = Affine::scale(scale_factor);
-    let scaled_path = scale * &user_path;
-
-    if path.fill.is_none() && path.stroke.is_none() {
-        scene.fill(
-            Fill::EvenOdd,
-            Affine::IDENTITY,
-            peniko::Color::BLACK,
-            None,
-            &scaled_path,
-        )
-    } else {
-        if let Some(ref brush_source) = path.fill {
-            let brush = brush_source.resolve(area, &());
-            scene.fill(
-                Fill::EvenOdd,
-                scale,
-                BrushRef::from(&brush),
-                None,
-                &user_path,
-            )
-        }
-        if let Some((ref brush_source, ref stroke_style)) = path.stroke {
-            let brush = brush_source.resolve(area, &());
-            scene.stroke(
-                stroke_style,
-                scale,
-                BrushRef::from(&brush),
-                None,
-                &user_path,
-            );
-        }
+    if let Some(brush) = fill {
+        scene.fill(Fill::EvenOdd, scale, BrushRef::from(brush), None, user_path)
+    }
+    if let Some((brush, stroke_style)) = stroke {
+        scene.stroke(stroke_style, scale, BrushRef::from(brush), None, user_path);
     }
 }
 

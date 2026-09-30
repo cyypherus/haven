@@ -29,35 +29,55 @@ pub mod haven::render
 pub enum haven::render::RenderItem
 pub haven::render::RenderItem::Image
 pub haven::render::RenderItem::Image::area: backer::types::Area
-pub haven::render::RenderItem::Image::image: haven::Image
+pub haven::render::RenderItem::Image::cache_key: u64
+pub haven::render::RenderItem::Image::corner_rounding: f32
+pub haven::render::RenderItem::Image::source: haven::ImageSource
+pub haven::render::RenderItem::Image::unlocked_aspect_ratio: bool
 pub haven::render::RenderItem::Layout
 pub haven::render::RenderItem::Layout::layout: parley::layout::layout::Layout<peniko::brush::Brush>
 pub haven::render::RenderItem::Layout::transform: kurbo::affine::Affine
 pub haven::render::RenderItem::Path
 pub haven::render::RenderItem::Path::area: backer::types::Area
-pub haven::render::RenderItem::Path::path: alloc::boxed::Box<haven::PathData>
+pub haven::render::RenderItem::Path::fill: core::option::Option<peniko::brush::Brush>
+pub haven::render::RenderItem::Path::path: kurbo::bezpath::BezPath
+pub haven::render::RenderItem::Path::stroke: core::option::Option<(peniko::brush::Brush, kurbo::stroke::Stroke)>
 pub haven::render::RenderItem::PopLayer
 pub haven::render::RenderItem::PushLayer
 pub haven::render::RenderItem::PushLayer::alpha: f32
 pub haven::render::RenderItem::PushLayer::blend: peniko::blend::BlendMode
 pub haven::render::RenderItem::PushLayer::path: kurbo::bezpath::BezPath
 pub haven::render::RenderItem::Shadow
-pub haven::render::RenderItem::Shadow::area: backer::types::Area
-pub haven::render::RenderItem::Shadow::shadow: haven::Shadow
+pub haven::render::RenderItem::Shadow::blur: f64
+pub haven::render::RenderItem::Shadow::color: haven::Color
+pub haven::render::RenderItem::Shadow::corner_rounding: f64
+pub haven::render::RenderItem::Shadow::rect: kurbo::rect::Rect
 pub haven::render::RenderItem::Svg
 pub haven::render::RenderItem::Svg::area: backer::types::Area
-pub haven::render::RenderItem::Svg::svg: haven::Svg
+pub haven::render::RenderItem::Svg::cache_key: u64
+pub haven::render::RenderItem::Svg::content: alloc::string::String
+pub haven::render::RenderItem::Svg::fill: core::option::Option<peniko::brush::Brush>
+pub haven::render::RenderItem::Svg::unlocked_aspect_ratio: bool
 pub haven::render::RenderItem::Text(haven::render::TextRenderLayout)
 pub struct haven::render::Frame
 pub haven::render::Frame::base_color: haven::Color
 pub haven::render::Frame::height: u32
 pub haven::render::Frame::items: alloc::vec::Vec<haven::render::RenderItem>
 pub haven::render::Frame::scale_factor: f64
+pub haven::render::Frame::semantics: accesskit::TreeUpdate
 pub haven::render::Frame::width: u32
+pub struct haven::render::FramePainter
+impl haven::render::FramePainter
+pub fn haven::render::FramePainter::paint<S: anyrender::PaintScene>(&mut self, frame: &haven::render::Frame, scene: &mut S)
 pub struct haven::render::TextRenderLayout
 pub haven::render::TextRenderLayout::backgrounds: alloc::vec::Vec<(kurbo::rect::Rect, peniko::brush::Brush)>
 pub haven::render::TextRenderLayout::layout: parley::layout::layout::Layout<peniko::brush::Brush>
 pub haven::render::TextRenderLayout::transform: kurbo::affine::Affine
+pub trait haven::render::FrameOutput
+pub type haven::render::FrameOutput::Output
+pub fn haven::render::FrameOutput::render(&mut self, frame: &haven::render::Frame) -> Self::Output
+impl<F, T> haven::render::FrameOutput for F where F: core::ops::function::FnMut(&haven::render::Frame) -> T
+pub type F::Output = T
+pub fn F::render(&mut self, frame: &haven::render::Frame) -> T
 pub mod haven::winit
 pub struct haven::winit::WinitApp<State>
 impl<State: 'static> haven::winit::WinitApp<State>

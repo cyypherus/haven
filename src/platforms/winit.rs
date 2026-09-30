@@ -5,9 +5,11 @@ use crate::{Key, Modifier, Modifiers, NamedKey};
 #[cfg(feature = "platform-winit")]
 use crate::pane::{Pane, PaneEffect};
 #[cfg(feature = "debug-overlay")]
-use crate::primitives::{PathData, text};
+use crate::primitives::text;
 #[cfg(feature = "debug-overlay")]
 use crate::render::Frame;
+#[cfg(feature = "platform-winit")]
+use crate::render::FrameOutput;
 #[cfg(feature = "debug-overlay")]
 use crate::{Area, Color, Stroke};
 #[cfg(feature = "platform-winit")]
@@ -233,16 +235,13 @@ impl DebugOverlayState {
         };
 
         frame.items.push(crate::render::RenderItem::Path {
-            path: Box::new(PathData {
-                id: crate::const_hash(file!(), line!(), column!()),
-                builder: crate::primitives::shape::rect_path((5., 5., 5., 5.)),
-                fill: Some(Color::from_rgb8(0, 0, 0).with_alpha(0.68).into()),
-                stroke: Some((
-                    Color::from_rgb8(255, 255, 255).with_alpha(0.18).into(),
-                    Stroke::new(1.),
-                )),
-            }),
+            path: crate::rounded_rect_path(background_area, 5.),
             area: background_area,
+            fill: Some(Color::from_rgb8(0, 0, 0).with_alpha(0.68).into()),
+            stroke: Some((
+                Color::from_rgb8(255, 255, 255).with_alpha(0.18).into(),
+                Stroke::new(1.),
+            )),
         });
         frame.items.push(
             text(crate::const_hash(file!(), line!(), column!()), label)
@@ -519,11 +518,9 @@ impl<State: 'static> WinitApp<State> {
             height,
             surface.window.scale_factor(),
         );
-        surface.accessibility.update_if_active(|| {
-            surface
-                .pane
-                .accessibility_update(width, height, surface.window.scale_factor())
-        });
+        surface
+            .accessibility
+            .update_if_active(|| frame.semantics.clone());
 
         #[cfg(feature = "debug-overlay")]
         let mut frame = frame;
@@ -541,10 +538,7 @@ impl<State: 'static> WinitApp<State> {
             .debug_overlay
             .append_to(&mut frame, &mut surface.pane, target_frame_ms);
 
-        let window = surface.window.clone();
-        surface.renderer.render(&frame, || {
-            window.pre_present_notify();
-        });
+        surface.renderer.render(&frame);
 
         #[cfg(feature = "debug-overlay")]
         surface.debug_overlay.finish_frame(frame_started);

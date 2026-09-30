@@ -1,7 +1,7 @@
 #![allow(clippy::type_complexity, clippy::too_many_arguments)]
 
 mod brush_source;
-#[cfg(feature = "platform-winit")]
+#[cfg(any(feature = "platform-winit", feature = "paint-anyrender"))]
 mod draw_layout;
 mod editor;
 mod gestures;
