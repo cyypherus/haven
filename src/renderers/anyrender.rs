@@ -66,13 +66,28 @@ fn render_frame<S: PaintScene>(
 ) {
     for item in &frame.items {
         match item {
-            RenderItem::PushLayer { path, blend, alpha } => {
+            RenderItem::PushLayer {
+                path,
+                blend,
+                alpha,
+                filter,
+            } => {
+                let clip = filter.as_ref().map(|_| {
+                    use kurbo::Shape;
+                    Rect::new(
+                        0.,
+                        0.,
+                        frame.width as f64 / frame.scale_factor,
+                        frame.height as f64 / frame.scale_factor,
+                    )
+                    .to_path(0.1)
+                });
                 scene.push_layer(
                     *blend,
                     *alpha,
                     Affine::scale(frame.scale_factor),
-                    path,
-                    None,
+                    clip.as_ref().unwrap_or(path),
+                    filter.clone(),
                     None,
                 );
             }

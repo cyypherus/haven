@@ -38,6 +38,7 @@ pub haven::render::RenderItem::PopLayer
 pub haven::render::RenderItem::PushLayer
 pub haven::render::RenderItem::PushLayer::alpha: f32
 pub haven::render::RenderItem::PushLayer::blend: peniko::blend::BlendMode
+pub haven::render::RenderItem::PushLayer::filter: core::option::Option<alloc::sync::Arc<anyrender::filters::Filter>>
 pub haven::render::RenderItem::PushLayer::path: kurbo::bezpath::BezPath
 pub haven::render::RenderItem::Shadow
 pub haven::render::RenderItem::Shadow::area: backer::types::Area
@@ -521,12 +522,16 @@ pub const haven::DEFAULT_STROKE_WIDTH: f32
 pub const haven::TRANSPARENT: haven::Color
 pub trait haven::Compositing<'a, State>
 pub fn haven::Compositing::blend(self, mode: haven::BlendMode) -> Self
+pub fn haven::Compositing::blur(self, radius: f32) -> Self
 pub fn haven::Compositing::clipped(self, path: impl core::ops::function::Fn(backer::types::Area) -> kurbo::bezpath::BezPath + 'static) -> Self
 pub fn haven::Compositing::opacity(self, alpha: f32) -> Self
+pub fn haven::Compositing::shadow(self, offset: impl core::convert::Into<kurbo::vec2::Vec2>, blur: f32, color: haven::Color) -> Self
 impl<'a, State: 'static> haven::Compositing<'a, State> for haven::View<'a, State>
 pub fn haven::View<'a, State>::blend(self, mode: haven::BlendMode) -> Self
+pub fn haven::View<'a, State>::blur(self, radius: f32) -> Self
 pub fn haven::View<'a, State>::clipped(self, path: impl core::ops::function::Fn(backer::types::Area) -> kurbo::bezpath::BezPath + 'static) -> Self
 pub fn haven::View<'a, State>::opacity(self, alpha: f32) -> Self
+pub fn haven::View<'a, State>::shadow(self, offset: impl core::convert::Into<kurbo::vec2::Vec2>, blur: f32, color: haven::Color) -> Self
 pub fn haven::button<'a, State>(id: u64, state: (&haven::ButtonState, haven::Binding<State, haven::ButtonState>)) -> haven::Button<'a, State>
 pub fn haven::circle(id: u64) -> haven::Circle
 pub const fn haven::combine_id(seed: u64, part: u64) -> u64

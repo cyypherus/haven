@@ -30,7 +30,6 @@ _This library is functional but experimental. API stability is not a goal at thi
 > - Accessibility
 > - Video or gif support
 > - Rotation
-> - Robust effects like blurs or complex shadows
 > - A stable, mature library which will rarely have bugs
 
 # Quick Start
@@ -85,6 +84,7 @@ Examples can be run directly with `cargo run --example <name>`.
 - `image`: Loading and drawing image content
 - `async`: Waking panes from async callbacks
 - `productivity`: A larger app-shaped example
+- `effects`: Blur and drop shadows
 
 ## Status
 

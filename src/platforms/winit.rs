@@ -83,12 +83,15 @@ use crate::renderers::anyrender::Renderer;
 #[cfg(all(
     feature = "platform-winit",
     not(any(
+        feature = "renderer-vello-hybrid",
         feature = "renderer-vello",
         feature = "renderer-vello-cpu",
         feature = "renderer-skia"
     ))
 ))]
-compile_error!("enable one renderer feature: renderer-vello, renderer-vello-cpu, or renderer-skia");
+compile_error!(
+    "enable one renderer feature: renderer-vello-hybrid, renderer-vello, renderer-vello-cpu, or renderer-skia"
+);
 
 #[cfg(all(
     feature = "platform-winit",
@@ -103,6 +106,26 @@ compile_error!("enable exactly one renderer feature");
     feature = "renderer-skia"
 ))]
 compile_error!("enable exactly one renderer feature");
+
+#[cfg(all(
+    feature = "renderer-vello-hybrid",
+    any(
+        feature = "renderer-vello",
+        feature = "renderer-vello-cpu",
+        feature = "renderer-skia"
+    )
+))]
+compile_error!("enable exactly one renderer feature");
+
+#[cfg(feature = "renderer-vello-hybrid")]
+type SelectedWindowRenderer = anyrender_vello_hybrid::VelloHybridWindowRenderer;
+
+#[cfg(feature = "renderer-vello-hybrid")]
+fn window_renderer() -> SelectedWindowRenderer {
+    let mut options = anyrender_vello_hybrid::VelloHybridRendererOptions::default();
+    options.base_color = crate::TRANSPARENT;
+    anyrender_vello_hybrid::VelloHybridWindowRenderer::with_options(options)
+}
 
 #[cfg(feature = "renderer-vello")]
 type SelectedWindowRenderer = anyrender_vello::VelloWindowRenderer;

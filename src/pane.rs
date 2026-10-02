@@ -638,9 +638,17 @@ impl<State: 'static> Pane<State> {
                             shadow,
                             area: draw_area,
                         },
-                        DrawableType::PushLayer { path, blend, alpha } => {
-                            RenderItem::PushLayer { path, blend, alpha }
-                        }
+                        DrawableType::PushLayer {
+                            path,
+                            blend,
+                            alpha,
+                            filter,
+                        } => RenderItem::PushLayer {
+                            path,
+                            blend,
+                            alpha,
+                            filter,
+                        },
                         DrawableType::PopLayer => RenderItem::PopLayer,
                     };
                     items.push(render_item);

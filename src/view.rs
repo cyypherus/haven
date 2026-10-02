@@ -6,11 +6,13 @@ use crate::gestures::{
 use crate::pane::{EditHandler, PaneElement, PaneElementKind, PaneState, View};
 use crate::primitives::{Image, PathData, Shadow, Svg, Text};
 use crate::{Binding, OwnedBinding};
+use anyrender::{Filter, filters::FilterEffect};
 use backer::{Area, nodes::*};
-use kurbo::{Affine, BezPath};
+use kurbo::{Affine, BezPath, Vec2};
 use parley::Layout as TextLayout;
 use peniko::{self, Brush};
 use std::rc::Rc;
+use std::sync::Arc;
 
 // A simple const hash for our purposes.
 const FNV_OFFSET: u64 = 1469598103934665603;
@@ -117,11 +119,13 @@ pub trait Compositing<'a, State> {
     fn clipped(self, path: impl Fn(Area) -> BezPath + 'static) -> Self;
     fn blend(self, mode: BlendMode) -> Self;
     fn opacity(self, alpha: f32) -> Self;
+    fn blur(self, radius: f32) -> Self;
+    fn shadow(self, offset: impl Into<Vec2>, blur: f32, color: crate::Color) -> Self;
 }
 
 impl<'a, State: 'static> Compositing<'a, State> for View<'a, State> {
     fn clipped(self, path: impl Fn(Area) -> BezPath + 'static) -> Self {
-        wrap_layer(self, path, peniko::BlendMode::default(), 1.0, true)
+        wrap_layer(self, path, peniko::BlendMode::default(), 1.0, true, None)
     }
     fn blend(self, mode: BlendMode) -> Self {
         use peniko::{Compose, Mix};
@@ -141,7 +145,7 @@ impl<'a, State: 'static> Compositing<'a, State> for View<'a, State> {
                 compose: Compose::SrcOver,
             },
         };
-        wrap_layer(self, rect_path, mode, 1.0, false)
+        wrap_layer(self, rect_path, mode, 1.0, false, None)
     }
     fn opacity(self, alpha: f32) -> Self {
         wrap_layer(
@@ -150,6 +154,37 @@ impl<'a, State: 'static> Compositing<'a, State> for View<'a, State> {
             peniko::BlendMode::default(),
             alpha.clamp(0., 1.),
             false,
+            None,
+        )
+    }
+    fn blur(self, radius: f32) -> Self {
+        assert!(radius.is_finite());
+        wrap_layer(
+            self,
+            rect_path,
+            peniko::BlendMode::default(),
+            1.,
+            false,
+            Some(Arc::new(Filter::single(FilterEffect::blur(radius.max(0.))))),
+        )
+    }
+    fn shadow(self, offset: impl Into<Vec2>, blur: f32, color: crate::Color) -> Self {
+        let offset = offset.into();
+        let dx = offset.x as f32;
+        let dy = offset.y as f32;
+        assert!(dx.is_finite() && dy.is_finite() && blur.is_finite());
+        wrap_layer(
+            self,
+            rect_path,
+            peniko::BlendMode::default(),
+            1.,
+            false,
+            Some(Arc::new(Filter::single(FilterEffect::drop_shadow(
+                dx,
+                dy,
+                blur.max(0.),
+                color,
+            )))),
         )
     }
 }
@@ -160,6 +195,7 @@ fn wrap_layer<'a, State: 'static>(
     blend: peniko::BlendMode,
     alpha: f32,
     clip_gestures: bool,
+    filter: Option<Arc<Filter>>,
 ) -> View<'a, State> {
     draw(move |area, ctx| {
         let mut views = Vec::new();
@@ -169,6 +205,7 @@ fn wrap_layer<'a, State: 'static>(
                     path: path(area),
                     blend,
                     alpha,
+                    filter: filter.clone(),
                 },
                 gestures: Vec::new(),
             }
@@ -242,6 +279,7 @@ pub(crate) enum DrawableType {
         path: BezPath,
         blend: peniko::BlendMode,
         alpha: f32,
+        filter: Option<Arc<Filter>>,
     },
     PopLayer,
 }
@@ -255,10 +293,16 @@ impl Clone for DrawableType {
             DrawableType::Svg(svg) => DrawableType::Svg(svg.clone()),
             DrawableType::Image(image) => DrawableType::Image(image.clone()),
             DrawableType::Shadow(shadow) => DrawableType::Shadow(shadow.clone()),
-            DrawableType::PushLayer { path, blend, alpha } => DrawableType::PushLayer {
+            DrawableType::PushLayer {
+                path,
+                blend,
+                alpha,
+                filter,
+            } => DrawableType::PushLayer {
                 path: path.clone(),
                 blend: *blend,
                 alpha: *alpha,
+                filter: filter.clone(),
             },
             DrawableType::PopLayer => DrawableType::PopLayer,
         }
