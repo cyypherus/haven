@@ -1,5 +1,5 @@
 use backer::Area;
-use kurbo::Rect;
+use kurbo::Affine;
 
 use crate::{Key, Modifiers, PaneState, Point};
 pub use predicates::{ButtonPredicate, KeyPredicate, ModifierPredicate};
@@ -56,19 +56,25 @@ pub enum MouseButton {
 pub struct ClickLocation {
     global: Point,
     area: Area,
+    inverse: Affine,
 }
 
 impl ClickLocation {
-    pub(crate) fn new(global: Point, area: Area) -> Self {
-        ClickLocation { global, area }
+    pub(crate) fn new(global: Point, area: Area, inverse: Affine) -> Self {
+        ClickLocation {
+            global,
+            area,
+            inverse,
+        }
     }
     pub fn global(&self) -> Point {
         self.global
     }
     pub fn local(&self) -> Point {
+        let point = self.inverse * self.global;
         Point {
-            x: self.global.x - self.area.x as f64,
-            y: self.global.y - self.area.y as f64,
+            x: point.x - self.area.x as f64,
+            y: point.y - self.area.y as f64,
         }
     }
 }
@@ -229,7 +235,6 @@ pub(crate) enum GestureAreaOperation {
 pub(crate) struct GestureAreaComponent<State: ?Sized> {
     pub(crate) operation: GestureAreaOperation,
     pub(crate) gesture: Gesture<State>,
-    pub(crate) rect: Option<Rect>,
 }
 
 impl<State: ?Sized> Clone for GestureAreaComponent<State> {
@@ -237,7 +242,6 @@ impl<State: ?Sized> Clone for GestureAreaComponent<State> {
         Self {
             operation: self.operation,
             gesture: self.gesture.clone(),
-            rect: self.rect,
         }
     }
 }

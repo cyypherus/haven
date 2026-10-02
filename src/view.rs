@@ -1,7 +1,6 @@
 use crate::gestures::{
     EditInteraction, Gesture, GestureAreaComponent, GestureAreaOperation, GestureHandler,
-    Interaction,
-    regions::{area_rect, intersect},
+    Interaction, regions::area_rect,
 };
 use crate::pane::{EditHandler, PaneElement, PaneElementKind, PaneState, View};
 use crate::primitives::{Image, PathData, Shadow, Svg, Text};
@@ -119,6 +118,7 @@ pub trait Compositing<'a, State> {
     fn clipped(self, path: impl Fn(Area) -> BezPath + 'static) -> Self;
     fn blend(self, mode: BlendMode) -> Self;
     fn opacity(self, alpha: f32) -> Self;
+    fn rotate(self, degrees: f64) -> Self;
     fn blur(self, radius: f32) -> Self;
     fn shadow(self, offset: impl Into<Vec2>, blur: f32, color: crate::Color) -> Self;
 }
@@ -157,6 +157,35 @@ impl<'a, State: 'static> Compositing<'a, State> for View<'a, State> {
             None,
         )
     }
+    fn rotate(self, degrees: f64) -> Self {
+        assert!(degrees.is_finite());
+        let radians = (degrees % 360.).to_radians();
+        if radians == 0. {
+            return self;
+        }
+        let rotation = Rc::new(std::cell::Cell::new(Affine::IDENTITY));
+        let rotation_for_draw = rotation.clone();
+        stack(vec![
+            draw(move |area, _| {
+                let center = area_rect(area).center().to_vec2();
+                rotation.set(
+                    Affine::translate(center)
+                        * Affine::rotate(radians)
+                        * Affine::translate(-center),
+                );
+                Vec::new()
+            })
+            .inert()
+            .layer(i32::MIN),
+            self.map(move |mut element| {
+                if let PaneElementKind::Draw { transform, .. } = &mut element.0 {
+                    *transform = rotation_for_draw.get() * *transform;
+                }
+                element
+            }),
+        ])
+    }
+
     fn blur(self, radius: f32) -> Self {
         assert!(radius.is_finite());
         wrap_layer(
@@ -206,51 +235,14 @@ fn wrap_layer<'a, State: 'static>(
                     blend,
                     alpha,
                     filter: filter.clone(),
+                    clip_gestures,
                 },
                 gestures: Vec::new(),
             }
             .build(ctx)
             .draw(area, ctx),
         );
-        let child_views = content.draw(area, ctx);
-        if clip_gestures {
-            let clip_rect = area_rect(area);
-            views.extend(child_views.into_iter().map(move |view| {
-                match view.into_kind() {
-                    PaneElementKind::Draw {
-                        view,
-                        area,
-                        gestures,
-                    } => PaneElement(PaneElementKind::Draw {
-                        view,
-                        area,
-                        gestures: gestures
-                            .into_iter()
-                            .filter_map(|component| {
-                                let rect = component.rect.unwrap_or_else(|| area_rect(area));
-                                intersect(rect, clip_rect).map(|rect| GestureAreaComponent {
-                                    operation: component.operation,
-                                    gesture: component.gesture,
-                                    rect: Some(rect),
-                                })
-                            })
-                            .collect(),
-                    }),
-                    PaneElementKind::EditorArea {
-                        id,
-                        area,
-                        edit_handler,
-                    } => PaneElement(PaneElementKind::EditorArea {
-                        id,
-                        area,
-                        edit_handler,
-                    }),
-                    PaneElementKind::Empty => PaneElement::empty(),
-                }
-            }));
-        } else {
-            views.extend(child_views);
-        }
+        views.extend(content.draw(area, ctx));
         views.extend(
             Drawable {
                 view_type: DrawableType::PopLayer,
@@ -280,6 +272,7 @@ pub(crate) enum DrawableType {
         blend: peniko::BlendMode,
         alpha: f32,
         filter: Option<Arc<Filter>>,
+        clip_gestures: bool,
     },
     PopLayer,
 }
@@ -298,11 +291,13 @@ impl Clone for DrawableType {
                 blend,
                 alpha,
                 filter,
+                clip_gestures,
             } => DrawableType::PushLayer {
                 path: path.clone(),
                 blend: *blend,
                 alpha: *alpha,
                 filter: filter.clone(),
+                clip_gestures: *clip_gestures,
             },
             DrawableType::PopLayer => DrawableType::PopLayer,
         }
@@ -329,6 +324,7 @@ impl<State: 'static> Drawable<State> {
                 view: Box::new(self.view_type.clone()),
                 area,
                 gestures: self.gestures.clone(),
+                transform: Affine::IDENTITY,
             })]
         });
 
@@ -343,7 +339,6 @@ impl<State: 'static> Drawable<State> {
         self.gestures.push(GestureAreaComponent {
             operation: GestureAreaOperation::Include,
             gesture: gesture.clone(),
-            rect: None,
         });
         self
     }
@@ -352,7 +347,6 @@ impl<State: 'static> Drawable<State> {
         self.gestures.push(GestureAreaComponent {
             operation: GestureAreaOperation::Occlude,
             gesture: gesture.clone(),
-            rect: None,
         });
         self
     }
@@ -361,7 +355,6 @@ impl<State: 'static> Drawable<State> {
         self.gestures.push(GestureAreaComponent {
             operation: GestureAreaOperation::Include,
             gesture,
-            rect: None,
         });
         self
     }
@@ -418,14 +411,15 @@ fn map_scope<'a, Parent: 'static, Sub: 'static>(
             view,
             area,
             gestures,
+            transform,
         } => PaneElement(PaneElementKind::Draw {
             view,
             area,
+            transform,
             gestures: gestures
                 .into_iter()
                 .map(|component| GestureAreaComponent {
                     operation: component.operation,
-                    rect: component.rect,
                     gesture: component.gesture.map({
                         let f = f.clone();
                         move |gesture| {

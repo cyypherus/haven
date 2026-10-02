@@ -1,7 +1,7 @@
 use crate::gestures::{
     ClickEvent, ClickLocation, EditInteraction, Gesture, GestureAreaComponent,
     GestureAreaOperation, GestureId, GestureKind, GesturePropagation, Interaction, ScrollDelta,
-    regions::{area_rect, subtract, valid_rect},
+    regions::{HitRegion, area_rect},
 };
 use crate::prebuilts::TextEditCommand;
 use crate::render::{Frame, RenderItem};
@@ -10,7 +10,7 @@ use crate::primitives::TextLayout;
 use crate::view::DrawableType;
 use crate::{ClickPhase, DragPhase, Key, KeyPhase, Modifiers, MouseButton, Point, RUBIK_FONT};
 use backer::{Area, Layout};
-use kurbo::Rect;
+use kurbo::Affine;
 use parley::fontique::Blob;
 use parley::fontique::FontInfoOverride;
 use parley::{FontContext, LayoutContext};
@@ -71,6 +71,7 @@ pub struct Pane<State> {
     gestures: Vec<ActiveGesture<State>>,
     pressed_buttons: Vec<MouseButton>,
     pub(crate) elements: HashMap<u64, Area>,
+    element_transforms: HashMap<u64, Affine>,
     edit_handlers: HashMap<u64, EditHandler<State>>,
     hovered: HashSet<GestureId>,
     cursor_position: Option<Point>,
@@ -85,15 +86,15 @@ pub struct Pane<State> {
 
 struct ActiveGesture<State> {
     gesture: Gesture<State>,
-    hit_rect: Rect,
+    hit_region: HitRegion,
     local_area: Area,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct CapturedGesture {
     id: GestureId,
     local_area: Area,
-    hit_rect: Rect,
+    hit_region: HitRegion,
 }
 
 #[derive(Debug, Clone)]
@@ -123,7 +124,7 @@ impl<State> Clone for ActiveGesture<State> {
     fn clone(&self) -> Self {
         Self {
             gesture: self.gesture.clone(),
-            hit_rect: self.hit_rect,
+            hit_region: self.hit_region.clone(),
             local_area: self.local_area,
         }
     }
@@ -281,6 +282,7 @@ pub(crate) enum PaneElementKind<State: ?Sized> {
         view: Box<DrawableType>,
         area: Area,
         gestures: Vec<GestureAreaComponent<State>>,
+        transform: Affine,
     },
     EditorArea {
         id: u64,
@@ -296,6 +298,7 @@ impl<State: ?Sized> PaneElement<State> {
             view,
             area,
             gestures: Vec::new(),
+            transform: Affine::IDENTITY,
         })
     }
 
@@ -445,6 +448,7 @@ impl<State: 'static> Pane<State> {
             gestures: Vec::new(),
             pressed_buttons: Vec::new(),
             elements: HashMap::new(),
+            element_transforms: HashMap::new(),
             edit_handlers: HashMap::new(),
             hovered: HashSet::new(),
             cursor_position: None,
@@ -481,10 +485,17 @@ impl<State: 'static> Pane<State> {
 
     pub fn location(&self, id: u64) -> Option<Point> {
         let area = *self.elements.get(&id)?;
-        Some(Point::new(
+        let center = Point::new(
             area.x as f64 + area.width as f64 * 0.5,
             area.y as f64 + area.height as f64 * 0.5,
-        ))
+        );
+        Some(
+            self.element_transforms
+                .get(&id)
+                .copied()
+                .unwrap_or(Affine::IDENTITY)
+                * center,
+        )
     }
 
     pub fn click(&mut self, state: &mut State, location: Point) -> Vec<PaneEffect> {
@@ -557,6 +568,7 @@ impl<State: 'static> Pane<State> {
 
         self.gestures.clear();
         self.elements.clear();
+        self.element_transforms.clear();
         self.edit_handlers.clear();
         self.pane_state.scale_factor = scale_factor;
 
@@ -577,6 +589,7 @@ impl<State: 'static> Pane<State> {
 
         let mut items = Vec::new();
         let mut gesture_area_components = Vec::new();
+        let mut clips = Vec::new();
 
         for item in draw_items {
             match item.into_kind() {
@@ -595,6 +608,7 @@ impl<State: 'static> Pane<State> {
                     view,
                     area,
                     gestures,
+                    transform,
                 } => {
                     let id = match &*view {
                         DrawableType::Text(view) => Some(view.id),
@@ -608,9 +622,29 @@ impl<State: 'static> Pane<State> {
                     let draw_area = area;
                     if let Some(id) = id {
                         self.elements.insert(id, draw_area);
+                        if transform != Affine::IDENTITY {
+                            self.element_transforms.insert(id, transform);
+                        }
                     }
-                    gesture_area_components
-                        .extend(gestures.into_iter().map(|gesture| (draw_area, gesture)));
+                    match view.as_ref() {
+                        DrawableType::PushLayer { clip_gestures, .. } => {
+                            clips.push(clip_gestures.then(|| {
+                                let mut clip = HitRegion::new(area_rect(draw_area));
+                                clip.transform = transform;
+                                clip
+                            }));
+                        }
+                        DrawableType::PopLayer => {
+                            clips.pop().expect("balanced layers");
+                        }
+                        _ => {}
+                    }
+                    gesture_area_components.extend(gestures.into_iter().map(|component| {
+                        let mut region = HitRegion::new(area_rect(draw_area));
+                        region.transform = transform;
+                        region.clips.extend(clips.iter().flatten().cloned());
+                        (draw_area, component, region)
+                    }));
 
                     let render_item = match *view {
                         DrawableType::Text(text) => text.render_item(
@@ -643,6 +677,7 @@ impl<State: 'static> Pane<State> {
                             blend,
                             alpha,
                             filter,
+                            ..
                         } => RenderItem::PushLayer {
                             path,
                             blend,
@@ -651,22 +686,24 @@ impl<State: 'static> Pane<State> {
                         },
                         DrawableType::PopLayer => RenderItem::PopLayer,
                     };
-                    items.push(render_item);
+                    if transform != Affine::IDENTITY {
+                        items.push(RenderItem::PushTransform(transform));
+                        items.push(render_item);
+                        items.push(RenderItem::PopTransform);
+                    } else {
+                        items.push(render_item);
+                    }
                 }
                 PaneElementKind::Empty => (),
             }
         }
         let mut seen_gestures = HashSet::new();
-        for (area, component) in gesture_area_components {
-            let rect = component.rect.unwrap_or_else(|| area_rect(area));
-            let Some(rect) = valid_rect(rect) else {
-                continue;
-            };
+        for (area, component, region) in gesture_area_components {
             let gesture = component.gesture;
             if gesture.handler().positive_by_default && seen_gestures.insert(gesture.id()) {
                 self.gestures.push(ActiveGesture {
                     gesture: gesture.clone(),
-                    hit_rect: area_rect(pane_area),
+                    hit_region: HitRegion::new(area_rect(pane_area)),
                     local_area: pane_area,
                 });
             }
@@ -675,28 +712,16 @@ impl<State: 'static> Pane<State> {
                 GestureAreaOperation::Include => {
                     self.gestures.push(ActiveGesture {
                         gesture,
-                        hit_rect: rect,
+                        hit_region: region,
                         local_area: area,
                     });
                 }
                 GestureAreaOperation::Occlude => {
-                    self.gestures = std::mem::take(&mut self.gestures)
-                        .into_iter()
-                        .flat_map(|active| {
-                            if active.gesture.id() == id {
-                                subtract(active.hit_rect, rect)
-                                    .into_iter()
-                                    .map(|hit_rect| ActiveGesture {
-                                        gesture: active.gesture.clone(),
-                                        hit_rect,
-                                        local_area: active.local_area,
-                                    })
-                                    .collect()
-                            } else {
-                                vec![active]
-                            }
-                        })
-                        .collect();
+                    for active in &mut self.gestures {
+                        if active.gesture.id() == id {
+                            active.hit_region.exclusions.push(region.clone());
+                        }
+                    }
                 }
             }
         }
@@ -739,7 +764,7 @@ impl<State: 'static> Pane<State> {
             return None;
         }
         active
-            .hit_rect
+            .hit_region
             .contains(position)
             .then_some(active.local_area)
     }
@@ -774,11 +799,13 @@ impl<State: 'static> Pane<State> {
         matched
     }
 
-    fn point_in_area(area: Area, point: Point) -> Point {
-        Point {
-            x: point.x - area.x as f64,
-            y: point.y - area.y as f64,
-        }
+    fn local_point(captured: &CapturedGesture, point: Point) -> Point {
+        ClickLocation::new(
+            point,
+            captured.local_area,
+            captured.hit_region.transform.inverse(),
+        )
+        .local()
     }
 
     fn update_hover(&mut self, state: &mut State) -> bool {
@@ -951,7 +978,11 @@ impl<State: 'static> Pane<State> {
                                 Interaction::Click(ClickEvent {
                                     state: ClickPhase::Cancelled,
                                     button,
-                                    location: ClickLocation::new(pos, captured.local_area),
+                                    location: ClickLocation::new(
+                                        pos,
+                                        captured.local_area,
+                                        captured.hit_region.transform.inverse(),
+                                    ),
                                 }),
                             );
                         }
@@ -972,7 +1003,7 @@ impl<State: 'static> Pane<State> {
                             state,
                             &mut self.pane_state,
                             Interaction::Drag(DragPhase::Began {
-                                start: Self::point_in_area(captured.local_area, start),
+                                start: Self::local_point(captured, start),
                                 start_global: start,
                             }),
                         );
@@ -980,11 +1011,16 @@ impl<State: 'static> Pane<State> {
                             state,
                             &mut self.pane_state,
                             Interaction::Drag(DragPhase::Updated {
-                                start: Self::point_in_area(captured.local_area, start),
-                                current: Self::point_in_area(captured.local_area, pos),
+                                start: Self::local_point(captured, start),
+                                current: Self::local_point(captured, pos),
                                 start_global: start,
                                 current_global: pos,
-                                delta,
+                                delta: captured
+                                    .hit_region
+                                    .transform
+                                    .inverse()
+                                    .with_translation(kurbo::Vec2::ZERO)
+                                    * delta,
                                 distance: distance as f32,
                             }),
                         );
@@ -1031,11 +1067,16 @@ impl<State: 'static> Pane<State> {
                         state,
                         &mut self.pane_state,
                         Interaction::Drag(DragPhase::Updated {
-                            start: Self::point_in_area(captured.local_area, start),
-                            current: Self::point_in_area(captured.local_area, pos),
+                            start: Self::local_point(captured, start),
+                            current: Self::local_point(captured, pos),
                             start_global: start,
                             current_global: pos,
-                            delta,
+                            delta: captured
+                                .hit_region
+                                .transform
+                                .inverse()
+                                .with_translation(kurbo::Vec2::ZERO)
+                                * delta,
                             distance: distance as f32,
                         }),
                     );
@@ -1080,7 +1121,11 @@ impl<State: 'static> Pane<State> {
                         Interaction::Click(ClickEvent {
                             state: ClickPhase::Started,
                             button,
-                            location: ClickLocation::new(location, *area),
+                            location: ClickLocation::new(
+                                location,
+                                *area,
+                                active.hit_region.transform.inverse(),
+                            ),
                         }),
                     );
                 }
@@ -1092,7 +1137,7 @@ impl<State: 'static> Pane<State> {
                             .map(|(active, area)| CapturedGesture {
                                 id: active.gesture.id(),
                                 local_area: area,
-                                hit_rect: active.hit_rect,
+                                hit_region: active.hit_region,
                             })
                             .collect(),
                         drags: drag_matches
@@ -1100,7 +1145,7 @@ impl<State: 'static> Pane<State> {
                             .map(|(active, area)| CapturedGesture {
                                 id: active.gesture.id(),
                                 local_area: area,
-                                hit_rect: active.hit_rect,
+                                hit_region: active.hit_region,
                             })
                             .collect(),
                     },
@@ -1151,7 +1196,7 @@ impl<State: 'static> Pane<State> {
                             if !matches!(active.gesture.handler().kind, GestureKind::Click { .. }) {
                                 continue;
                             }
-                            let phase = if captured.hit_rect.contains(current) {
+                            let phase = if captured.hit_region.contains(current) {
                                 ClickPhase::Completed
                             } else {
                                 ClickPhase::Cancelled
@@ -1163,7 +1208,11 @@ impl<State: 'static> Pane<State> {
                                 Interaction::Click(ClickEvent {
                                     state: phase,
                                     button: press_button,
-                                    location: ClickLocation::new(current, captured.local_area),
+                                    location: ClickLocation::new(
+                                        current,
+                                        captured.local_area,
+                                        captured.hit_region.transform.inverse(),
+                                    ),
                                 }),
                             );
                         }
@@ -1202,11 +1251,16 @@ impl<State: 'static> Pane<State> {
                             state,
                             &mut self.pane_state,
                             Interaction::Drag(DragPhase::Completed {
-                                start: Self::point_in_area(captured.local_area, start),
-                                current: Self::point_in_area(captured.local_area, current),
+                                start: Self::local_point(captured, start),
+                                current: Self::local_point(captured, current),
                                 start_global: start,
                                 current_global: current,
-                                delta,
+                                delta: captured
+                                    .hit_region
+                                    .transform
+                                    .inverse()
+                                    .with_translation(kurbo::Vec2::ZERO)
+                                    * delta,
                                 distance: distance as f32,
                             }),
                         );

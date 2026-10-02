@@ -64,8 +64,18 @@ fn render_frame<S: PaintScene>(
     frame: &Frame,
     scene: &mut S,
 ) {
+    let scale = Affine::scale(frame.scale_factor);
+    let mut view_transform = Affine::IDENTITY;
+    let mut transforms = Vec::new();
     for item in &frame.items {
         match item {
+            RenderItem::PushTransform(transform) => {
+                transforms.push(view_transform);
+                view_transform *= scale * *transform * scale.inverse();
+            }
+            RenderItem::PopTransform => {
+                view_transform = transforms.pop().expect("balanced transforms");
+            }
             RenderItem::PushLayer {
                 path,
                 blend,
@@ -74,29 +84,29 @@ fn render_frame<S: PaintScene>(
             } => {
                 let clip = filter.as_ref().map(|_| {
                     use kurbo::Shape;
-                    Rect::new(
-                        0.,
-                        0.,
-                        frame.width as f64 / frame.scale_factor,
-                        frame.height as f64 / frame.scale_factor,
-                    )
-                    .to_path(0.1)
+                    (view_transform * scale).inverse()
+                        * Rect::new(0., 0., frame.width as f64, frame.height as f64).to_path(0.1)
                 });
                 scene.push_layer(
                     *blend,
                     *alpha,
-                    Affine::scale(frame.scale_factor),
+                    view_transform * scale,
                     clip.as_ref().unwrap_or(path),
                     filter.clone(),
                     None,
                 );
             }
             RenderItem::PopLayer => scene.pop_layer(),
-            RenderItem::Text(text) => draw_text(scene, text),
-            RenderItem::Layout { layout, transform } => draw_layout(*transform, layout, scene),
-            RenderItem::Path { path, area } => draw_path(scene, path, *area, frame.scale_factor),
+            RenderItem::Text(text) => draw_text(scene, text, view_transform),
+            RenderItem::Layout { layout, transform } => {
+                draw_layout(view_transform * *transform, layout, scene)
+            }
+            RenderItem::Path { path, area } => {
+                draw_path(scene, path, *area, view_transform * scale)
+            }
             RenderItem::Svg { svg, area } => draw_svg(
                 scene,
+                view_transform,
                 svg_scenes,
                 frame.scale_factor,
                 svg.cache_key(),
@@ -107,6 +117,7 @@ fn render_frame<S: PaintScene>(
             ),
             RenderItem::Image { image, area } => draw_image(
                 scene,
+                view_transform,
                 image_data,
                 frame.scale_factor,
                 image.cache_key(),
@@ -118,7 +129,7 @@ fn render_frame<S: PaintScene>(
             RenderItem::Shadow { shadow, area } => {
                 let rect = shadow.rect(*area, frame.scale_factor);
                 scene.draw_box_shadow(
-                    Affine::IDENTITY,
+                    view_transform,
                     rect,
                     shadow.color,
                     shadow.corner_rounding * frame.scale_factor,
@@ -129,21 +140,22 @@ fn render_frame<S: PaintScene>(
     }
 }
 
-fn draw_text<S: PaintScene>(scene: &mut S, text: &TextRenderLayout) {
+fn draw_text<S: PaintScene>(scene: &mut S, text: &TextRenderLayout, transform: Affine) {
     for (rect, brush) in &text.backgrounds {
         scene.fill(
             Fill::NonZero,
-            text.transform,
+            transform * text.transform,
             BrushRef::from(brush),
             None,
             rect,
         );
     }
-    draw_layout(text.transform, &text.layout, scene);
+    draw_layout(transform * text.transform, &text.layout, scene);
 }
 
 fn draw_image<S: PaintScene>(
     scene: &mut S,
+    view_transform: Affine,
     image_data: &mut HashMap<u64, (peniko::ImageData, f32, f32)>,
     scale_factor: f64,
     cache_key: u64,
@@ -189,18 +201,19 @@ fn draw_image<S: PaintScene>(
         let area_height = area.height as f64 * scale_factor;
         let mut scale = 1.;
 
-        let transform = if unlocked_aspect_ratio {
-            Affine::IDENTITY
-                .then_scale_non_uniform(area_width / width, area_height / height)
-                .then_translate(Vec2::new(area_x, area_y))
-        } else {
-            scale = (area_width / width).min(area_height / height);
-            let dx = area_x + (area_width - width * scale) / 2.0;
-            let dy = area_y + (area_height - height * scale) / 2.0;
-            Affine::IDENTITY
-                .then_scale(scale)
-                .then_translate(Vec2::new(dx, dy))
-        };
+        let transform = view_transform
+            * if unlocked_aspect_ratio {
+                Affine::IDENTITY
+                    .then_scale_non_uniform(area_width / width, area_height / height)
+                    .then_translate(Vec2::new(area_x, area_y))
+            } else {
+                scale = (area_width / width).min(area_height / height);
+                let dx = area_x + (area_width - width * scale) / 2.0;
+                let dy = area_y + (area_height - height * scale) / 2.0;
+                Affine::IDENTITY
+                    .then_scale(scale)
+                    .then_translate(Vec2::new(dx, dy))
+            };
 
         scene.push_layer(
             Mix::Normal,
@@ -221,6 +234,7 @@ fn draw_image<S: PaintScene>(
 
 fn draw_svg<S: PaintScene>(
     scene: &mut S,
+    view_transform: Affine,
     svg_scenes: &mut HashMap<u64, (String, Scene, f32, f32)>,
     scale_factor: f64,
     cache_key: u64,
@@ -243,7 +257,7 @@ fn draw_svg<S: PaintScene>(
                 compose: Compose::SrcOver,
             },
             1.0,
-            Affine::IDENTITY,
+            view_transform,
             &Rect::from_origin_size(
                 Point::new(area_x, area_y),
                 Size::new(area_width, area_height),
@@ -254,18 +268,19 @@ fn draw_svg<S: PaintScene>(
     }
     scene.append_scene(
         svg_scene.clone(),
-        if unlocked_aspect_ratio {
-            Affine::IDENTITY
-                .then_scale_non_uniform(area_width / width, area_height / height)
-                .then_translate(Vec2::new(area_x, area_y))
-        } else {
-            let scale = (area_width / width).min(area_height / height);
-            let dx = area_x + (area_width - width * scale) / 2.0;
-            let dy = area_y + (area_height - height * scale) / 2.0;
-            Affine::IDENTITY
-                .then_scale(scale)
-                .then_translate(Vec2::new(dx, dy))
-        },
+        view_transform
+            * if unlocked_aspect_ratio {
+                Affine::IDENTITY
+                    .then_scale_non_uniform(area_width / width, area_height / height)
+                    .then_translate(Vec2::new(area_x, area_y))
+            } else {
+                let scale = (area_width / width).min(area_height / height);
+                let dx = area_x + (area_width - width * scale) / 2.0;
+                let dy = area_y + (area_height - height * scale) / 2.0;
+                Affine::IDENTITY
+                    .then_scale(scale)
+                    .then_translate(Vec2::new(dx, dy))
+            },
     );
     if let Some(fill) = fill {
         scene.push_layer(
@@ -274,7 +289,7 @@ fn draw_svg<S: PaintScene>(
                 compose: Compose::SrcIn,
             },
             1.0,
-            Affine::IDENTITY,
+            view_transform,
             &Rect::from_origin_size(
                 Point::new(area_x, area_y),
                 Size::new(area_width, area_height),
@@ -285,7 +300,7 @@ fn draw_svg<S: PaintScene>(
 
         scene.fill(
             Fill::NonZero,
-            Affine::IDENTITY,
+            view_transform,
             BrushRef::from(fill),
             None,
             &Rect::from_origin_size(
@@ -337,9 +352,8 @@ fn cached_svg_scene<'a>(
     svg_scenes.get(&cache_key).expect("cached svg")
 }
 
-fn draw_path<S: PaintScene>(scene: &mut S, path: &PathData, area: Area, scale_factor: f64) {
+fn draw_path<S: PaintScene>(scene: &mut S, path: &PathData, area: Area, scale: Affine) {
     let user_path = (path.builder)(area);
-    let scale = Affine::scale(scale_factor);
     let scaled_path = scale * &user_path;
 
     if path.fill.is_none() && path.stroke.is_none() {
@@ -426,6 +440,53 @@ mod tests {
 
     const FIRST: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>"#;
     const SECOND: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="5"><rect width="20" height="5"/></svg>"#;
+
+    #[test]
+    fn nested_rotation_scales_and_restores_drawing() {
+        use crate::*;
+        use anyrender::recording::RenderCommand;
+        use kurbo::Affine;
+        fn view<'a>(_: &'a (), app: &mut PaneState) -> View<'a, ()> {
+            row(vec![
+                rect(1)
+                    .fill(Color::from_rgb8(255, 255, 255))
+                    .build(app)
+                    .width(100.)
+                    .height(20.)
+                    .layer(-1)
+                    .rotate(90.)
+                    .rotate(90.),
+                rect(2)
+                    .fill(Color::from_rgb8(255, 255, 255))
+                    .build(app)
+                    .width(40.)
+                    .height(30.),
+            ])
+        }
+        let mut pane = PaneBuilder::new("rotation", view).build();
+        let (frame, effects) = pane.redraw(&mut (), 400, 300, 2.);
+        assert!(effects.is_empty());
+        let area = pane.elements[&1];
+        let center = Point::new(
+            (area.x + area.width / 2.) as f64,
+            (area.y + area.height / 2.) as f64,
+        );
+        let mut scene = Scene::default();
+        super::render_frame(&mut HashMap::new(), &mut HashMap::new(), &frame, &mut scene);
+        let fills: Vec<_> = scene
+            .commands
+            .iter()
+            .filter_map(|command| match command {
+                RenderCommand::Fill(fill) => Some(fill),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(fills.len(), 2);
+        let point = Point::new(area.x as f64 + 5., area.y as f64 + 7.);
+        let expected = Affine::scale(2.) * (center + (center - point));
+        assert!((fills[0].transform * point).distance(expected) < 1e-9);
+        assert_eq!(fills[1].transform, Affine::scale(2.));
+    }
 
     #[test]
     fn svg_cache_replaces_content_for_existing_key() {

@@ -6,6 +6,94 @@ fn test_pane<State: 'static>(builder: PaneBuilder<State>) -> crate::pane::Pane<S
 }
 
 #[test]
+fn rotation_preserves_layout_and_rotates_click_coordinates() {
+    #[derive(Default)]
+    struct State {
+        degrees: f64,
+        group_degrees: f64,
+        clicks: Vec<(Point, Point)>,
+        drags: Vec<DragPhase>,
+    }
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        row(vec![
+            rect(1)
+                .view()
+                .gesture(gesture::click(2).run(|state: &mut State, _, event| {
+                    if event.state == ClickPhase::Completed {
+                        state
+                            .clicks
+                            .push((event.location.local(), event.location.global()));
+                    }
+                }))
+                .gesture(gesture::drag(4).run(|state: &mut State, _, drag| state.drags.push(drag)))
+                .build(app)
+                .width(100.)
+                .height(20.)
+                .rotate(state.degrees),
+            rect(3).build(app).width(40.).height(30.),
+        ])
+        .rotate(state.group_degrees)
+    }
+    let mut state = State::default();
+    let mut pane = test_pane(PaneBuilder::new("rotation", view));
+    assert!(pane.redraw(&mut state, 400, 300, 2.).1.is_empty());
+    let target = pane.elements[&1];
+    let sibling = pane.elements[&3];
+    state.degrees = 45.;
+    assert!(pane.redraw(&mut state, 400, 300, 2.).1.is_empty());
+    assert_eq!(pane.elements[&1], target);
+    assert_eq!(pane.elements[&3], sibling);
+    let center = Point::new((target.x + 50.) as f64, (target.y + 10.) as f64);
+    let rotation = kurbo::Affine::translate(center.to_vec2())
+        * kurbo::Affine::rotate(std::f64::consts::FRAC_PI_4)
+        * kurbo::Affine::translate(-center.to_vec2());
+    let point = rotation * Point::new(target.x as f64 + 90., target.y as f64 + 5.);
+    assert!(pane.click(&mut state, point).is_empty());
+    assert_eq!(state.clicks.len(), 1);
+    assert!(state.clicks[0].0.distance(Point::new(90., 5.)) < 1e-9);
+    assert!(state.clicks[0].1.distance(point) < 1e-9);
+    assert!(
+        pane.click(&mut state, center + kurbo::Vec2::new(35., -35.))
+            .is_empty()
+    );
+    assert_eq!(state.clicks.len(), 1);
+    let start = rotation * Point::new(target.x as f64 + 10., target.y as f64 + 5.);
+    assert!(pane.drag(&mut state, start, point).is_empty());
+    let DragPhase::Updated {
+        start,
+        current,
+        delta,
+        current_global,
+        ..
+    } = state.drags[1]
+    else {
+        panic!("drag update missing")
+    };
+    assert!(start.distance(Point::new(10., 5.)) < 1e-9);
+    assert!(current.distance(Point::new(90., 5.)) < 1e-9);
+    assert!(delta.distance(Point::new(80., 0.)) < 1e-9);
+    assert!(current_global.distance(point) < 1e-9);
+    state.group_degrees = 90.;
+    assert!(pane.redraw(&mut state, 400, 300, 2.).1.is_empty());
+    let group_center = Point::new(100., 75.).to_vec2();
+    let group_rotation = kurbo::Affine::translate(group_center)
+        * kurbo::Affine::rotate(std::f64::consts::FRAC_PI_2)
+        * kurbo::Affine::translate(-group_center);
+    let location = pane.location(1).expect("rotated target present");
+    assert!(location.distance(group_rotation * center) < 1e-9);
+    assert!(pane.click(&mut state, location).is_empty());
+    assert!(
+        state
+            .clicks
+            .last()
+            .unwrap()
+            .0
+            .distance(Point::new(50., 10.))
+            < 1e-9
+    );
+}
+
+#[test]
 fn dropdown_expands_and_selects_an_option() {
     struct State {
         dropdown: DropdownState<&'static str>,
@@ -1971,6 +2059,7 @@ fn text_field_focus_does_not_move_text_layout() {
 fn text_field_click_uses_rendered_text_origin() {
     struct State {
         text: TextState,
+        degrees: f64,
     }
 
     const FIELD: u64 = 83;
@@ -1980,32 +2069,44 @@ fn text_field_click_uses_rendered_text_origin() {
             .build(app)
             .width(180.)
             .height(44.)
+            .rotate(state.degrees)
     }
 
-    let mut state = State {
-        text: TextState::new("idle hue"),
-    };
-    let mut pane = test_pane(PaneBuilder::new("test", view));
-    let (frame, _) = pane.redraw(&mut state, 300, 200, 1.0);
-    let editor_area = pane.pane_state.editor_areas[&FIELD];
-    let origin = frame
-        .items
-        .iter()
-        .find_map(|item| match item {
-            crate::render::RenderItem::Layout { transform, .. } => {
-                let coeffs = transform.as_coeffs();
-                Some((coeffs[4], coeffs[5]))
-            }
-            _ => None,
-        })
-        .expect("text layout rendered");
-    let click_x = (origin.0 - 5.).max(editor_area.x as f64 + 1.);
-    let click_y = origin.1 + 5.;
+    for degrees in [0., 45., 90.] {
+        let mut state = State {
+            text: TextState::new("idle hue"),
+            degrees,
+        };
+        let mut pane = test_pane(PaneBuilder::new("test", view));
+        let (frame, _) = pane.redraw(&mut state, 300, 200, 1.0);
+        let editor_area = pane.pane_state.editor_areas[&FIELD];
+        let origin = frame
+            .items
+            .iter()
+            .find_map(|item| match item {
+                crate::render::RenderItem::Layout { transform, .. } => {
+                    let coeffs = transform.as_coeffs();
+                    Some((coeffs[4], coeffs[5]))
+                }
+                _ => None,
+            })
+            .expect("text layout rendered");
+        let click_x = (origin.0 - 5.).max(editor_area.x as f64 + 1.);
+        let click_y = origin.1 + 5.;
 
-    pane.click(&mut state, Point::new(click_x, click_y));
-    pane.key_pressed(&mut state, "x");
+        let area = pane.elements[&FIELD];
+        let center = crate::gestures::regions::area_rect(area).center().to_vec2();
+        let rotation = kurbo::Affine::translate(center)
+            * kurbo::Affine::rotate(degrees.to_radians())
+            * kurbo::Affine::translate(-center);
+        assert!(
+            pane.click(&mut state, rotation * Point::new(click_x, click_y))
+                .is_empty()
+        );
+        pane.key_pressed(&mut state, "x");
 
-    assert_eq!(state.text.text, "xidle hue");
+        assert_eq!(state.text.text, "xidle hue");
+    }
 }
 
 #[test]

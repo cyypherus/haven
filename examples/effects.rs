@@ -29,7 +29,8 @@ fn main() {
                                     .build(app)
                                     .width(120.)
                                     .height(80.)
-                                    .shadow((12., 12.), 6., Color::BLACK),
+                                    .shadow((12., 12.), 6., Color::BLACK)
+                                    .rotate(-10.),
                             ],
                         ),
                     ],

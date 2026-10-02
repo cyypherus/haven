@@ -20,6 +20,8 @@ pub enum RenderItem {
         filter: Option<std::sync::Arc<anyrender::Filter>>,
     },
     PopLayer,
+    PushTransform(Affine),
+    PopTransform,
     Text(TextRenderLayout),
     Layout {
         layout: TextLayout<Brush>,

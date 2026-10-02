@@ -1132,13 +1132,19 @@ impl<'a, State> TextField<'a, State> {
                                         wrap,
                                     );
                                     let ts = binding.get_mut(state);
+                                    let inset = if editable { padding } else { 0. };
+                                    let origin = kurbo::Vec2::new(
+                                        (editor_area.x - inset) as f64,
+                                        (editor_area.y - inset) as f64,
+                                    );
                                     match drag {
-                                        DragPhase::Began { start_global, .. } => {
+                                        DragPhase::Began { start, .. } => {
+                                            let start_in_layout = start + origin;
                                             let point = text_field_local_point(
                                                 &mut ts.editor,
                                                 editor_area,
                                                 ts.viewport,
-                                                start_global,
+                                                start_in_layout,
                                                 alignment,
                                                 vertical_alignment,
                                                 wrap,
@@ -1154,21 +1160,22 @@ impl<'a, State> TextField<'a, State> {
                                                 &mut app.font_cx,
                                             );
                                         }
-                                        DragPhase::Updated { current_global, .. } => {
+                                        DragPhase::Updated { current, .. } => {
+                                            let current_in_layout = current + origin;
                                             let mut viewport = ts.viewport;
                                             let right = editor_area.x + editor_area.width;
                                             let bottom = editor_area.y + editor_area.height;
-                                            if current_global.x < editor_area.x as f64 {
+                                            if current_in_layout.x < editor_area.x as f64 {
                                                 viewport.x -=
-                                                    editor_area.x - current_global.x as f32;
-                                            } else if current_global.x > right as f64 {
-                                                viewport.x += current_global.x as f32 - right;
+                                                    editor_area.x - current_in_layout.x as f32;
+                                            } else if current_in_layout.x > right as f64 {
+                                                viewport.x += current_in_layout.x as f32 - right;
                                             }
-                                            if current_global.y < editor_area.y as f64 {
+                                            if current_in_layout.y < editor_area.y as f64 {
                                                 viewport.y -=
-                                                    editor_area.y - current_global.y as f32;
-                                            } else if current_global.y > bottom as f64 {
-                                                viewport.y += current_global.y as f32 - bottom;
+                                                    editor_area.y - current_in_layout.y as f32;
+                                            } else if current_in_layout.y > bottom as f64 {
+                                                viewport.y += current_in_layout.y as f32 - bottom;
                                             }
 
                                             let (content_width, content_height) =
@@ -1190,7 +1197,7 @@ impl<'a, State> TextField<'a, State> {
                                                 &mut ts.editor,
                                                 editor_area,
                                                 ts.viewport,
-                                                current_global,
+                                                current_in_layout,
                                                 alignment,
                                                 vertical_alignment,
                                                 wrap,
@@ -1203,16 +1210,15 @@ impl<'a, State> TextField<'a, State> {
                                             );
                                         }
                                         DragPhase::Completed {
-                                            current_global,
-                                            distance,
-                                            ..
+                                            current, distance, ..
                                         } => {
+                                            let current_in_layout = current + origin;
                                             if distance > 0.0 {
                                                 let point = text_field_local_point(
                                                     &mut ts.editor,
                                                     editor_area,
                                                     ts.viewport,
-                                                    current_global,
+                                                    current_in_layout,
                                                     alignment,
                                                     vertical_alignment,
                                                     wrap,
@@ -1254,6 +1260,12 @@ impl<'a, State> TextField<'a, State> {
                                         );
                                     };
 
+                                    let inset = if editable { padding } else { 0. };
+                                    let point_in_layout = event.location.local()
+                                        + kurbo::Vec2::new(
+                                            (editor_area.x - inset) as f64,
+                                            (editor_area.y - inset) as f64,
+                                        );
                                     match (event.button, event.state) {
                                         (MouseButton::Left, ClickPhase::Started) => {}
                                         (MouseButton::Left, ClickPhase::Completed) => {
@@ -1266,7 +1278,7 @@ impl<'a, State> TextField<'a, State> {
                                                 &mut ts.editor,
                                                 editor_area,
                                                 ts.viewport,
-                                                event.location.global(),
+                                                point_in_layout,
                                                 alignment,
                                                 vertical_alignment,
                                                 wrap,
@@ -1289,7 +1301,8 @@ impl<'a, State> TextField<'a, State> {
                                             }
                                             style_for_edit(state);
                                             let ts = binding.get_mut(state);
-                                            if let Some(pos) = app.cursor_position {
+                                            if app.cursor_position.is_some() {
+                                                let pos = point_in_layout;
                                                 let point = text_field_local_point(
                                                     &mut ts.editor,
                                                     editor_area,
@@ -1310,7 +1323,7 @@ impl<'a, State> TextField<'a, State> {
                                                 &mut ts.editor,
                                                 editor_area,
                                                 ts.viewport,
-                                                event.location.global(),
+                                                point_in_layout,
                                                 alignment,
                                                 vertical_alignment,
                                                 wrap,
