@@ -84,6 +84,7 @@ Examples can be run directly with `cargo run --example <name>`.
 - `image`: Loading and drawing image content
 - `async`: Waking panes from async callbacks
 - `productivity`: A larger app-shaped example
+- `effects`: Blur and drop shadows
 
 ## Status
 
