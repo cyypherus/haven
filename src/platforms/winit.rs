@@ -136,9 +136,9 @@ type SelectedWindowRenderer = anyrender_skia::SkiaWindowRenderer;
 
 #[cfg(feature = "renderer-vello")]
 fn window_renderer() -> SelectedWindowRenderer {
-    let mut options = anyrender_vello::VelloRendererOptions::default();
-    options.base_color = crate::TRANSPARENT;
-    anyrender_vello::VelloWindowRenderer::with_options(options)
+    anyrender_vello::VelloWindowRenderer::with_options(
+        anyrender_vello::VelloRendererOptions::new().base_color(crate::TRANSPARENT),
+    )
 }
 
 #[cfg(feature = "renderer-vello-cpu")]

@@ -92,8 +92,8 @@ platform-winit = ["dep:winit", "dep:anyrender_svg"]
 [dev-dependencies]
 arboard = "3.4"
 insta = "1.42.1"
-public-api = "0.51.0"
-reqwest = { version = "0.12", features = ["json"] }
+public-api = "0.52.2"
+reqwest = { version = "0.13.5", features = ["json"] }
 rustdoc-json = "0.9.9"
 rustup-toolchain = "0.1.9"
 serde = { version = "1.0", features = ["derive"] }
