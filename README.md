@@ -8,7 +8,7 @@
 
 Haven handles windowing, layout, rendering, state, and user interaction for native Rust apps.
 
-Built with [winit](https://github.com/rust-windowing/winit), [backer](https://github.com/cyypherus/backer), [anyrender](https://github.com/dioxuslabs/anyrender), and [parley](https://github.com/linebender/parley).
+Built with [winit](https://github.com/rust-windowing/winit), [backer](https://github.com/cyypherus/backer), [anyrender](https://github.com/cyypherus/anyrender), and [parley](https://github.com/linebender/parley).
 
 _This library is functional but experimental. API stability is not a goal at this stage & it is likely you will encounter bugs._
 
@@ -19,8 +19,7 @@ _This library is functional but experimental. API stability is not a goal at thi
 - App runtime: Winit integration for running panes
 - Multiple windows: Run more than one pane from the same app
 - Headless interaction: Drive panes directly for automated testing
-- Rendering: AnyRender with Vello Hybrid by default; Vello CPU, classic Vello, and Skia are optional backends
-- Effects: Gaussian blur and alpha-based drop shadows on views and groups
+- Rendering: Anyrender with Vello by default
 - Interaction: Gestures, text editing, scrolling, buttons, toggles, sliders, and dropdowns
 
 > [!WARNING]
@@ -74,35 +73,6 @@ fn main() {
 }
 ```
 
-## Effects
-
-Apply effects to a built view, including text, paths, images, or a group of views:
-
-```rust
-text(id!(), "Haven")
-    .fill(Color::WHITE)
-    .build(app)
-    .shadow((12., 12.), 6., Color::BLACK)
-    .blur(2.)
-```
-
-`.blur(radius)` applies a Gaussian blur. `.shadow((x, y), blur, color)` draws a shadow from the
-content's alpha and retains the original content. Blur values are Gaussian standard deviations in
-logical pixels; offsets also use logical pixels. Negative blur values become zero, and non-finite
-blur values or offsets panic.
-
-Effects compose in call order and do not change layout or hit regions. They can extend beyond the
-view's layout bounds; use `.clipped(...)` to constrain them.
-
-The default `renderer-vello-hybrid` backend runs blur and shadow filters on the GPU.
-`renderer-vello-cpu` and `renderer-skia` also support these filters. Classic `renderer-vello`
-ignores them. To select another backend, disable default features and enable exactly one renderer
-feature, for example:
-
-```sh
-cargo run --no-default-features --features renderer-vello-cpu --example effects
-```
-
 ## Examples
 
 Examples can be run directly with `cargo run --example <name>`.
@@ -114,7 +84,6 @@ Examples can be run directly with `cargo run --example <name>`.
 - `image`: Loading and drawing image content
 - `async`: Waking panes from async callbacks
 - `productivity`: A larger app-shaped example
-- `effects`: Gaussian blur and drop shadows on text and rounded rectangles
 
 ## Status
 
