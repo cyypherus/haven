@@ -4,15 +4,13 @@ use crate::gestures::{
     regions::{area_rect, subtract, valid_rect},
 };
 use crate::prebuilts::TextEditCommand;
-use crate::render::{Effect, Frame, RenderItem};
+use crate::render::{Frame, RenderItem};
 
 use crate::primitives::TextLayout;
 use crate::view::DrawableType;
-use crate::{
-    ClickPhase, DragPhase, ImageSource, Key, KeyPhase, Modifiers, MouseButton, Point, RUBIK_FONT,
-};
+use crate::{ClickPhase, DragPhase, Key, KeyPhase, Modifiers, MouseButton, Point, RUBIK_FONT};
 use backer::{Area, Layout};
-use kurbo::{Rect, RoundedRect, Shape};
+use kurbo::Rect;
 use parley::fontique::Blob;
 use parley::fontique::FontInfoOverride;
 use parley::{FontContext, LayoutContext};
@@ -74,8 +72,6 @@ pub struct Pane<State> {
     pressed_buttons: Vec<MouseButton>,
     pub(crate) elements: HashMap<u64, Area>,
     edit_handlers: HashMap<u64, EditHandler<State>>,
-    images: HashMap<u64, Option<peniko::ImageData>>,
-    svg_sizes: HashMap<u64, (String, Option<(f32, f32)>)>,
     hovered: HashSet<GestureId>,
     cursor_position: Option<Point>,
     gesture_state: GestureState,
@@ -450,8 +446,6 @@ impl<State: 'static> Pane<State> {
             pressed_buttons: Vec::new(),
             elements: HashMap::new(),
             edit_handlers: HashMap::new(),
-            images: HashMap::new(),
-            svg_sizes: HashMap::new(),
             hovered: HashSet::new(),
             cursor_position: None,
             gesture_state: GestureState::None,
@@ -629,115 +623,31 @@ impl<State: 'static> Pane<State> {
                             RenderItem::Layout { layout, transform }
                         }
                         DrawableType::Path(path) => RenderItem::Path {
-                            path: (path.builder)(draw_area),
-                            fill: if path.fill.is_none() && path.stroke.is_none() {
-                                Some(Brush::Solid(Color::BLACK))
-                            } else {
-                                path.fill
-                                    .as_ref()
-                                    .map(|brush| brush.resolve(draw_area, &()))
-                            },
-                            stroke: path.stroke.as_ref().map(|(brush, stroke)| {
-                                (brush.resolve(draw_area, &()), stroke.clone())
-                            }),
+                            path,
                             area: draw_area,
                         },
-                        DrawableType::Svg(svg) => {
-                            let resource_id = svg.cache_key();
-                            if self
-                                .svg_sizes
-                                .get(&resource_id)
-                                .is_none_or(|(content, _)| content != &svg.content)
-                            {
-                                let size = usvg::Tree::from_data(
-                                    svg.content.as_bytes(),
-                                    &usvg::Options::default(),
-                                )
-                                .map(|tree| (tree.size().width(), tree.size().height()))
-                                .map_err(|err| eprintln!("Loading svg failed: {err}"))
-                                .ok();
-                                self.svg_sizes
-                                    .insert(resource_id, (svg.content.clone(), size));
-                            }
-                            let Some((width, height)) = self.svg_sizes[&resource_id].1 else {
-                                continue;
-                            };
-                            RenderItem::Svg {
-                                resource_id,
-                                content: svg.content,
-                                fill: svg.fill,
-                                area: if svg.unlocked_aspect_ratio {
-                                    draw_area
-                                } else {
-                                    fit_area(draw_area, width, height)
-                                },
-                            }
-                        }
-                        DrawableType::Image(image) => {
-                            let resource_id = image.cache_key();
-                            let cached = self.images.entry(resource_id).or_insert_with(|| {
-                                load_image(&image.source)
-                                    .map_err(|err| eprintln!("Loading image failed: {err}"))
-                                    .ok()
-                            });
-                            let Some(cached) = cached else { continue };
-                            let area = if image.unlocked_aspect_ratio {
-                                draw_area
-                            } else {
-                                fit_area(draw_area, cached.width as f32, cached.height as f32)
-                            };
-                            items.push(RenderItem::PushLayer {
-                                path: RoundedRect::from_rect(
-                                    area_rect(area),
-                                    image.corner_rounding as f64,
-                                )
-                                .to_path(0.1),
-                                blend: peniko::BlendMode::default(),
-                                alpha: 1.,
-                                effect: None,
-                            });
-                            items.push(RenderItem::Image {
-                                image: cached.clone(),
-                                area,
-                            });
-                            RenderItem::PopLayer
-                        }
+                        DrawableType::Svg(svg) => RenderItem::Svg {
+                            svg,
+                            area: draw_area,
+                        },
+                        DrawableType::Image(image) => RenderItem::Image {
+                            image,
+                            area: draw_area,
+                        },
                         DrawableType::Shadow(shadow) => RenderItem::Shadow {
-                            rect: shadow.rect(draw_area, self.pane_state.scale_factor),
-                            color: shadow.color,
-                            blur: shadow.blur * self.pane_state.scale_factor,
-                            corner_rounding: shadow.corner_rounding * self.pane_state.scale_factor,
+                            shadow,
+                            area: draw_area,
                         },
                         DrawableType::PushLayer {
                             path,
                             blend,
                             alpha,
-                            effect,
+                            filter,
                         } => RenderItem::PushLayer {
-                            path: if effect.is_some() {
-                                area_rect(pane_area).to_path(0.1)
-                            } else {
-                                path
-                            },
+                            path,
                             blend,
                             alpha,
-                            effect: effect.map(|effect| {
-                                let scale = self.pane_state.scale_factor;
-                                match effect {
-                                    Effect::Blur { radius } => Effect::Blur {
-                                        radius: radius * scale as f32,
-                                    },
-                                    Effect::DropShadow {
-                                        offset,
-                                        blur,
-                                        color,
-                                    } => Effect::DropShadow {
-                                        offset: offset * scale,
-                                        blur: blur * scale as f32,
-                                        color,
-                                    },
-                                }
-                            }),
+                            filter,
                         },
                         DrawableType::PopLayer => RenderItem::PopLayer,
                     };
@@ -1374,38 +1284,4 @@ impl<State: 'static> Pane<State> {
         self.dispatch_text_edit_lifecycle_events(state);
         self.take_effects()
     }
-}
-
-fn fit_area(area: Area, width: f32, height: f32) -> Area {
-    let scale = (area.width / width).min(area.height / height);
-    let width = width * scale;
-    let height = height * scale;
-    Area {
-        x: area.x + (area.width - width) / 2.,
-        y: area.y + (area.height - height) / 2.,
-        width,
-        height,
-    }
-}
-
-fn load_image(source: &ImageSource) -> Result<peniko::ImageData, Box<dyn std::error::Error>> {
-    let image = match source {
-        ImageSource::Path(path) => image::open(path)?,
-        ImageSource::Bytes(bytes) => image::load_from_memory(bytes)?,
-        ImageSource::Buffer(width, height, pixels) => image::DynamicImage::ImageRgba8(
-            image::RgbaImage::from_raw(*width, *height, pixels.as_ref().clone())
-                .ok_or("image buffer dimensions do not match its length")?,
-        ),
-    }
-    .into_rgba8();
-    if image.width() == 0 || image.height() == 0 {
-        return Err("image dimensions must be positive".into());
-    }
-    Ok(peniko::ImageData {
-        width: image.width(),
-        height: image.height(),
-        data: peniko::Blob::new(Arc::new(image.into_raw())),
-        format: peniko::ImageFormat::Rgba8,
-        alpha_type: peniko::ImageAlphaType::Alpha,
-    })
 }

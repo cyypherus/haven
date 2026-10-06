@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")"
-engine="$PWD/target/egor"
+engine="$PWD/target/egor-$(shasum -a 256 wgpu-29.patch | cut -c1-12)"
 if [ ! -d "$engine" ]; then
     mkdir -p target
     checkout=$(mktemp -d "$PWD/target/egor.XXXXXX")
@@ -11,5 +11,5 @@ if [ ! -d "$engine" ]; then
     git -C "$checkout" apply "$PWD/wgpu-29.patch"
     mv "$checkout" "$engine"
 fi
-exec cargo run --locked --manifest-path "$PWD/Cargo.toml" --target-dir "$PWD/../../target" \
+exec cargo run --manifest-path "$PWD/Cargo.toml" --target-dir "$PWD/../../target" \
     --config "patch.crates-io.egor_render.path=\"$engine/crates/egor_render\"" "$@"

@@ -5,21 +5,13 @@ edition = "2024"
 publish = false
 
 [dependencies]
-haven = { package = "haven-ui", path = "../..", default-features = false }
-anyrender = "0.13.0"
+haven = { package = "haven-ui", path = "../..", default-features = false, features = ["paint-anyrender"] }
 anyrender_vello_hybrid = "0.10.0"
 wgpu_context = "0.9.0"
 rustc-hash = "2"
-anyrender_svg = "0.14.0"
-kurbo = "0.13.0"
-parley = "0.11.1"
-peniko = "0.6.0"
 vello_hybrid = "0.1.0"
 vello_common = "0.1.0"
 wgpu = "29.0.3"
 egor_app = "0.10.0"
 egor_render = "0.10.0"
 winit = "0.30.12"
-
-pollster = "0.4.0"
-image = { version = "0.25", default-features = false, features = ["png"] }

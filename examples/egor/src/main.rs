@@ -7,10 +7,9 @@ use egor_app::{
 use egor_render::{
     MemoryHints, Renderer,
     batch::GeometryBatch,
-    target::{Backbuffer, OffscreenTarget, RenderTarget},
+    target::{Backbuffer, RenderTarget},
     vertex::Vertex,
 };
-use haven::render::FramePainter;
 use haven::*;
 use haven_gpu::Painter;
 use std::sync::Arc;
@@ -113,7 +112,6 @@ impl Default for Demo {
 struct EgorSurface {
     renderer: Renderer,
     haven: Painter,
-    overlay_pipeline: wgpu::RenderPipeline,
     backbuffer: Backbuffer,
     crabs: GeometryBatch,
 }
@@ -251,36 +249,7 @@ impl EgorSurface {
             self.renderer
                 .draw_batch(&mut pass, &mut self.crabs, None, None);
         }
-        let ui = self.haven.paint(frame);
-        let bindings = self
-            .renderer
-            .device()
-            .create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("Haven overlay"),
-                layout: &self.overlay_pipeline.get_bind_group_layout(0),
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&ui),
-                }],
-            });
-        let mut pass = target
-            .encoder
-            .begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Haven overlay"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &target.view,
-                    resolve_target: None,
-                    depth_slice: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                ..Default::default()
-            });
-        pass.set_pipeline(&self.overlay_pipeline);
-        pass.set_bind_group(0, &bindings, &[]);
-        pass.draw(0..3, 0..1);
+        self.haven.paint(frame, &mut target.encoder, &target.view);
     }
 }
 
@@ -298,50 +267,16 @@ impl AppHandler<EgorSurface> for Demo {
             width,
             height,
         );
-        let shader = renderer
-            .device()
-            .create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("Haven overlay"),
-                source: wgpu::ShaderSource::Wgsl(include_str!("overlay.wgsl").into()),
-            });
-        let overlay_pipeline =
-            renderer
-                .device()
-                .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                    label: Some("Haven overlay"),
-                    layout: None,
-                    vertex: wgpu::VertexState {
-                        module: &shader,
-                        entry_point: Some("vertex"),
-                        buffers: &[],
-                        compilation_options: Default::default(),
-                    },
-                    fragment: Some(wgpu::FragmentState {
-                        module: &shader,
-                        entry_point: Some("fragment"),
-                        targets: &[Some(wgpu::ColorTargetState {
-                            format: backbuffer.format(),
-                            blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                            write_mask: wgpu::ColorWrites::ALL,
-                        })],
-                        compilation_options: Default::default(),
-                    }),
-                    primitive: Default::default(),
-                    depth_stencil: None,
-                    multisample: Default::default(),
-                    multiview_mask: None,
-                    cache: None,
-                });
         let haven = Painter::new(
             renderer.instance(),
             renderer.adapter(),
             renderer.device(),
             renderer.queue(),
+            backbuffer.format(),
         );
         EgorSurface {
             renderer,
             haven,
-            overlay_pipeline,
             backbuffer,
             crabs: GeometryBatch::new(4096, 12288),
         }
@@ -457,10 +392,6 @@ fn apply_pane_effects(window: &Window, effects: Vec<PaneEffect>) {
 }
 
 fn main() {
-    if std::env::args().nth(1).as_deref() == Some("--capture") {
-        capture();
-        return;
-    }
     AppRunner::new(
         Demo::default(),
         AppConfig {
@@ -473,119 +404,6 @@ fn main() {
         },
     )
     .run();
-}
-
-fn capture() {
-    let started = std::time::Instant::now();
-    let event_loop = winit::event_loop::EventLoop::new().expect("capture event loop");
-    #[allow(deprecated)]
-    let window = Arc::new(
-        event_loop
-            .create_window(
-                Window::default_attributes()
-                    .with_visible(false)
-                    .with_inner_size(winit::dpi::PhysicalSize::new(64, 64)),
-            )
-            .expect("capture window"),
-    );
-    let mut demo = Demo::default();
-    let mut surface = pollster::block_on(demo.with_resource(window));
-    assert_ne!(surface.backbuffer.size(), (1536, 960));
-    assert_ne!(
-        surface.renderer.adapter().get_info().device_type,
-        wgpu::DeviceType::Cpu
-    );
-    let mut target = OffscreenTarget::new(
-        surface.renderer.device(),
-        1536,
-        960,
-        surface.backbuffer.format(),
-    );
-    let mut previous = None;
-    for (time, name) in [(0., "haven-in-egor.png"), (3., "haven-in-egor-next.png")] {
-        let (frame, effects) = demo.pane.redraw(&mut demo.controls, 1536, 960, 1.5);
-        assert!(effects.is_empty());
-        let mut gpu_frame = surface
-            .renderer
-            .begin_frame(&mut target)
-            .expect("offscreen frame");
-        surface.render(&frame, time, &mut gpu_frame);
-        let buffer = surface
-            .renderer
-            .device()
-            .create_buffer(&wgpu::BufferDescriptor {
-                label: Some("GPU capture readback"),
-                size: 6144 * 960,
-                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-                mapped_at_creation: false,
-            });
-        gpu_frame.encoder.copy_texture_to_buffer(
-            gpu_frame.view.texture().as_image_copy(),
-            wgpu::TexelCopyBufferInfo {
-                buffer: &buffer,
-                layout: wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(6144),
-                    rows_per_image: None,
-                },
-            },
-            gpu_frame.view.texture().size(),
-        );
-        surface.renderer.end_frame(gpu_frame);
-        let (sender, receiver) = std::sync::mpsc::channel();
-        buffer
-            .slice(..)
-            .map_async(wgpu::MapMode::Read, move |result| {
-                sender.send(result).expect("deliver readback");
-            });
-        surface
-            .renderer
-            .device()
-            .poll(wgpu::PollType::wait_indefinitely())
-            .expect("wait for capture");
-        receiver
-            .recv()
-            .expect("readback callback")
-            .expect("map capture");
-        let mut bytes = buffer.slice(..).get_mapped_range().to_vec();
-        if matches!(
-            target.format(),
-            wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb
-        ) {
-            for pixel in bytes.chunks_exact_mut(4) {
-                pixel.swap(0, 2);
-            }
-        }
-        assert!(bytes.chunks_exact(4).all(|pixel| pixel[3] == 255));
-        assert!(
-            bytes
-                .chunks_exact(4)
-                .any(|pixel| pixel[0] > 220 && pixel[1] < 180 && pixel[2] < 140)
-        );
-        assert!(
-            bytes
-                .chunks_exact(4)
-                .any(|pixel| pixel == [255, 255, 255, 255])
-        );
-        if let Some(previous) = &previous {
-            assert_ne!(previous, &bytes, "crabs move between frames");
-        }
-        std::fs::create_dir_all("target").expect("capture directory");
-        image::save_buffer(
-            format!("target/{name}"),
-            &bytes,
-            1536,
-            960,
-            image::ColorType::Rgba8,
-        )
-        .expect("save capture");
-        previous = Some(bytes);
-    }
-    eprintln!(
-        "stabs: gpu={:?}, readback_bytes=11796480, cpu_frame_pixel_upload_bytes=0, wall_ms={:.3}",
-        surface.renderer.adapter().get_info().device_type,
-        started.elapsed().as_secs_f64() * 1000.
-    );
 }
 
 #[cfg(test)]
