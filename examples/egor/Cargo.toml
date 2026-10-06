@@ -13,5 +13,5 @@ vello_hybrid = "0.1.0"
 vello_common = "0.1.0"
 wgpu = "29.0.3"
 egor_app = "0.10.0"
-egor_render = "0.10.0"
+egor_render = { git = "https://github.com/cyypherus/egor", rev = "50e0a0e952db88a788b5162de6311bfd09fa7046" }
 winit = "0.30.12"
