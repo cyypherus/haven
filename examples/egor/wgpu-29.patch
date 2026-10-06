@@ -1,0 +1,140 @@
+diff --git a/crates/egor_render/Cargo.toml b/crates/egor_render/Cargo.toml
+index 5ee5902..afd4bb3 100644
+--- a/crates/egor_render/Cargo.toml
++++ b/crates/egor_render/Cargo.toml
+@@ -21,22 +21,22 @@ image = { version = "0.25.6", default-features = false, features = ["png"] }
+ 
+ 
+ [target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies]
+-wgpu = { version = "25.0.0", default-features = false, features = [
++wgpu = { version = "29.0.3", default-features = false, features = [
+     "wgsl",
+     "vulkan",
+ ] }
+ [target.'cfg(target_os = "windows")'.dependencies]
+-wgpu = { version = "25.0.0", default-features = false, features = [
++wgpu = { version = "29.0.3", default-features = false, features = [
+     "wgsl",
+     "dx12",
+ ] }
+ [target.'cfg(target_os = "macos")'.dependencies]
+-wgpu = { version = "25.0.0", default-features = false, features = [
++wgpu = { version = "29.0.3", default-features = false, features = [
+     "wgsl",
+     "metal",
+ ] }
+ [target.'cfg(target_arch = "wasm32")'.dependencies]
+-wgpu = { version = "25.0.0", default-features = false, features = [
++wgpu = { version = "29.0.3", default-features = false, features = [
+     "wgsl",
+     "webgpu",
+ ] }
+diff --git a/crates/egor_render/src/lib.rs b/crates/egor_render/src/lib.rs
+index eb5bdc0..83322d3 100644
+--- a/crates/egor_render/src/lib.rs
++++ b/crates/egor_render/src/lib.rs
+@@ -58,7 +58,10 @@ impl Renderer {
+         window: impl Into<SurfaceTarget<'static>> + WindowHandle,
+         memory_hints: &MemoryHints,
+     ) -> Self {
+-        let instance = new_instance_with_webgpu_detection(&Default::default()).await;
++        let instance = new_instance_with_webgpu_detection(
++            wgpu::InstanceDescriptor::new_without_display_handle(),
++        )
++        .await;
+         let surface = instance.create_surface(window).unwrap();
+         let adapter = instance
+             .request_adapter(&RequestAdapterOptions {
+@@ -189,6 +192,7 @@ impl Renderer {
+             color_attachments: &[Some(RenderPassColorAttachment {
+                 view,
+                 resolve_target: None,
++                depth_slice: None,
+                 ops: Operations {
+                     load: LoadOp::Clear(self.clear_color),
+                     store: StoreOp::Store,
+diff --git a/crates/egor_render/src/pipeline.rs b/crates/egor_render/src/pipeline.rs
+index 1feebff..e04352d 100644
+--- a/crates/egor_render/src/pipeline.rs
++++ b/crates/egor_render/src/pipeline.rs
+@@ -143,8 +143,8 @@ fn create_primitive_pipeline(
+ 
+     let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
+         label: Some("Primitive Pipeline Layout"),
+-        bind_group_layouts: &[texture_layout, camera_layout],
+-        push_constant_ranges: &[],
++        bind_group_layouts: &[Some(texture_layout), Some(camera_layout)],
++        immediate_size: 0,
+     });
+ 
+     device.create_render_pipeline(&RenderPipelineDescriptor {
+@@ -169,7 +169,7 @@ fn create_primitive_pipeline(
+             })],
+             compilation_options: Default::default(),
+         }),
+-        multiview: None,
++        multiview_mask: None,
+         cache: None,
+     })
+ }
+@@ -194,13 +194,13 @@ fn create_custom_pipeline(
+         source: ShaderSource::Wgsl(wgsl_source.into()),
+     });
+ 
+-    let mut layouts: Vec<&BindGroupLayout> = vec![texture_layout, camera_layout];
+-    layouts.extend(extra_layouts);
++    let mut layouts = vec![Some(texture_layout), Some(camera_layout)];
++    layouts.extend(extra_layouts.iter().copied().map(Some));
+ 
+     let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
+         label: Some("Custom Pipeline Layout"),
+         bind_group_layouts: &layouts,
+-        push_constant_ranges: &[],
++        immediate_size: 0,
+     });
+ 
+     device.create_render_pipeline(&RenderPipelineDescriptor {
+@@ -225,7 +225,7 @@ fn create_custom_pipeline(
+             })],
+             compilation_options: Default::default(),
+         }),
+-        multiview: None,
++        multiview_mask: None,
+         cache: None,
+     })
+ }
+diff --git a/crates/egor_render/src/target.rs b/crates/egor_render/src/target.rs
+index cd34cbb..4f7735c 100644
+--- a/crates/egor_render/src/target.rs
++++ b/crates/egor_render/src/target.rs
+@@ -1,7 +1,7 @@
+ use wgpu::{
+-    Adapter, CommandEncoder, Device, Extent3d, Instance, PresentMode, Surface,
+-    SurfaceConfiguration, SurfaceError, SurfaceTarget, Texture, TextureDescriptor,
+-    TextureDimension, TextureFormat, TextureUsages, TextureView, WindowHandle,
++    Adapter, CommandEncoder, CurrentSurfaceTexture, Device, Extent3d, Instance, PresentMode,
++    Surface, SurfaceConfiguration, SurfaceTarget, Texture, TextureDescriptor, TextureDimension,
++    TextureFormat, TextureUsages, TextureView, WindowHandle,
+ };
+ 
+ use crate::frame::Presentable;
+@@ -51,15 +51,16 @@ impl RenderTarget for Backbuffer {
+ 
+     fn acquire(&mut self, device: &Device) -> Option<(TextureView, Option<Box<dyn Presentable>>)> {
+         match self.surface.get_current_texture() {
+-            Ok(surface_texture) => {
++            CurrentSurfaceTexture::Success(surface_texture)
++            | CurrentSurfaceTexture::Suboptimal(surface_texture) => {
+                 let view = surface_texture.texture.create_view(&Default::default());
+                 Some((view, Some(Box::new(surface_texture))))
+             }
+-            Err(SurfaceError::Outdated) => {
++            CurrentSurfaceTexture::Outdated => {
+                 self.resize(device, self.config.width, self.config.height);
+                 None
+             }
+-            Err(e) => {
++            e => {
+                 eprintln!("Surface error: {:?}", e);
+                 None
+             }

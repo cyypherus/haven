@@ -5,7 +5,7 @@ use crate::{Key, Modifier, Modifiers, NamedKey};
 #[cfg(feature = "platform-winit")]
 use crate::pane::{Pane, PaneEffect};
 #[cfg(feature = "debug-overlay")]
-use crate::primitives::{PathData, text};
+use crate::primitives::text;
 #[cfg(feature = "debug-overlay")]
 use crate::render::Frame;
 #[cfg(feature = "debug-overlay")]
@@ -78,7 +78,11 @@ enum WinitEvent {
 }
 
 #[cfg(feature = "platform-winit")]
-use crate::renderers::anyrender::Renderer;
+use crate::frame_painter::Painter;
+#[cfg(feature = "platform-winit")]
+use crate::render::FramePainter;
+#[cfg(feature = "platform-winit")]
+use anyrender::{PaintScene, WindowRenderer};
 
 #[cfg(all(
     feature = "platform-winit",
@@ -163,7 +167,8 @@ pub struct WinitApp<State> {
 
 #[cfg(feature = "platform-winit")]
 struct WinitSurface<State> {
-    renderer: Renderer<SelectedWindowRenderer>,
+    renderer: SelectedWindowRenderer,
+    painter: Painter,
     window: Arc<WinitWindow>,
     pane: Pane<State>,
     #[cfg(feature = "debug-overlay")]
@@ -247,15 +252,12 @@ impl DebugOverlayState {
         };
 
         frame.items.push(crate::render::RenderItem::Path {
-            path: Box::new(PathData {
-                id: crate::const_hash(file!(), line!(), column!()),
-                builder: crate::primitives::shape::rect_path((5., 5., 5., 5.)),
-                fill: Some(Color::from_rgb8(0, 0, 0).with_alpha(0.68).into()),
-                stroke: Some((
-                    Color::from_rgb8(255, 255, 255).with_alpha(0.18).into(),
-                    Stroke::new(1.),
-                )),
-            }),
+            path: (crate::primitives::shape::rect_path((5., 5., 5., 5.)))(background_area),
+            fill: Some(Color::from_rgb8(0, 0, 0).with_alpha(0.68).into()),
+            stroke: Some((
+                Color::from_rgb8(255, 255, 255).with_alpha(0.18).into(),
+                Stroke::new(1.),
+            )),
             area: background_area,
         });
         frame.items.push(
@@ -444,7 +446,8 @@ impl<State: 'static> WinitApp<State> {
         let window = Arc::new(event_loop.create_window(attributes).unwrap());
         let size = window.inner_size();
         let window_id = window.id();
-        let renderer = Renderer::new(window_renderer(), window.clone(), size.width, size.height);
+        let mut renderer = window_renderer();
+        renderer.resume(window.clone(), size.width, size.height, || {});
 
         #[cfg(target_os = "windows")]
         window.set_visible(true);
@@ -461,6 +464,7 @@ impl<State: 'static> WinitApp<State> {
             window_id,
             WinitSurface {
                 renderer,
+                painter: Painter::default(),
                 window,
                 pane,
                 #[cfg(feature = "debug-overlay")]
@@ -517,8 +521,6 @@ impl<State: 'static> WinitApp<State> {
         let size = surface.window.inner_size();
         let width = size.width;
         let height = size.height;
-        surface.renderer.resize(width, height);
-
         let (frame, effects) = surface.pane.redraw(
             &mut self.state,
             width,
@@ -542,10 +544,7 @@ impl<State: 'static> WinitApp<State> {
             .debug_overlay
             .append_to(&mut frame, &mut surface.pane, target_frame_ms);
 
-        let window = surface.window.clone();
-        surface.renderer.render(&frame, || {
-            window.pre_present_notify();
-        });
+        surface.paint(&frame);
 
         #[cfg(feature = "debug-overlay")]
         surface.debug_overlay.finish_frame(frame_started);
@@ -728,5 +727,22 @@ fn mouse_button(value: winit::event::MouseButton) -> MouseButton {
         winit::event::MouseButton::Back => MouseButton::Back,
         winit::event::MouseButton::Forward => MouseButton::Forward,
         winit::event::MouseButton::Other(value) => MouseButton::Other(value),
+    }
+}
+
+#[cfg(feature = "platform-winit")]
+impl<State> FramePainter for WinitSurface<State> {
+    type Output = ();
+
+    fn paint(&mut self, frame: &crate::render::Frame) {
+        if !self.renderer.complete_resume() {
+            return;
+        }
+        self.renderer.set_size(frame.width, frame.height);
+        self.renderer.render(|scene| {
+            scene.reset();
+            self.painter.paint(frame, scene);
+            self.window.pre_present_notify();
+        });
     }
 }

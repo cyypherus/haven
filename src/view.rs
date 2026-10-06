@@ -5,14 +5,13 @@ use crate::gestures::{
 };
 use crate::pane::{EditHandler, PaneElement, PaneElementKind, PaneState, View};
 use crate::primitives::{Image, PathData, Shadow, Svg, Text};
+use crate::render::Effect;
 use crate::{Binding, OwnedBinding};
-use anyrender::{Filter, filters::FilterEffect};
 use backer::{Area, nodes::*};
 use kurbo::{Affine, BezPath, Vec2};
 use parley::Layout as TextLayout;
 use peniko::{self, Brush};
 use std::rc::Rc;
-use std::sync::Arc;
 
 // A simple const hash for our purposes.
 const FNV_OFFSET: u64 = 1469598103934665603;
@@ -165,7 +164,9 @@ impl<'a, State: 'static> Compositing<'a, State> for View<'a, State> {
             peniko::BlendMode::default(),
             1.,
             false,
-            Some(Arc::new(Filter::single(FilterEffect::blur(radius.max(0.))))),
+            Some(Effect::Blur {
+                radius: radius.max(0.),
+            }),
         )
     }
     fn shadow(self, offset: impl Into<Vec2>, blur: f32, color: crate::Color) -> Self {
@@ -179,12 +180,11 @@ impl<'a, State: 'static> Compositing<'a, State> for View<'a, State> {
             peniko::BlendMode::default(),
             1.,
             false,
-            Some(Arc::new(Filter::single(FilterEffect::drop_shadow(
-                dx,
-                dy,
-                blur.max(0.),
+            Some(Effect::DropShadow {
+                offset,
+                blur: blur.max(0.),
                 color,
-            )))),
+            }),
         )
     }
 }
@@ -195,7 +195,7 @@ fn wrap_layer<'a, State: 'static>(
     blend: peniko::BlendMode,
     alpha: f32,
     clip_gestures: bool,
-    filter: Option<Arc<Filter>>,
+    effect: Option<Effect>,
 ) -> View<'a, State> {
     draw(move |area, ctx| {
         let mut views = Vec::new();
@@ -205,7 +205,7 @@ fn wrap_layer<'a, State: 'static>(
                     path: path(area),
                     blend,
                     alpha,
-                    filter: filter.clone(),
+                    effect,
                 },
                 gestures: Vec::new(),
             }
@@ -279,7 +279,7 @@ pub(crate) enum DrawableType {
         path: BezPath,
         blend: peniko::BlendMode,
         alpha: f32,
-        filter: Option<Arc<Filter>>,
+        effect: Option<Effect>,
     },
     PopLayer,
 }
@@ -297,12 +297,12 @@ impl Clone for DrawableType {
                 path,
                 blend,
                 alpha,
-                filter,
+                effect,
             } => DrawableType::PushLayer {
                 path: path.clone(),
                 blend: *blend,
                 alpha: *alpha,
-                filter: filter.clone(),
+                effect: *effect,
             },
             DrawableType::PopLayer => DrawableType::PopLayer,
         }

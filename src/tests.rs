@@ -3450,3 +3450,210 @@ fn shadow_primitive_emits_render_item() {
             .any(|item| matches!(item, crate::render::RenderItem::Shadow { .. }))
     );
 }
+
+#[test]
+fn frame_resolves_svg_fit_stretch_and_changed_content() {
+    use crate::render::RenderItem;
+    use std::time::Instant;
+    let started = Instant::now();
+    let mut pane = PaneBuilder::new("test", |state: &(String, bool), ctx| {
+        let svg = svg(1, &state.0);
+        if state.1 {
+            svg.unlock_aspect_ratio()
+        } else {
+            svg
+        }
+        .finish(ctx)
+    })
+    .build();
+    let mut state = (
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="10"/>"#.to_owned(),
+        false,
+    );
+    for (content, stretch, expected) in [
+        (
+            state.0.clone(),
+            false,
+            Area {
+                x: 0.,
+                y: 25.,
+                width: 100.,
+                height: 50.,
+            },
+        ),
+        (
+            state.0.clone(),
+            true,
+            Area {
+                x: 0.,
+                y: 0.,
+                width: 100.,
+                height: 100.,
+            },
+        ),
+        (
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="20"/>"#.to_owned(),
+            false,
+            Area {
+                x: 25.,
+                y: 0.,
+                width: 50.,
+                height: 100.,
+            },
+        ),
+    ] {
+        state = (content, stretch);
+        let (frame, effects) = pane.redraw(&mut state, 200, 200, 2.);
+        assert!(effects.is_empty());
+        let RenderItem::Svg { area, .. } = &frame.items[0] else {
+            panic!("SVG missing")
+        };
+        assert_eq!(*area, expected);
+    }
+    eprintln!(
+        "stabs: svg_redraws=3, dpi=2, wall_ms={:.3}",
+        started.elapsed().as_secs_f64() * 1000.
+    );
+}
+
+#[test]
+fn frame_fits_images_and_reuses_decoding_until_image_id_changes() {
+    use crate::render::RenderItem;
+    use kurbo::Shape;
+    use std::{sync::Arc, time::Instant};
+    let started = Instant::now();
+    let mut pane = PaneBuilder::new("test", |state: &(u32, u32, String), ctx| {
+        image(
+            1,
+            ImageSource::Buffer(
+                state.0,
+                state.1,
+                Arc::new(vec![255; (state.0 * state.1 * 4) as usize]),
+            ),
+        )
+        .image_id(&state.2)
+        .corner_rounding(8.)
+        .finish(ctx)
+    })
+    .build();
+    let mut blobs = Vec::new();
+    for (width, height, id, expected) in [
+        (
+            20,
+            10,
+            "first",
+            Area {
+                x: 0.,
+                y: 25.,
+                width: 100.,
+                height: 50.,
+            },
+        ),
+        (
+            20,
+            10,
+            "first",
+            Area {
+                x: 0.,
+                y: 25.,
+                width: 100.,
+                height: 50.,
+            },
+        ),
+        (
+            10,
+            20,
+            "second",
+            Area {
+                x: 25.,
+                y: 0.,
+                width: 50.,
+                height: 100.,
+            },
+        ),
+    ] {
+        let mut state = (width, height, id.to_owned());
+        let (frame, effects) = pane.redraw(&mut state, 200, 200, 2.);
+        assert!(effects.is_empty());
+        let [
+            RenderItem::PushLayer {
+                path, effect: None, ..
+            },
+            RenderItem::Image { image, area },
+            RenderItem::PopLayer,
+        ] = frame.items.as_slice()
+        else {
+            panic!("image and clip missing")
+        };
+        assert_eq!(*area, expected);
+        let clip = path.bounding_box();
+        let expected_clip = kurbo::Rect::new(
+            expected.x as f64,
+            expected.y as f64,
+            (expected.x + expected.width) as f64,
+            (expected.y + expected.height) as f64,
+        );
+        assert!((clip.origin() - expected_clip.origin()).hypot() < 1e-6);
+        assert!((clip.size().width - expected_clip.size().width).abs() < 1e-6);
+        assert!((clip.size().height - expected_clip.size().height).abs() < 1e-6);
+        assert_eq!((image.width, image.height), (width, height));
+        blobs.push(image.data.id());
+    }
+    assert_eq!(blobs[0], blobs[1]);
+    assert_ne!(blobs[1], blobs[2]);
+    eprintln!(
+        "stabs: image_redraws=3, image_decodes=2, decoded_bytes=1600, image_clips=3, wall_ms={:.3}",
+        started.elapsed().as_secs_f64() * 1000.
+    );
+}
+
+#[test]
+fn frame_preserves_nested_effects_with_physical_parameters_and_expanded_scope() {
+    use crate::render::{Effect, RenderItem};
+    use kurbo::Shape;
+    use std::time::Instant;
+    let started = Instant::now();
+    let mut pane = PaneBuilder::new("test", |_: &(), ctx| {
+        rect(1)
+            .build(ctx)
+            .width(20.)
+            .height(20.)
+            .blur(4.)
+            .shadow((3., 5.), 2., Color::BLACK)
+    })
+    .build();
+    let (frame, effects) = pane.redraw(&mut (), 200, 120, 2.);
+    assert!(effects.is_empty());
+    let mut layers = Vec::new();
+    let mut depth = 0;
+    for item in &frame.items {
+        match item {
+            RenderItem::PushLayer { path, effect, .. } => {
+                depth += 1;
+                layers.push(*effect);
+                assert_eq!(path.bounding_box(), kurbo::Rect::new(0., 0., 100., 60.));
+            }
+            RenderItem::PopLayer => {
+                depth -= 1;
+                assert!(depth >= 0);
+            }
+            _ => {}
+        }
+    }
+    assert_eq!(depth, 0);
+    assert_eq!(
+        layers,
+        vec![
+            Some(Effect::DropShadow {
+                offset: kurbo::Vec2::new(6., 10.),
+                blur: 4.,
+                color: Color::BLACK
+            }),
+            Some(Effect::Blur { radius: 8. })
+        ]
+    );
+    eprintln!(
+        "stabs: effects=2, effect_arcs=0, dpi=2, layer_depth=2, wall_ms={:.3}",
+        started.elapsed().as_secs_f64() * 1000.
+    );
+}

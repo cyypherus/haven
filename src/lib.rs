@@ -4,6 +4,8 @@ mod brush_source;
 #[cfg(feature = "platform-winit")]
 mod draw_layout;
 mod editor;
+#[cfg(feature = "platform-winit")]
+mod frame_painter;
 mod gestures;
 mod models;
 mod pane;
@@ -13,7 +15,6 @@ mod primitives;
 #[cfg(test)]
 mod public_api_test;
 pub mod render;
-mod renderers;
 mod utils;
 mod view;
 

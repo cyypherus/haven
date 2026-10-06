@@ -1,6 +1,5 @@
-use crate::primitives::{Image, PathData, Shadow, Svg};
 use crate::{Area, Color};
-use kurbo::{Affine, BezPath, Rect};
+use kurbo::{Affine, BezPath, Rect, Stroke, Vec2};
 use parley::Layout as TextLayout;
 use peniko::{self, Brush};
 
@@ -12,12 +11,29 @@ pub struct Frame {
     pub items: Vec<RenderItem>,
 }
 
+pub trait FramePainter {
+    type Output;
+    fn paint(&mut self, frame: &Frame) -> Self::Output;
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Effect {
+    Blur {
+        radius: f32,
+    },
+    DropShadow {
+        offset: Vec2,
+        blur: f32,
+        color: Color,
+    },
+}
+
 pub enum RenderItem {
     PushLayer {
         path: BezPath,
         blend: peniko::BlendMode,
         alpha: f32,
-        filter: Option<std::sync::Arc<anyrender::Filter>>,
+        effect: Option<Effect>,
     },
     PopLayer,
     Text(TextRenderLayout),
@@ -26,20 +42,26 @@ pub enum RenderItem {
         transform: Affine,
     },
     Path {
-        path: Box<PathData>,
+        path: BezPath,
+        fill: Option<Brush>,
+        stroke: Option<(Brush, Stroke)>,
         area: Area,
     },
     Svg {
-        svg: Svg,
+        resource_id: u64,
+        content: String,
+        fill: Option<Brush>,
         area: Area,
     },
     Image {
-        image: Image,
+        image: peniko::ImageData,
         area: Area,
     },
     Shadow {
-        shadow: Shadow,
-        area: Area,
+        rect: Rect,
+        color: Color,
+        blur: f64,
+        corner_rounding: f64,
     },
 }
 
