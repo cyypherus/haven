@@ -1,5 +1,6 @@
-mod haven_gpu;
+mod adapter;
 
+use adapter::Overlay;
 use egor_app::{
     AppConfig, AppHandler, AppRunner, ControlFlow, Window, WindowEvent, input::Input,
     time::FrameTimer,
@@ -11,12 +12,7 @@ use egor_render::{
     vertex::Vertex,
 };
 use haven::*;
-use haven_gpu::Painter;
 use std::sync::Arc;
-use winit::{
-    event::{ElementState, MouseButton as WinitMouseButton},
-    keyboard::{Key as WinitKey, NamedKey as WinitNamedKey},
-};
 
 struct Controls {
     title: TextState,
@@ -111,7 +107,7 @@ impl Default for Demo {
 
 struct EgorSurface {
     renderer: Renderer,
-    haven: Painter,
+    haven: Overlay,
     backbuffer: Backbuffer,
     crabs: GeometryBatch,
 }
@@ -226,33 +222,6 @@ fn crab_scene(batch: &mut GeometryBatch, width: f32, height: f32, time: f32) {
     }
 }
 
-impl EgorSurface {
-    fn render(
-        &mut self,
-        frame: &haven::render::Frame,
-        time: f32,
-        target: &mut egor_render::frame::Frame,
-    ) {
-        let width = frame.width as f32 / frame.scale_factor as f32;
-        let height = frame.height as f32 / frame.scale_factor as f32;
-        self.renderer.upload_camera_matrix([
-            [2. / width, 0., 0., 0.],
-            [0., -2. / height, 0., 0.],
-            [0., 0., 1., 0.],
-            [-1., 1., 0., 1.],
-        ]);
-        crab_scene(&mut self.crabs, width, height, time);
-        {
-            let mut pass = self
-                .renderer
-                .begin_render_pass(&mut target.encoder, &target.view);
-            self.renderer
-                .draw_batch(&mut pass, &mut self.crabs, None, None);
-        }
-        self.haven.paint(frame, &mut target.encoder, &target.view);
-    }
-}
-
 impl AppHandler<EgorSurface> for Demo {
     async fn with_resource(&mut self, window: Arc<Window>) -> EgorSurface {
         let mut renderer = Renderer::new(window.clone(), &MemoryHints::Performance).await;
@@ -267,13 +236,7 @@ impl AppHandler<EgorSurface> for Demo {
             width,
             height,
         );
-        let haven = Painter::new(
-            renderer.instance(),
-            renderer.adapter(),
-            renderer.device(),
-            renderer.queue(),
-            backbuffer.format(),
-        );
+        let haven = Overlay::new(&renderer, &backbuffer);
         EgorSurface {
             renderer,
             haven,
@@ -283,8 +246,10 @@ impl AppHandler<EgorSurface> for Demo {
     }
 
     fn on_window_event(&mut self, window: &Window, event: &WindowEvent) {
-        let effects = window_event(&mut self.pane, &mut self.controls, window, event);
-        apply_pane_effects(window, effects);
+        assert!(
+            Overlay::event(&mut self.pane, &mut self.controls, window, event).is_empty(),
+            "the demo has one pane"
+        );
     }
 
     fn resize(&mut self, width: u32, height: u32, surface: &mut EgorSurface) {
@@ -297,96 +262,37 @@ impl AppHandler<EgorSurface> for Demo {
         if self.controls.animation.on {
             self.crab_time += timer.delta.min(0.05) * self.controls.speed.value;
         }
-        let (width, height) = surface.backbuffer.size();
-        let (frame, effects) =
-            self.pane
-                .redraw(&mut self.controls, width, height, window.scale_factor());
-        apply_pane_effects(window, effects);
         let Some(mut egor_frame) = surface.renderer.begin_frame(&mut surface.backbuffer) else {
             return;
         };
-        surface.render(&frame, self.crab_time, &mut egor_frame);
+        let width = egor_frame.view.texture().width() as f32 / window.scale_factor() as f32;
+        let height = egor_frame.view.texture().height() as f32 / window.scale_factor() as f32;
+        surface.renderer.upload_camera_matrix([
+            [2. / width, 0., 0., 0.],
+            [0., -2. / height, 0., 0.],
+            [0., 0., 1., 0.],
+            [-1., 1., 0., 1.],
+        ]);
+        crab_scene(&mut surface.crabs, width, height, self.crab_time);
+        {
+            let mut pass = surface
+                .renderer
+                .begin_render_pass(&mut egor_frame.encoder, &egor_frame.view);
+            surface
+                .renderer
+                .draw_batch(&mut pass, &mut surface.crabs, None, None);
+        }
+        assert!(
+            surface
+                .haven
+                .paint(&mut self.pane, &mut self.controls, window, &mut egor_frame)
+                .is_empty(),
+            "the demo has one pane"
+        );
         window.pre_present_notify();
         surface.renderer.end_frame(egor_frame);
         if self.controls.animation.on {
             window.request_redraw();
-        }
-    }
-}
-
-fn window_event<State: 'static>(
-    pane: &mut Pane<State>,
-    model: &mut State,
-    window: &Window,
-    event: &WindowEvent,
-) -> Vec<PaneEffect> {
-    let effects = match event {
-        WindowEvent::CursorMoved { position, .. } => pane.move_to(
-            model,
-            Point::new(
-                position.x / window.scale_factor(),
-                position.y / window.scale_factor(),
-            ),
-        ),
-        WindowEvent::MouseInput {
-            state,
-            button: WinitMouseButton::Left,
-            ..
-        } => match state {
-            ElementState::Pressed => pane.press_button(model, MouseButton::Left),
-            ElementState::Released => pane.release_button(model, MouseButton::Left),
-        },
-        WindowEvent::KeyboardInput { event, .. } => {
-            let key = match &event.logical_key {
-                WinitKey::Character(text) => Key::Character(text.to_string()),
-                WinitKey::Named(named) => Key::Named(match named {
-                    WinitNamedKey::Enter => NamedKey::Enter,
-                    WinitNamedKey::Escape => NamedKey::Escape,
-                    WinitNamedKey::Space => NamedKey::Space,
-                    WinitNamedKey::Backspace => NamedKey::Backspace,
-                    WinitNamedKey::Delete => NamedKey::Delete,
-                    WinitNamedKey::ArrowLeft => NamedKey::ArrowLeft,
-                    WinitNamedKey::ArrowRight => NamedKey::ArrowRight,
-                    WinitNamedKey::ArrowUp => NamedKey::ArrowUp,
-                    WinitNamedKey::ArrowDown => NamedKey::ArrowDown,
-                    WinitNamedKey::Home => NamedKey::Home,
-                    WinitNamedKey::End => NamedKey::End,
-                    WinitNamedKey::Tab => NamedKey::Tab,
-                    _ => return Vec::new(),
-                }),
-                _ => return Vec::new(),
-            };
-            match event.state {
-                ElementState::Pressed => pane.key_pressed(model, key),
-                ElementState::Released => pane.key_released(model, key),
-            }
-        }
-        WindowEvent::ModifiersChanged(modifiers) => {
-            let modifiers = modifiers.state();
-            pane.modifiers_changed(
-                Modifiers::empty()
-                    .with(Modifier::Shift, modifiers.shift_key())
-                    .with(Modifier::Control, modifiers.control_key())
-                    .with(Modifier::Alt, modifiers.alt_key())
-                    .with(Modifier::Super, modifiers.super_key()),
-            )
-        }
-        WindowEvent::CursorLeft { .. } => pane.move_to(model, Point::new(-1., -1.)),
-        WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
-            window.request_redraw();
-            return Vec::new();
-        }
-        _ => return Vec::new(),
-    };
-    window.request_redraw();
-    effects
-}
-
-fn apply_pane_effects(window: &Window, effects: Vec<PaneEffect>) {
-    for effect in effects {
-        match effect {
-            PaneEffect::Redraw => window.request_redraw(),
-            PaneEffect::Open(_) | PaneEffect::Close => unreachable!("the demo has one pane"),
         }
     }
 }
