@@ -12,6 +12,6 @@ rustc-hash = "2"
 vello_hybrid = "0.1.0"
 vello_common = "0.1.0"
 wgpu = "29.0.3"
-egor_app = "0.10.0"
-egor_render = { git = "https://github.com/cyypherus/egor", rev = "50e0a0e952db88a788b5162de6311bfd09fa7046" }
+egor = { git = "https://github.com/cyypherus/egor", rev = "4195f00384b33e6401bcba42063caa7eeb582cb4" }
+egor_render = { git = "https://github.com/cyypherus/egor", rev = "4195f00384b33e6401bcba42063caa7eeb582cb4" }
 winit = "0.30.12"

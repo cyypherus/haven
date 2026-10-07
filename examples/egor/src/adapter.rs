@@ -1,15 +1,18 @@
 use anyrender_vello_hybrid::{ImageManager, VelloHybridScenePainter};
-use egor_app::{Window, WindowEvent};
-use egor_render::{Renderer, target::RenderTarget};
+use egor::app::{Ui, WindowEvent};
+use egor_render::Renderer;
 use haven::render::FramePainter;
 use haven::{Key, Modifier, Modifiers, MouseButton, NamedKey, Pane, PaneEffect, Point};
 use rustc_hash::FxHashMap;
+use winit::window::Window;
 use winit::{
     event::{ElementState, MouseButton as WinitMouseButton},
     keyboard::{Key as WinitKey, NamedKey as WinitNamedKey},
 };
 
-pub(super) struct Overlay {
+pub(super) struct Haven<State> {
+    pub(super) model: State,
+    pane: Pane<State>,
     gpu: wgpu_context::DeviceHandle,
     painter: FramePainter,
     image_atlas: FxHashMap<u64, vello_common::paint::ImageId>,
@@ -20,12 +23,21 @@ pub(super) struct Overlay {
     blitter: wgpu::util::TextureBlitter,
 }
 
-impl Overlay {
-    pub(super) fn new(renderer: &Renderer, target: &impl RenderTarget) -> Self {
+impl<State: 'static> Haven<State> {
+    pub(super) fn new(
+        model: State,
+        pane: Pane<State>,
+        renderer: &Renderer,
+        window: &Window,
+        format: wgpu::TextureFormat,
+    ) -> Self {
         let device = renderer.device();
         let queue = renderer.queue();
-        let (width, height) = target.size();
+        let size = window.inner_size();
+        let (width, height) = (size.width.max(1), size.height.max(1));
         Self {
+            model,
+            pane,
             gpu: wgpu_context::DeviceHandle {
                 instance: renderer.instance().clone(),
                 adapter: renderer.adapter().clone(),
@@ -48,29 +60,22 @@ impl Overlay {
                 height.try_into().expect("Haven height"),
             ),
             overlay: overlay_texture(device, width, height),
-            blitter: wgpu::util::TextureBlitterBuilder::new(
-                device,
-                target.format().remove_srgb_suffix(),
-            )
-            .blend_state(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING)
-            .build(),
+            blitter: wgpu::util::TextureBlitterBuilder::new(device, format.remove_srgb_suffix())
+                .blend_state(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING)
+                .build(),
         }
     }
+}
 
-    pub(super) fn paint<State: 'static>(
-        &mut self,
-        pane: &mut Pane<State>,
-        model: &mut State,
-        window: &Window,
-        target: &mut egor_render::frame::Frame,
-    ) -> Vec<PaneEffect> {
-        let (frame, effects) = pane.redraw(
-            model,
+impl<State: 'static> Ui for Haven<State> {
+    fn render(&mut self, _: &Renderer, window: &Window, target: &mut egor_render::frame::Frame) {
+        let (frame, effects) = self.pane.redraw(
+            &mut self.model,
             target.view.texture().width(),
             target.view.texture().height(),
             window.scale_factor(),
         );
-        let effects = apply_pane_effects(window, effects);
+        apply_pane_effects(window, effects);
         let encoder = &mut target.encoder;
         if self.overlay.texture().width() != frame.width
             || self.overlay.texture().height() != frame.height
@@ -124,15 +129,11 @@ impl Overlay {
             });
         self.blitter
             .copy(&self.gpu.device, encoder, &self.overlay, &target);
-        effects
     }
 
-    pub(super) fn event<State: 'static>(
-        pane: &mut Pane<State>,
-        model: &mut State,
-        window: &Window,
-        event: &WindowEvent,
-    ) -> Vec<PaneEffect> {
+    fn handle_event(&mut self, window: &Window, event: &WindowEvent) {
+        let pane = &mut self.pane;
+        let model = &mut self.model;
         let effects = match event {
             WindowEvent::CursorMoved { position, .. } => pane.move_to(
                 model,
@@ -165,9 +166,9 @@ impl Overlay {
                         WinitNamedKey::Home => NamedKey::Home,
                         WinitNamedKey::End => NamedKey::End,
                         WinitNamedKey::Tab => NamedKey::Tab,
-                        _ => return Vec::new(),
+                        _ => return,
                     }),
-                    _ => return Vec::new(),
+                    _ => return,
                 };
                 match event.state {
                     ElementState::Pressed => pane.key_pressed(model, key),
@@ -187,12 +188,12 @@ impl Overlay {
             WindowEvent::CursorLeft { .. } => pane.move_to(model, Point::new(-1., -1.)),
             WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
                 window.request_redraw();
-                return Vec::new();
+                return;
             }
-            _ => return Vec::new(),
+            _ => return,
         };
         window.request_redraw();
-        apply_pane_effects(window, effects)
+        apply_pane_effects(window, effects);
     }
 }
 
@@ -215,13 +216,11 @@ fn overlay_texture(device: &wgpu::Device, width: u32, height: u32) -> wgpu::Text
         .create_view(&Default::default())
 }
 
-fn apply_pane_effects(window: &Window, mut effects: Vec<PaneEffect>) -> Vec<PaneEffect> {
-    effects.retain(|effect| match effect {
-        PaneEffect::Redraw => {
-            window.request_redraw();
-            false
+fn apply_pane_effects(window: &Window, effects: Vec<PaneEffect>) {
+    for effect in effects {
+        match effect {
+            PaneEffect::Redraw => window.request_redraw(),
+            PaneEffect::Open(_) | PaneEffect::Close => panic!("the example has one pane"),
         }
-        _ => true,
-    });
-    effects
+    }
 }
