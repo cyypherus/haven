@@ -3,7 +3,7 @@ mod adapter;
 use adapter::Haven;
 use egor::{
     app::{App, ControlFlow, FrameContext},
-    render::{Color as EgorColor, Graphics},
+    render::Color as EgorColor,
 };
 use haven::*;
 
@@ -80,99 +80,13 @@ fn view<'a>(controls: &'a Controls, ctx: &mut PaneState) -> View<'a, Controls> {
     .expand()
 }
 
-fn ellipse(gfx: &mut Graphics, center: [f32; 2], radius: [f32; 2], color: [f32; 4]) {
-    gfx.path()
-        .at(center.into())
-        .scale([1., radius[1] / radius[0]].into())
-        .fill_color(EgorColor::new(color))
-        .circle(radius[0]);
-}
-
-fn segment(gfx: &mut Graphics, from: [f32; 2], to: [f32; 2], width: f32, color: [f32; 4]) {
-    gfx.path()
-        .thickness(width)
-        .stroke_color(EgorColor::new(color))
-        .begin(from.into())
-        .line_to(to.into());
-}
-
 fn bounce(distance: f32, extent: f32) -> f32 {
     extent - (distance.rem_euclid(extent * 2.) - extent).abs()
 }
 
-fn crab_scene(gfx: &mut Graphics, width: f32, height: f32, time: f32) {
-    for i in 0..8 {
-        let seed = i as f32;
-        let x = 64.
-            + bounce(
-                seed * 137. + time * (43. + seed * 7.),
-                (width - 128.).max(1.),
-            );
-        let y = 84.
-            + bounce(
-                seed * 89. + time * (31. + seed * 4.),
-                (height - 168.).max(1.),
-            );
-        let coral = [1., 0.22 + seed * 0.018, 0.12, 1.];
-        let dark = [0.56, 0.09, 0.075, 1.];
-        for side in [-1., 1.] {
-            for leg in 0..3 {
-                let sway = (time * 8. + seed + leg as f32).sin() * 4.;
-                let offset = leg as f32 * 10.;
-                let knee = [x + side * (35. + offset * 0.5), y + offset - 3.];
-                segment(gfx, [x + side * 22., y + offset * 0.3], knee, 5., dark);
-                segment(
-                    gfx,
-                    knee,
-                    [x + side * (43. + offset * 0.4), y + 19. + offset + sway],
-                    4.,
-                    coral,
-                );
-            }
-            segment(
-                gfx,
-                [x + side * 22., y - 4.],
-                [x + side * 40., y - 23.],
-                7.,
-                coral,
-            );
-            ellipse(gfx, [x + side * 43., y - 28.], [12., 14.], coral);
-            segment(
-                gfx,
-                [x + side * 43., y - 42.],
-                [x + side * 43., y - 31.],
-                4.,
-                [0.025, 0.09, 0.14, 1.],
-            );
-            segment(
-                gfx,
-                [x + side * 11., y - 13.],
-                [x + side * 13., y - 29.],
-                5.,
-                coral,
-            );
-            ellipse(
-                gfx,
-                [x + side * 13., y - 29.],
-                [7.; 2],
-                [1., 0.96, 0.87, 1.],
-            );
-            ellipse(
-                gfx,
-                [x + side * 13. + 1., y - 30.],
-                [3.; 2],
-                [0.018, 0.035, 0.06, 1.],
-            );
-        }
-        ellipse(gfx, [x, y], [29., 20.], coral);
-        ellipse(gfx, [x - 5., y - 7.], [16., 5.], [1., 0.52, 0.28, 1.]);
-        segment(gfx, [x - 6., y + 8.], [x, y + 11.], 2.5, dark);
-        segment(gfx, [x, y + 11.], [x + 6., y + 8.], 2.5, dark);
-    }
-}
-
 fn main() {
     let mut crab_time = 0.;
+    let mut ferris_texture = None;
     App::new()
         .title("Haven in Egor")
         .window_size(1536, 960)
@@ -203,7 +117,25 @@ fn main() {
                     app.request_redraw();
                 }
                 let size = gfx.screen_size();
-                crab_scene(gfx, size.x, size.y, crab_time);
+                let texture = *ferris_texture.get_or_insert_with(|| {
+                    gfx.load_texture(include_bytes!("../assets/ferris_smol.png"))
+                });
+                for i in 0..8 {
+                    let seed = i as f32;
+                    let x = bounce(
+                        seed * 137. + crab_time * (43. + seed * 7.),
+                        (size.x - 128.).max(1.),
+                    );
+                    let y = 20.
+                        + bounce(
+                            seed * 89. + crab_time * (31. + seed * 4.),
+                            (size.y - 124.).max(1.),
+                        );
+                    gfx.rect()
+                        .at([x, y])
+                        .size([128., 84.].into())
+                        .texture(texture);
+                }
             },
         );
 }
