@@ -3274,6 +3274,102 @@ fn text_field_drag_in_second_field_switches_focus() {
 }
 
 #[test]
+fn scroller_shrinking_content_preserves_layout_and_clicks() {
+    struct State {
+        count: usize,
+        clicks: usize,
+    }
+
+    const SCROLLER: u64 = 53;
+    const CELL: u64 = 54;
+
+    fn view<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
+        scroller(
+            SCROLLER,
+            None,
+            move |index, _, app| {
+                (index < state.count).then(|| {
+                    rect(CELL + index as u64)
+                        .fill(DEFAULT_FG_COLOR)
+                        .view()
+                        .gesture(gesture::click(id!(CELL, index as u64)).run(
+                            |state: &mut State, _, event| {
+                                if event.state == ClickPhase::Completed {
+                                    state.clicks += 1;
+                                }
+                            },
+                        ))
+                        .build(app)
+                        .height(20.)
+                })
+            },
+            app,
+        )
+        .width(100.)
+        .height(100.)
+    }
+
+    let mut state = State {
+        count: 0,
+        clicks: 0,
+    };
+    let mut pane = test_pane(PaneBuilder::new("test", view));
+    for (count, scroll, rows, top) in [
+        (3, 0., 0..3, 0.),
+        (1, 0., 0..1, 0.),
+        (10, -130., 3..9, -5.),
+        (2, 0., 0..2, 0.),
+        (10, -1000., 5..10, 0.),
+        (6, 0., 1..6, 0.),
+        (0, 0., 0..0, 0.),
+        (2, 0., 0..2, 0.),
+    ] {
+        state.count = count;
+        if scroll != 0. {
+            assert!(pane.move_to(&mut state, Point::new(50., 50.)).is_empty());
+            assert!(
+                pane.scroll(&mut state, ScrollDelta { x: 0., y: scroll })
+                    .is_empty()
+            );
+        }
+        let (frame, effects) = pane.redraw(&mut state, 100, 100, 1.0);
+        assert!(effects.is_empty());
+        let drawn: Vec<_> = frame
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                render::RenderItem::Path { path, area } if (CELL..CELL + 10).contains(&path.id) => {
+                    assert_eq!(*area, pane.elements[&path.id]);
+                    Some((path.id, area.y))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            drawn,
+            rows.clone()
+                .map(|i| (CELL + i as u64, top + (i - rows.start) as f32 * 20.))
+                .collect::<Vec<_>>()
+        );
+        for index in 0..10 {
+            assert_eq!(
+                pane.elements.contains_key(&(CELL + index as u64)),
+                rows.contains(&index)
+            );
+        }
+        if rows.is_empty() {
+            assert_eq!(pane.pane_state.scrollers[&SCROLLER].engine.compensated, 0.);
+        } else {
+            let location = Point::new(50., top as f64 + 10.);
+            assert_eq!(pane.location(CELL + rows.start as u64), Some(location));
+            let clicks = state.clicks;
+            assert!(pane.click(&mut state, location).is_empty());
+            assert_eq!(state.clicks, clicks + 1);
+        }
+    }
+}
+
+#[test]
 fn scroller_scroll_updates_state() {
     #[derive(Default)]
     struct State;

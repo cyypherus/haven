@@ -110,9 +110,14 @@ impl ScrollEngine {
         if !self.visible_window.is_empty() {
             for i in 0..self.visible_window.len() {
                 let idx = self.visible_window[i].index;
-                if let Some(h) = cell_height(idx) {
-                    self.visible_window[i].height = h;
-                }
+                let Some(h) = cell_height(idx) else {
+                    self.visible_window.truncate(i);
+                    if i == 0 {
+                        self.compensated = 0.;
+                    }
+                    break;
+                };
+                self.visible_window[i].height = h;
             }
             self.fill_forwards(available_height, cell_height);
         }
@@ -126,10 +131,23 @@ impl ScrollEngine {
 
         self.compensated += dt;
 
-        if dt > 0. {
+        if dt < 0. {
+            // Scrolling down: fetch cells at the end as they come into view.
+            self.fill_forwards(available_height, cell_height);
+        }
+
+        let at_end = self
+            .visible_window
+            .last()
+            .map(|l| cell_height(l.index + 1).is_none())
+            .unwrap_or(true);
+
+        if dt > 0. || at_end && self.sum() < available_height {
             // Scrolling up: prepend earlier cells as they come into view.
             while let Some(first) = self.visible_window.first().copied() {
-                if first.index == 0 || self.compensated < 0. {
+                if first.index == 0
+                    || self.compensated < 0. && (!at_end || self.sum() >= available_height)
+                {
                     break;
                 }
                 let Some(h) = cell_height(first.index - 1) else {
@@ -144,9 +162,6 @@ impl ScrollEngine {
                 );
                 self.compensated -= h;
             }
-        } else if dt < 0. {
-            // Scrolling down: fetch cells at the end as they come into view.
-            self.fill_forwards(available_height, cell_height);
         }
 
         // Clamp at top: can't scroll past first cell.
@@ -164,11 +179,6 @@ impl ScrollEngine {
         }
 
         // Clamp at bottom: can't scroll past last cell.
-        let at_end = self
-            .visible_window
-            .last()
-            .map(|l| cell_height(l.index + 1).is_none())
-            .unwrap_or(true);
         if at_end {
             let lower_bound = (available_height - self.sum()).min(0.);
             if self.compensated < lower_bound {
