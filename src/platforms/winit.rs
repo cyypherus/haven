@@ -711,7 +711,10 @@ impl<State: 'static> ApplicationHandler<WinitEvent> for WinitApp<State> {
 #[cfg(feature = "platform-winit")]
 fn scroll_delta(delta: MouseScrollDelta) -> ScrollDelta {
     match delta {
-        MouseScrollDelta::LineDelta(x, y) => ScrollDelta { x, y },
+        MouseScrollDelta::LineDelta(x, y) => ScrollDelta {
+            x: x * 40.0,
+            y: y * 40.0,
+        },
         MouseScrollDelta::PixelDelta(physical_position) => ScrollDelta {
             x: physical_position.x as f32,
             y: physical_position.y as f32,
