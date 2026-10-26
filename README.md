@@ -90,6 +90,15 @@ Examples can be run directly with `cargo run --example <name>`.
 
 Haven is usable but new! Breaking changes may be relatively frequent as the crate matures.
 
+## Debug builds
+
+Debug builds are slow unless dependencies are optimized. Add this to your workspace's root `Cargo.toml`:
+
+```toml
+[profile.dev.package."*"]
+opt-level = 3
+```
+
 ## Contributing
 
 This project is unlikely to be able to support any substantial volume of contributions as it's just a hobby project maintained during spare time. If you're interested in seeing a change in the library, feel free to open an issue.
