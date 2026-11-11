@@ -60,6 +60,13 @@ impl ScrollerState {
         }
         self.edge_feedback.is_animating(now)
     }
+
+    pub(crate) fn scroll_to(&mut self, index: usize) {
+        self.engine = ScrollEngine {
+            visible_window: vec![Element { height: 0., index }],
+            ..ScrollEngine::default()
+        };
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -227,6 +234,16 @@ pub fn scroller<'a, State: 'static>(
     cell: impl Fn(usize, u64, &mut PaneState) -> Option<View<'a, State>> + 'a,
     ctx: &mut PaneState,
 ) -> View<'a, State> {
+    pinned_scroller(id, backing, cell, |_, _| None, ctx)
+}
+
+pub fn pinned_scroller<'a, State: 'static>(
+    id: u64,
+    backing: Option<View<'a, State>>,
+    cell: impl Fn(usize, u64, &mut PaneState) -> Option<View<'a, State>> + 'a,
+    pinned: impl Fn(usize, &mut PaneState) -> Option<View<'a, State>> + 'a,
+    ctx: &mut PaneState,
+) -> View<'a, State> {
     stack(vec![
         backing.unwrap_or(empty()),
         rect(id)
@@ -258,8 +275,16 @@ pub fn scroller<'a, State: 'static>(
                 }
             }
             let column_layout = column(cells).offset_y(offset_total).inert_y();
+            let header = visible
+                .first()
+                .and_then(|top| pinned(top.index, ctx))
+                .map_or(empty(), |mut header| {
+                    let height = header.min_height(area, ctx).unwrap_or(area.height);
+                    header.height(height).align(Align::Top)
+                });
             stack(vec![
                 column_layout,
+                header,
                 scroll_edge_glows::<State>(ctx, &edge_feedback, now),
             ])
             .align(Align::TopLeading)

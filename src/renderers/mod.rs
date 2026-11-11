@@ -1,2 +1,2 @@
-#[cfg(feature = "platform-winit")]
+#[cfg(feature = "render")]
 pub mod anyrender;

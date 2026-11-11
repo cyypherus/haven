@@ -9,7 +9,7 @@ mod toggle;
 pub use button::*;
 pub use dropdown::*;
 pub(crate) use scroller::ScrollerState;
-pub use scroller::scroller;
+pub use scroller::{pinned_scroller, scroller};
 pub use slider::*;
 pub use text_field::*;
 pub use toggle::*;

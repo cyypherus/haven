@@ -45,6 +45,11 @@ path = "examples/text_fields.rs"
 required-features = ["platform-winit"]
 
 [[example]]
+name = "headless"
+path = "examples/headless.rs"
+required-features = ["headless-vello-cpu"]
+
+[[example]]
 name = "effects"
 path = "examples/effects.rs"
 required-features = ["platform-winit"]
@@ -87,7 +92,12 @@ renderer-vello-cpu = [
     "dep:anyrender_vello_cpu",
     "anyrender_vello_cpu/pixels_window_renderer",
 ]
-platform-winit = ["dep:winit", "dep:anyrender_svg"]
+render = ["dep:anyrender_svg"]
+platform-winit = ["dep:winit", "render"]
+platform-headless = ["render"]
+headless-vello-cpu = ["platform-headless", "dep:anyrender_vello_cpu"]
+headless-vello = ["platform-headless", "dep:anyrender_vello"]
+headless-skia = ["platform-headless", "dep:anyrender_skia"]
 
 [dev-dependencies]
 arboard = "3.4"

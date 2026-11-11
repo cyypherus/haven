@@ -1,7 +1,7 @@
 #![allow(clippy::type_complexity, clippy::too_many_arguments)]
 
 mod brush_source;
-#[cfg(feature = "platform-winit")]
+#[cfg(feature = "render")]
 mod draw_layout;
 mod editor;
 mod gestures;
@@ -20,6 +20,8 @@ mod view;
 #[cfg(test)]
 mod tests;
 
+#[cfg(feature = "platform-headless")]
+pub use platforms::headless;
 #[cfg(feature = "platform-winit")]
 pub use platforms::winit;
 

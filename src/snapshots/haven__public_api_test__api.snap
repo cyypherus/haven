@@ -372,6 +372,7 @@ pub fn haven::PaneState::close(&mut self)
 pub fn haven::PaneState::end_editing(&mut self)
 pub fn haven::PaneState::open(&mut self, config: &'static str)
 pub fn haven::PaneState::redraw(&mut self)
+pub fn haven::PaneState::scroll_to(&mut self, scroller: u64, index: usize)
 pub fn haven::PaneState::waker(&self) -> haven::PaneWaker
 pub struct haven::PaneWaker
 impl haven::PaneWaker
@@ -542,6 +543,7 @@ pub fn haven::image_from_bytes(id: u64, bytes: alloc::sync::Arc<alloc::vec::Vec<
 pub fn haven::image_from_path(id: u64, path: impl core::convert::AsRef<str>) -> haven::Image
 pub fn haven::owned_scope<'a, Parent: 'static, Sub: 'static>(layout: haven::View<'a, Sub>, binding: haven::OwnedBinding<Parent, Sub>) -> haven::View<'a, Parent>
 pub fn haven::path(id: u64, builder: impl core::ops::function::Fn(backer::types::Area) -> kurbo::bezpath::BezPath + 'static) -> haven::Path
+pub fn haven::pinned_scroller<'a, State: 'static>(id: u64, backing: core::option::Option<haven::View<'a, State>>, cell: impl core::ops::function::Fn(usize, u64, &mut haven::PaneState) -> core::option::Option<haven::View<'a, State>> + 'a, pinned: impl core::ops::function::Fn(usize, &mut haven::PaneState) -> core::option::Option<haven::View<'a, State>> + 'a, ctx: &mut haven::PaneState) -> haven::View<'a, State>
 pub fn haven::rect(id: u64) -> haven::Rect
 pub fn haven::rect_path(area: backer::types::Area) -> kurbo::bezpath::BezPath
 pub fn haven::rich_text(id: u64, spans: impl core::iter::traits::collect::IntoIterator<Item = haven::Span>) -> haven::Text

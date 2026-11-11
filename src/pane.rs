@@ -65,6 +65,7 @@ impl<State> Clone for PaneBuilder<State> {
 }
 
 pub struct Pane<State> {
+    #[cfg(feature = "platform-winit")]
     name: &'static str,
     base_color: Color,
     view: ViewFn<State>,
@@ -404,6 +405,11 @@ impl PaneState {
         self.effects.push(PaneEffect::Redraw);
     }
 
+    pub fn scroll_to(&mut self, scroller: u64, index: usize) {
+        self.scrollers.entry(scroller).or_default().scroll_to(index);
+        self.redraw();
+    }
+
     pub fn waker(&self) -> PaneWaker {
         PaneWaker {
             wake: self.wake.clone(),
@@ -439,6 +445,7 @@ impl<State: 'static> Pane<State> {
         };
 
         Self {
+            #[cfg(feature = "platform-winit")]
             name: config.name,
             base_color,
             view: config.view,
@@ -471,6 +478,7 @@ impl<State: 'static> Pane<State> {
         }
     }
 
+    #[cfg(feature = "platform-winit")]
     pub(crate) fn name(&self) -> &'static str {
         self.name
     }
@@ -720,7 +728,7 @@ impl<State: 'static> Pane<State> {
 
         (self.on_frame)(state, &mut self.pane_state);
 
-        if continue_animating {
+        if self.update_hover(state) || continue_animating {
             self.pane_state.request_redraw();
         }
         self.dispatch_text_edit_lifecycle_events(state);

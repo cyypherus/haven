@@ -2,20 +2,42 @@ use crate::Area;
 use crate::draw_layout::draw_layout;
 use crate::primitives::{ImageSource, PathData};
 use crate::render::{Frame, RenderItem, TextRenderLayout};
-use anyrender::{PaintScene, Scene, WindowRenderer};
+#[cfg(feature = "platform-headless")]
+use anyrender::ImageRenderer;
+use anyrender::{PaintScene, Scene};
 use image::{DynamicImage, ImageBuffer, Rgba};
 use kurbo::{Affine, Point, Rect, RoundedRect, Size, Vec2};
 use peniko::{self, Brush, BrushRef, Compose, Fill, Mix};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub struct Renderer<R: WindowRenderer> {
-    window_renderer: R,
+#[derive(Default)]
+pub(crate) struct Painter {
     svg_scenes: HashMap<u64, (String, Scene, f32, f32)>,
     image_data: HashMap<u64, (peniko::ImageData, f32, f32)>,
 }
 
-impl<R: WindowRenderer> Renderer<R> {
+impl Painter {
+    pub(crate) fn paint<S: PaintScene>(&mut self, frame: &Frame, scene: &mut S) {
+        scene.fill(
+            Fill::NonZero,
+            Affine::IDENTITY,
+            frame.base_color,
+            None,
+            &Rect::new(0., 0., frame.width as f64, frame.height as f64),
+        );
+        render_frame(&mut self.svg_scenes, &mut self.image_data, frame, scene);
+    }
+}
+
+#[cfg(feature = "platform-winit")]
+pub struct Renderer<R: anyrender::WindowRenderer> {
+    window_renderer: R,
+    painter: Painter,
+}
+
+#[cfg(feature = "platform-winit")]
+impl<R: anyrender::WindowRenderer> Renderer<R> {
     pub fn new(
         mut window_renderer: R,
         window: Arc<winit::window::Window>,
@@ -26,8 +48,7 @@ impl<R: WindowRenderer> Renderer<R> {
         window_renderer.complete_resume();
         Self {
             window_renderer,
-            svg_scenes: HashMap::new(),
-            image_data: HashMap::new(),
+            painter: Painter::default(),
         }
     }
 
@@ -41,20 +62,53 @@ impl<R: WindowRenderer> Renderer<R> {
             return;
         }
 
-        let svg_scenes = &mut self.svg_scenes;
-        let image_data = &mut self.image_data;
+        let painter = &mut self.painter;
         self.window_renderer.render(|scene| {
             scene.reset();
-            scene.fill(
-                Fill::NonZero,
-                Affine::IDENTITY,
-                frame.base_color,
-                None,
-                &Rect::new(0., 0., frame.width as f64, frame.height as f64),
-            );
-            render_frame(svg_scenes, image_data, frame, scene);
+            painter.paint(frame, scene);
             pre_present_notify();
         });
+    }
+}
+
+#[cfg(feature = "platform-headless")]
+pub struct Offscreen<R: ImageRenderer> {
+    painter: Painter,
+    renderer: Option<(R, u32, u32)>,
+}
+
+#[cfg(feature = "platform-headless")]
+impl<R: ImageRenderer> Default for Offscreen<R> {
+    fn default() -> Self {
+        Self {
+            painter: Painter::default(),
+            renderer: None,
+        }
+    }
+}
+
+#[cfg(feature = "platform-headless")]
+impl<R: ImageRenderer> Offscreen<R> {
+    pub fn png(&mut self, frame: &Frame) -> Result<Vec<u8>, image::ImageError> {
+        let (width, height) = (frame.width, frame.height);
+        let renderer = match self.renderer.take() {
+            Some((mut renderer, w, h)) => {
+                if (w, h) != (width, height) {
+                    renderer.resize(width, height);
+                }
+                renderer
+            }
+            None => R::new(width, height),
+        };
+        let renderer = &mut self.renderer.insert((renderer, width, height)).0;
+        let mut rgba = Vec::with_capacity((width * height * 4) as usize);
+        let painter = &mut self.painter;
+        renderer.render_to_vec(|scene| painter.paint(frame, scene), &mut rgba);
+        let image = ImageBuffer::<Rgba<u8>, _>::from_raw(width, height, rgba)
+            .expect("image renderer fills every pixel of the frame");
+        let mut png = Vec::new();
+        image.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)?;
+        Ok(png)
     }
 }
 
