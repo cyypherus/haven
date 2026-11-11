@@ -15,7 +15,7 @@ use parley::fontique::Blob;
 use parley::fontique::FontInfoOverride;
 use parley::{FontContext, LayoutContext};
 use peniko::{self, Brush, Color};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -325,7 +325,7 @@ struct TextEditing {
     focused_field: Option<u64>,
     text_edit_command_revision: u64,
     applied_text_edit_command_revision: u64,
-    lifecycle_events: Vec<(u64, EditInteraction)>,
+    lifecycle_events: VecDeque<(u64, EditInteraction)>,
 }
 
 impl TextEditing {
@@ -335,11 +335,12 @@ impl TextEditing {
         }
         if let Some(focused_field) = self.focused_field {
             self.lifecycle_events
-                .push((focused_field, EditInteraction::End));
+                .push_back((focused_field, EditInteraction::End));
         }
         self.focused_field = field;
         if let Some(field) = field {
-            self.lifecycle_events.push((field, EditInteraction::Start));
+            self.lifecycle_events
+                .push_back((field, EditInteraction::Start));
         }
         true
     }
@@ -513,15 +514,9 @@ impl<State: 'static> Pane<State> {
     }
 
     fn dispatch_text_edit_lifecycle_events(&mut self, state: &mut State) {
-        loop {
-            let edits = std::mem::take(&mut self.pane_state.text_editing.lifecycle_events);
-            if edits.is_empty() {
-                return;
-            }
-            for (id, edit) in edits {
-                if let Some(handler) = self.edit_handlers.get(&id).cloned() {
-                    handler(state, &mut self.pane_state, edit);
-                }
+        while let Some((id, edit)) = self.pane_state.text_editing.lifecycle_events.pop_front() {
+            if let Some(handler) = self.edit_handlers.get(&id).cloned() {
+                handler(state, &mut self.pane_state, edit);
             }
         }
     }
