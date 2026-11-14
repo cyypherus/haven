@@ -618,14 +618,21 @@ impl<State: 'static> Pane<State> {
                             RenderItem::Layout { layout, transform }
                         }
                         DrawableType::Path(path) => RenderItem::Path {
-                            path,
+                            id: path.id,
+                            path: (path.builder)(draw_area),
+                            fill: path.fill.map(|fill| fill.resolve(draw_area, &())),
+                            stroke: path
+                                .stroke
+                                .map(|(brush, stroke)| (brush.resolve(draw_area, &()), stroke)),
                             area: draw_area,
                         },
                         DrawableType::Svg(svg) => RenderItem::Svg {
+                            cache_key: svg.cache_key(),
                             svg,
                             area: draw_area,
                         },
                         DrawableType::Image(image) => RenderItem::Image {
+                            cache_key: image.cache_key(),
                             image,
                             area: draw_area,
                         },

@@ -1,6 +1,11 @@
-use crate::primitives::{Image, PathData, Shadow, Svg};
+#[cfg(feature = "renderer")]
+pub use crate::renderers::{
+    image::ImageRenderer, texture::TextureRenderer, window::WindowRenderer,
+};
+
+use crate::primitives::{Image, Shadow, Svg};
 use crate::{Area, Color};
-use kurbo::{Affine, BezPath, Rect};
+use kurbo::{Affine, BezPath, Rect, Stroke};
 use parley::Layout as TextLayout;
 use peniko::{self, Brush};
 
@@ -17,7 +22,7 @@ pub enum RenderItem {
         path: BezPath,
         blend: peniko::BlendMode,
         alpha: f32,
-        filter: Option<std::sync::Arc<anyrender::Filter>>,
+        filter: Option<Filter>,
     },
     PopLayer,
     Text(TextRenderLayout),
@@ -26,20 +31,38 @@ pub enum RenderItem {
         transform: Affine,
     },
     Path {
-        path: Box<PathData>,
+        id: u64,
+        path: BezPath,
+        fill: Option<Brush>,
+        stroke: Option<(Brush, Stroke)>,
         area: Area,
     },
     Svg {
         svg: Svg,
+        cache_key: u64,
         area: Area,
     },
     Image {
         image: Image,
+        cache_key: u64,
         area: Area,
     },
     Shadow {
         shadow: Shadow,
         area: Area,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Filter {
+    Blur {
+        radius: f32,
+    },
+    DropShadow {
+        dx: f32,
+        dy: f32,
+        blur: f32,
+        color: Color,
     },
 }
 

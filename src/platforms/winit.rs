@@ -5,7 +5,7 @@ use crate::{Key, Modifier, Modifiers, NamedKey};
 #[cfg(feature = "platform-winit")]
 use crate::pane::{Pane, PaneEffect};
 #[cfg(feature = "debug-overlay")]
-use crate::primitives::{PathData, text};
+use crate::primitives::text;
 #[cfg(feature = "debug-overlay")]
 use crate::render::Frame;
 #[cfg(feature = "debug-overlay")]
@@ -78,78 +78,7 @@ enum WinitEvent {
 }
 
 #[cfg(feature = "platform-winit")]
-use crate::renderers::anyrender::Renderer;
-
-#[cfg(all(
-    feature = "platform-winit",
-    not(any(
-        feature = "renderer-vello-hybrid",
-        feature = "renderer-vello",
-        feature = "renderer-vello-cpu",
-        feature = "renderer-skia"
-    ))
-))]
-compile_error!(
-    "enable one renderer feature: renderer-vello-hybrid, renderer-vello, renderer-vello-cpu, or renderer-skia"
-);
-
-#[cfg(all(
-    feature = "platform-winit",
-    feature = "renderer-vello",
-    any(feature = "renderer-vello-cpu", feature = "renderer-skia")
-))]
-compile_error!("enable exactly one renderer feature");
-
-#[cfg(all(
-    feature = "platform-winit",
-    feature = "renderer-vello-cpu",
-    feature = "renderer-skia"
-))]
-compile_error!("enable exactly one renderer feature");
-
-#[cfg(all(
-    feature = "renderer-vello-hybrid",
-    any(
-        feature = "renderer-vello",
-        feature = "renderer-vello-cpu",
-        feature = "renderer-skia"
-    )
-))]
-compile_error!("enable exactly one renderer feature");
-
-#[cfg(feature = "renderer-vello-hybrid")]
-type SelectedWindowRenderer = anyrender_vello_hybrid::VelloHybridWindowRenderer;
-
-#[cfg(feature = "renderer-vello-hybrid")]
-fn window_renderer() -> SelectedWindowRenderer {
-    let mut options = anyrender_vello_hybrid::VelloHybridRendererOptions::default();
-    options.base_color = crate::TRANSPARENT;
-    anyrender_vello_hybrid::VelloHybridWindowRenderer::with_options(options)
-}
-
-#[cfg(feature = "renderer-vello")]
-type SelectedWindowRenderer = anyrender_vello::VelloWindowRenderer;
-#[cfg(feature = "renderer-vello-cpu")]
-type SelectedWindowRenderer = anyrender_vello_cpu::VelloCpuWindowRenderer;
-#[cfg(feature = "renderer-skia")]
-type SelectedWindowRenderer = anyrender_skia::SkiaWindowRenderer;
-
-#[cfg(feature = "renderer-vello")]
-fn window_renderer() -> SelectedWindowRenderer {
-    anyrender_vello::VelloWindowRenderer::with_options(
-        anyrender_vello::VelloRendererOptions::new().base_color(crate::TRANSPARENT),
-    )
-}
-
-#[cfg(feature = "renderer-vello-cpu")]
-fn window_renderer() -> SelectedWindowRenderer {
-    anyrender_vello_cpu::VelloCpuWindowRenderer::new()
-}
-
-#[cfg(feature = "renderer-skia")]
-fn window_renderer() -> SelectedWindowRenderer {
-    anyrender_skia::SkiaWindowRenderer::new()
-}
+use crate::render::WindowRenderer;
 
 #[cfg(feature = "platform-winit")]
 pub struct WinitApp<State> {
@@ -163,7 +92,7 @@ pub struct WinitApp<State> {
 
 #[cfg(feature = "platform-winit")]
 struct WinitSurface<State> {
-    renderer: Renderer<SelectedWindowRenderer>,
+    renderer: WindowRenderer,
     window: Arc<WinitWindow>,
     pane: Pane<State>,
     #[cfg(feature = "debug-overlay")]
@@ -247,15 +176,13 @@ impl DebugOverlayState {
         };
 
         frame.items.push(crate::render::RenderItem::Path {
-            path: Box::new(PathData {
-                id: crate::const_hash(file!(), line!(), column!()),
-                builder: crate::primitives::shape::rect_path((5., 5., 5., 5.)),
-                fill: Some(Color::from_rgb8(0, 0, 0).with_alpha(0.68).into()),
-                stroke: Some((
-                    Color::from_rgb8(255, 255, 255).with_alpha(0.18).into(),
-                    Stroke::new(1.),
-                )),
-            }),
+            id: crate::const_hash(file!(), line!(), column!()),
+            path: crate::primitives::shape::rect_path((5., 5., 5., 5.))(background_area),
+            fill: Some(Color::from_rgb8(0, 0, 0).with_alpha(0.68).into()),
+            stroke: Some((
+                Color::from_rgb8(255, 255, 255).with_alpha(0.18).into(),
+                Stroke::new(1.),
+            )),
             area: background_area,
         });
         frame.items.push(
@@ -444,7 +371,7 @@ impl<State: 'static> WinitApp<State> {
         let window = Arc::new(event_loop.create_window(attributes).unwrap());
         let size = window.inner_size();
         let window_id = window.id();
-        let renderer = Renderer::new(window_renderer(), window.clone(), size.width, size.height);
+        let renderer = WindowRenderer::new(window.clone(), size.width, size.height);
 
         #[cfg(target_os = "windows")]
         window.set_visible(true);
@@ -517,7 +444,6 @@ impl<State: 'static> WinitApp<State> {
         let size = surface.window.inner_size();
         let width = size.width;
         let height = size.height;
-        surface.renderer.resize(width, height);
 
         let (frame, effects) = surface.pane.redraw(
             &mut self.state,
@@ -542,10 +468,8 @@ impl<State: 'static> WinitApp<State> {
             .debug_overlay
             .append_to(&mut frame, &mut surface.pane, target_frame_ms);
 
-        let window = surface.window.clone();
-        surface.renderer.render(&frame, || {
-            window.pre_present_notify();
-        });
+        surface.window.pre_present_notify();
+        surface.renderer.render(&frame);
 
         #[cfg(feature = "debug-overlay")]
         surface.debug_overlay.finish_frame(frame_started);

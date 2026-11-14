@@ -1,7 +1,7 @@
 #![allow(clippy::type_complexity, clippy::too_many_arguments)]
 
 mod brush_source;
-#[cfg(feature = "platform-winit")]
+#[cfg(feature = "renderer")]
 mod draw_layout;
 mod editor;
 mod gestures;
@@ -13,6 +13,7 @@ mod primitives;
 #[cfg(test)]
 mod public_api_test;
 pub mod render;
+#[cfg(feature = "renderer")]
 mod renderers;
 mod utils;
 mod view;

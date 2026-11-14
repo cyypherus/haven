@@ -3338,9 +3338,9 @@ fn scroller_shrinking_content_preserves_layout_and_clicks() {
             .items
             .iter()
             .filter_map(|item| match item {
-                render::RenderItem::Path { path, area } if (CELL..CELL + 10).contains(&path.id) => {
-                    assert_eq!(*area, pane.elements[&path.id]);
-                    Some((path.id, area.y))
+                render::RenderItem::Path { id, area, .. } if (CELL..CELL + 10).contains(id) => {
+                    assert_eq!(*area, pane.elements[id]);
+                    Some((*id, area.y))
                 }
                 _ => None,
             })

@@ -1,9 +1,10 @@
-use anyrender::{Glyph, PaintScene};
-use kurbo::{Affine, Line, Stroke};
+use crate::renderers::texture::Scene;
+use glifo::Glyph;
+use kurbo::{Affine, Line, Shape, Stroke};
 use parley::{Layout, PositionedLayoutItem};
-use peniko::{Brush, BrushRef, Fill};
+use peniko::Brush;
 
-pub(crate) fn draw_layout<S: PaintScene>(transform: Affine, layout: &Layout<Brush>, scene: &mut S) {
+pub(crate) fn draw_layout(scene: &mut Scene, transform: Affine, layout: &Layout<Brush>) {
     for line in layout.lines() {
         for item in line.items() {
             let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
@@ -37,9 +38,9 @@ pub(crate) fn draw_layout<S: PaintScene>(transform: Affine, layout: &Layout<Brus
                 scene.stroke(
                     &Stroke::new(width.into()),
                     transform,
-                    BrushRef::from(underline_brush),
-                    None,
-                    &line,
+                    underline_brush,
+                    Affine::IDENTITY,
+                    &line.to_path(0.1),
                 );
             }
             let mut x = glyph_run.offset();
@@ -67,17 +68,13 @@ pub(crate) fn draw_layout<S: PaintScene>(transform: Affine, layout: &Layout<Brus
                     }
                 })
                 .collect();
-            scene.draw_glyphs(
+            scene.glyphs(
                 font,
                 font_size,
-                true,
                 run.normalized_coords(),
-                kurbo::Vec2::ZERO,
-                Fill::NonZero,
-                BrushRef::from(brush),
-                1.0,
+                brush,
                 transform,
-                glyph_xform,
+                glyph_xform.unwrap_or_default(),
                 glyphs.into_iter(),
             );
             if let Some(strikethrough) = &style.strikethrough {
@@ -104,9 +101,9 @@ pub(crate) fn draw_layout<S: PaintScene>(transform: Affine, layout: &Layout<Brus
                 scene.stroke(
                     &Stroke::new(width.into()),
                     transform,
-                    BrushRef::from(strikethrough_brush),
-                    None,
-                    &line,
+                    strikethrough_brush,
+                    Affine::IDENTITY,
+                    &line.to_path(0.1),
                 );
             }
         }

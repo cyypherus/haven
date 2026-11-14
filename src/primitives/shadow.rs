@@ -6,10 +6,10 @@ use backer::Layout;
 #[derive(Clone)]
 pub struct Shadow {
     pub(crate) id: u64,
-    pub(crate) color: Color,
-    pub(crate) blur: f64,
-    pub(crate) spread: f64,
-    pub(crate) corner_rounding: f64,
+    pub color: Color,
+    pub blur: f64,
+    pub spread: f64,
+    pub corner_rounding: f64,
 }
 
 pub fn shadow(id: u64) -> Shadow {
