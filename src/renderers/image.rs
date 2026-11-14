@@ -1,37 +1,13 @@
-use crate::render::{Frame, TextureRenderer};
+use super::Renderer;
+use crate::render::Frame;
 use image::RgbaImage;
 
-const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
-
-pub struct ImageRenderer {
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    renderer: TextureRenderer,
-}
-
-impl Default for ImageRenderer {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl ImageRenderer {
-    pub fn new() -> Self {
-        let instance = wgpu::Instance::default();
-        let adapter =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-                .expect("graphics adapter");
-        let (device, queue) =
-            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-                .expect("graphics device");
-        Self {
-            renderer: TextureRenderer::new(&device, &queue, FORMAT),
-            device,
-            queue,
-        }
-    }
-
-    pub fn render(&mut self, frame: &Frame) -> RgbaImage {
+impl Renderer {
+    pub fn render_image(&mut self, frame: &Frame) -> RgbaImage {
+        let bgra = matches!(
+            self.format,
+            wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb
+        );
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: None,
             size: wgpu::Extent3d {
@@ -42,11 +18,11 @@ impl ImageRenderer {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: FORMAT,
+            format: self.format,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
-        self.renderer.render(
+        self.render_texture(
             frame,
             &texture.create_view(&wgpu::TextureViewDescriptor::default()),
         );
@@ -92,9 +68,9 @@ impl ImageRenderer {
                     _ => ((channel as u32 * 255 + alpha / 2) / alpha).min(255) as u8,
                 };
                 pixels.extend([
-                    straight(pixel[0]),
+                    straight(pixel[if bgra { 2 } else { 0 }]),
                     straight(pixel[1]),
-                    straight(pixel[2]),
+                    straight(pixel[if bgra { 0 } else { 2 }]),
                     pixel[3],
                 ]);
             }

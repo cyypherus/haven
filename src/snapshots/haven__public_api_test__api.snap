@@ -66,24 +66,19 @@ pub haven::render::Frame::height: u32
 pub haven::render::Frame::items: alloc::vec::Vec<haven::render::RenderItem>
 pub haven::render::Frame::scale_factor: f64
 pub haven::render::Frame::width: u32
-pub struct haven::render::ImageRenderer
-impl haven::render::ImageRenderer
-pub fn haven::render::ImageRenderer::new() -> Self
-pub fn haven::render::ImageRenderer::render(&mut self, frame: &haven::render::Frame) -> image::images::buffer::RgbaImage
-impl core::default::Default for haven::render::ImageRenderer
-pub fn haven::render::ImageRenderer::default() -> Self
+pub struct haven::render::Renderer
+impl haven::render::Renderer
+pub fn haven::render::Renderer::new() -> Self
+pub fn haven::render::Renderer::render_texture(&mut self, frame: &haven::render::Frame, target: &wgpu::api::texture_view::TextureView)
+pub fn haven::render::Renderer::with_device(device: &wgpu::api::device::Device, queue: &wgpu::api::queue::Queue, format: wgpu_types::texture::format::TextureFormat) -> core::option::Option<Self>
+impl haven::render::Renderer
+pub fn haven::render::Renderer::render_image(&mut self, frame: &haven::render::Frame) -> image::images::buffer::RgbaImage
+impl core::default::Default for haven::render::Renderer
+pub fn haven::render::Renderer::default() -> Self
 pub struct haven::render::TextRenderLayout
 pub haven::render::TextRenderLayout::backgrounds: alloc::vec::Vec<(kurbo::rect::Rect, peniko::brush::Brush)>
 pub haven::render::TextRenderLayout::layout: parley::layout::layout::Layout<peniko::brush::Brush>
 pub haven::render::TextRenderLayout::transform: kurbo::affine::Affine
-pub struct haven::render::TextureRenderer
-impl haven::render::TextureRenderer
-pub fn haven::render::TextureRenderer::new(device: &wgpu::api::device::Device, queue: &wgpu::api::queue::Queue, format: wgpu_types::texture::format::TextureFormat) -> Self
-pub fn haven::render::TextureRenderer::render(&mut self, frame: &haven::render::Frame, target: &wgpu::api::texture_view::TextureView)
-pub struct haven::render::WindowRenderer
-impl haven::render::WindowRenderer
-pub fn haven::render::WindowRenderer::new(window: impl core::convert::Into<wgpu::api::surface::SurfaceTarget<'static>>, width: u32, height: u32) -> Self
-pub fn haven::render::WindowRenderer::render(&mut self, frame: &haven::render::Frame)
 pub mod haven::winit
 pub struct haven::winit::WinitApp<State>
 impl<State: 'static> haven::winit::WinitApp<State>

@@ -5,13 +5,13 @@ use crate::{Key, Modifier, Modifiers, NamedKey};
 #[cfg(feature = "platform-winit")]
 use crate::pane::{Pane, PaneEffect};
 #[cfg(feature = "debug-overlay")]
-use crate::primitives::text;
-#[cfg(feature = "debug-overlay")]
 use crate::render::Frame;
 #[cfg(feature = "debug-overlay")]
-use crate::{Area, Color, Stroke};
+use crate::{Color, Stroke, rect, stack, text};
 #[cfg(feature = "platform-winit")]
 use crate::{PaneBuilder, ScrollDelta};
+#[cfg(feature = "debug-overlay")]
+use backer::Align;
 #[cfg(feature = "platform-winit")]
 use std::collections::HashMap;
 #[cfg(feature = "debug-overlay")]
@@ -78,7 +78,7 @@ enum WinitEvent {
 }
 
 #[cfg(feature = "platform-winit")]
-use crate::render::WindowRenderer;
+use crate::render::Renderer;
 
 #[cfg(feature = "platform-winit")]
 pub struct WinitApp<State> {
@@ -92,7 +92,8 @@ pub struct WinitApp<State> {
 
 #[cfg(feature = "platform-winit")]
 struct WinitSurface<State> {
-    renderer: WindowRenderer,
+    surface: wgpu::Surface<'static>,
+    renderer: Renderer,
     window: Arc<WinitWindow>,
     pane: Pane<State>,
     #[cfg(feature = "debug-overlay")]
@@ -100,12 +101,48 @@ struct WinitSurface<State> {
 }
 
 #[cfg(feature = "debug-overlay")]
-#[derive(Default)]
 struct DebugOverlayState {
+    pane: Pane<DebugOverlayMetrics>,
     last_redraw: Option<Instant>,
     frame_ms: Option<f64>,
     smoothed_fps: Option<f64>,
     frame_times: VecDeque<(Instant, f64)>,
+}
+
+#[cfg(feature = "debug-overlay")]
+impl Default for DebugOverlayState {
+    fn default() -> Self {
+        Self {
+            pane: PaneBuilder::<DebugOverlayMetrics>::new("debug-overlay", |metrics, ctx| {
+                stack(vec![
+                    rect(crate::id!())
+                        .fill(Color::from_rgb8(0, 0, 0).with_alpha(0.68))
+                        .stroke(
+                            Color::from_rgb8(255, 255, 255).with_alpha(0.18),
+                            Stroke::new(1.),
+                        )
+                        .corner_rounding(5.)
+                        .build(ctx)
+                        .inert(),
+                    text(crate::id!(), metrics.label())
+                        .font_size(12)
+                        .align(parley::Alignment::Start)
+                        .fill(Color::from_rgb8(245, 245, 245))
+                        .build(ctx)
+                        .pad_x(6.)
+                        .pad_y(5.),
+                ])
+                .pad(8.)
+                .align(Align::BottomTrailing)
+            })
+            .transparent(true)
+            .build(),
+            last_redraw: None,
+            frame_ms: None,
+            smoothed_fps: None,
+            frame_times: VecDeque::new(),
+        }
+    }
 }
 
 #[cfg(feature = "debug-overlay")]
@@ -149,49 +186,18 @@ impl DebugOverlayState {
         }
     }
 
-    fn append_to<State>(
+    fn append_to(
         &mut self,
         frame: &mut Frame,
-        pane: &mut Pane<State>,
+        effects: &mut Vec<PaneEffect>,
         target_frame_ms: f64,
     ) {
-        let label = self.update(target_frame_ms).label();
-        let line_count = label.lines().count() as f32;
-        let max_line_len = label.lines().map(str::len).max().unwrap_or_default() as f32;
-        let width = 16. + max_line_len * 7.;
-        let height = 12. + line_count * 14.;
-        let logical_width = frame.width as f32 / frame.scale_factor as f32;
-        let logical_height = frame.height as f32 / frame.scale_factor as f32;
-        let background_area = Area {
-            x: (logical_width - width - 8.).max(8.),
-            y: (logical_height - height - 8.).max(8.),
-            width,
-            height,
-        };
-        let text_area = Area {
-            x: background_area.x + 6.,
-            y: background_area.y + 5.,
-            width: width - 12.,
-            height: height - 10.,
-        };
-
-        frame.items.push(crate::render::RenderItem::Path {
-            id: crate::const_hash(file!(), line!(), column!()),
-            path: crate::primitives::shape::rect_path((5., 5., 5., 5.))(background_area),
-            fill: Some(Color::from_rgb8(0, 0, 0).with_alpha(0.68).into()),
-            stroke: Some((
-                Color::from_rgb8(255, 255, 255).with_alpha(0.18).into(),
-                Stroke::new(1.),
-            )),
-            area: background_area,
-        });
-        frame.items.push(
-            text(crate::const_hash(file!(), line!(), column!()), label)
-                .font_size(12)
-                .align(parley::Alignment::Start)
-                .fill(Color::from_rgb8(245, 245, 245))
-                .render_item(frame.scale_factor, text_area, &mut pane.pane_state),
-        );
+        let mut metrics = self.update(target_frame_ms);
+        let (overlay, overlay_effects) =
+            self.pane
+                .redraw(&mut metrics, frame.width, frame.height, frame.scale_factor);
+        frame.items.extend(overlay.items);
+        effects.extend(overlay_effects);
     }
 
     fn finish_frame(&mut self, frame_started: Instant) {
@@ -371,7 +377,7 @@ impl<State: 'static> WinitApp<State> {
         let window = Arc::new(event_loop.create_window(attributes).unwrap());
         let size = window.inner_size();
         let window_id = window.id();
-        let renderer = WindowRenderer::new(window.clone(), size.width, size.height);
+        let (renderer, surface) = Renderer::for_window(window.clone(), size.width, size.height);
 
         #[cfg(target_os = "windows")]
         window.set_visible(true);
@@ -387,6 +393,7 @@ impl<State: 'static> WinitApp<State> {
         self.windows.insert(
             window_id,
             WinitSurface {
+                surface,
                 renderer,
                 window,
                 pane,
@@ -453,7 +460,7 @@ impl<State: 'static> WinitApp<State> {
         );
 
         #[cfg(feature = "debug-overlay")]
-        let mut frame = frame;
+        let (mut frame, mut effects) = (frame, effects);
 
         #[cfg(feature = "debug-overlay")]
         let target_frame_ms = target_frame_ms(
@@ -466,10 +473,10 @@ impl<State: 'static> WinitApp<State> {
         #[cfg(feature = "debug-overlay")]
         surface
             .debug_overlay
-            .append_to(&mut frame, &mut surface.pane, target_frame_ms);
+            .append_to(&mut frame, &mut effects, target_frame_ms);
 
         surface.window.pre_present_notify();
-        surface.renderer.render(&frame);
+        surface.renderer.render_window(&frame, &surface.surface);
 
         #[cfg(feature = "debug-overlay")]
         surface.debug_overlay.finish_frame(frame_started);

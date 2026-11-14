@@ -1,7 +1,5 @@
 #[cfg(feature = "renderer")]
-pub use crate::renderers::{
-    image::ImageRenderer, texture::TextureRenderer, window::WindowRenderer,
-};
+pub use crate::renderers::Renderer;
 
 use crate::primitives::{Image, Shadow, Svg};
 use crate::{Area, Color};

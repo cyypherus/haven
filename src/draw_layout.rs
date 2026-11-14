@@ -1,10 +1,10 @@
-use crate::renderers::texture::Scene;
+use crate::render::Renderer;
 use glifo::Glyph;
 use kurbo::{Affine, Line, Shape, Stroke};
 use parley::{Layout, PositionedLayoutItem};
 use peniko::Brush;
 
-pub(crate) fn draw_layout(scene: &mut Scene, transform: Affine, layout: &Layout<Brush>) {
+pub(crate) fn draw_layout(renderer: &mut Renderer, transform: Affine, layout: &Layout<Brush>) {
     for line in layout.lines() {
         for item in line.items() {
             let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
@@ -35,7 +35,7 @@ pub(crate) fn draw_layout(scene: &mut Scene, transform: Affine, layout: &Layout<
                     (glyph_run.offset() as f64, y as f64),
                     ((glyph_run.offset() + glyph_run.advance()) as f64, y as f64),
                 );
-                scene.stroke(
+                renderer.stroke(
                     &Stroke::new(width.into()),
                     transform,
                     underline_brush,
@@ -68,7 +68,7 @@ pub(crate) fn draw_layout(scene: &mut Scene, transform: Affine, layout: &Layout<
                     }
                 })
                 .collect();
-            scene.glyphs(
+            renderer.glyphs(
                 font,
                 font_size,
                 run.normalized_coords(),
@@ -98,7 +98,7 @@ pub(crate) fn draw_layout(scene: &mut Scene, transform: Affine, layout: &Layout<
                     (glyph_run.offset() as f64, y as f64),
                     ((glyph_run.offset() + glyph_run.advance()) as f64, y as f64),
                 );
-                scene.stroke(
+                renderer.stroke(
                     &Stroke::new(width.into()),
                     transform,
                     strikethrough_brush,
