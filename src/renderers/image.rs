@@ -1,14 +1,28 @@
-use super::Renderer;
+use super::HybridTextureRenderer;
 use crate::render::Frame;
 use image::RgbaImage;
 
-impl Renderer {
-    pub fn render_image(&mut self, frame: &Frame) -> RgbaImage {
-        let bgra = matches!(
-            self.format,
-            wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb
-        );
-        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+pub struct HybridImageRenderer(HybridTextureRenderer);
+
+impl HybridImageRenderer {
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        let instance = wgpu::Instance::default();
+        let adapter =
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+                .expect("graphics adapter");
+        let (device, queue) =
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+                .expect("graphics device");
+        Self(
+            HybridTextureRenderer::with_device(&device, &queue, wgpu::TextureFormat::Rgba8Unorm)
+                .expect("supported image format"),
+        )
+    }
+
+    pub fn render(&mut self, frame: &Frame) -> RgbaImage {
+        let renderer = &mut self.0;
+        let texture = renderer.device.create_texture(&wgpu::TextureDescriptor {
             label: None,
             size: wgpu::Extent3d {
                 width: frame.width,
@@ -18,11 +32,11 @@ impl Renderer {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: self.format,
+            format: wgpu::TextureFormat::Rgba8Unorm,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
-        self.render_texture(
+        renderer.render(
             frame,
             &texture.create_view(&wgpu::TextureViewDescriptor::default()),
         );
@@ -30,13 +44,13 @@ impl Renderer {
         let row_bytes = frame.width as usize * 4;
         let padded_row_bytes =
             row_bytes.next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as usize);
-        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+        let buffer = renderer.device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
             size: (padded_row_bytes * frame.height as usize) as u64,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let mut encoder = self
+        let mut encoder = renderer
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         encoder.copy_texture_to_buffer(
@@ -51,11 +65,12 @@ impl Renderer {
             },
             texture.size(),
         );
-        self.queue.submit([encoder.finish()]);
+        renderer.queue.submit([encoder.finish()]);
         buffer.slice(..).map_async(wgpu::MapMode::Read, |result| {
             result.expect("map image buffer")
         });
-        self.device
+        renderer
+            .device
             .poll(wgpu::PollType::wait_indefinitely())
             .expect("wait for image");
 
@@ -68,9 +83,9 @@ impl Renderer {
                     _ => ((channel as u32 * 255 + alpha / 2) / alpha).min(255) as u8,
                 };
                 pixels.extend([
-                    straight(pixel[if bgra { 2 } else { 0 }]),
+                    straight(pixel[0]),
                     straight(pixel[1]),
-                    straight(pixel[if bgra { 0 } else { 2 }]),
+                    straight(pixel[2]),
                     pixel[3],
                 ]);
             }

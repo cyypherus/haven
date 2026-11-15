@@ -1,8 +1,6 @@
 #![allow(clippy::type_complexity, clippy::too_many_arguments)]
 
 mod brush_source;
-#[cfg(feature = "renderer")]
-mod draw_layout;
 mod editor;
 mod gestures;
 mod models;
@@ -37,8 +35,8 @@ use peniko::color::AlphaColor;
 use peniko::color::Srgb;
 pub use prebuilts::*;
 pub use primitives::{
-    Circle, Image, ImageSource, Path, PathData, Rect, Shadow, Span, Svg, Text, circle, image,
-    image_from_bytes, image_from_path, path, rect, rich_text, shadow, span, svg, text,
+    Circle, Image, ImageSource, Path, PathData, Rect, Span, Svg, Text, circle, image,
+    image_from_bytes, image_from_path, path, rect, rich_text, span, svg, text,
 };
 pub use view::{
     BlendMode, Compositing, Drawable, combine_id, const_hash, owned_scope, rect_path,

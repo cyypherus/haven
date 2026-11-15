@@ -4,8 +4,8 @@ use crate::gestures::{
     regions::{area_rect, intersect},
 };
 use crate::pane::{EditHandler, PaneElement, PaneElementKind, PaneState, View};
-use crate::primitives::{Image, PathData, Shadow, Svg, Text};
-use crate::render::Filter;
+use crate::primitives::{Image, PathData, Svg, Text};
+use crate::render::LayerEffect;
 use crate::{Binding, OwnedBinding};
 use backer::{Area, nodes::*};
 use kurbo::{Affine, BezPath, Vec2};
@@ -164,7 +164,7 @@ impl<'a, State: 'static> Compositing<'a, State> for View<'a, State> {
             peniko::BlendMode::default(),
             1.,
             false,
-            Some(Filter::Blur {
+            Some(LayerEffect::Blur {
                 radius: radius.max(0.),
             }),
         )
@@ -180,7 +180,7 @@ impl<'a, State: 'static> Compositing<'a, State> for View<'a, State> {
             peniko::BlendMode::default(),
             1.,
             false,
-            Some(Filter::DropShadow {
+            Some(LayerEffect::DropShadow {
                 dx,
                 dy,
                 blur: blur.max(0.),
@@ -196,7 +196,7 @@ fn wrap_layer<'a, State: 'static>(
     blend: peniko::BlendMode,
     alpha: f32,
     clip_gestures: bool,
-    filter: Option<Filter>,
+    effect: Option<LayerEffect>,
 ) -> View<'a, State> {
     draw(move |area, ctx| {
         let mut views = Vec::new();
@@ -206,7 +206,7 @@ fn wrap_layer<'a, State: 'static>(
                     path: path(area),
                     blend,
                     alpha,
-                    filter,
+                    effect,
                 },
                 gestures: Vec::new(),
             }
@@ -275,12 +275,11 @@ pub(crate) enum DrawableType {
     Path(Box<PathData>),
     Svg(Svg),
     Image(Image),
-    Shadow(Shadow),
     PushLayer {
         path: BezPath,
         blend: peniko::BlendMode,
         alpha: f32,
-        filter: Option<Filter>,
+        effect: Option<LayerEffect>,
     },
     PopLayer,
 }
@@ -293,17 +292,16 @@ impl Clone for DrawableType {
             DrawableType::Path(path) => DrawableType::Path(path.clone()),
             DrawableType::Svg(svg) => DrawableType::Svg(svg.clone()),
             DrawableType::Image(image) => DrawableType::Image(image.clone()),
-            DrawableType::Shadow(shadow) => DrawableType::Shadow(shadow.clone()),
             DrawableType::PushLayer {
                 path,
                 blend,
                 alpha,
-                filter,
+                effect,
             } => DrawableType::PushLayer {
                 path: path.clone(),
                 blend: *blend,
                 alpha: *alpha,
-                filter: *filter,
+                effect: *effect,
             },
             DrawableType::PopLayer => DrawableType::PopLayer,
         }

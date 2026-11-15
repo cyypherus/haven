@@ -1,7 +1,7 @@
 #[cfg(feature = "renderer")]
-pub use crate::renderers::Renderer;
+pub use crate::renderers::{HybridImageRenderer, HybridTextureRenderer};
 
-use crate::primitives::{Image, Shadow, Svg};
+use crate::primitives::{Image, Svg};
 use crate::{Area, Color};
 use kurbo::{Affine, BezPath, Rect, Stroke};
 use parley::Layout as TextLayout;
@@ -20,7 +20,7 @@ pub enum RenderItem {
         path: BezPath,
         blend: peniko::BlendMode,
         alpha: f32,
-        filter: Option<Filter>,
+        effect: Option<LayerEffect>,
     },
     PopLayer,
     Text(TextRenderLayout),
@@ -45,14 +45,10 @@ pub enum RenderItem {
         cache_key: u64,
         area: Area,
     },
-    Shadow {
-        shadow: Shadow,
-        area: Area,
-    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Filter {
+pub enum LayerEffect {
     Blur {
         radius: f32,
     },

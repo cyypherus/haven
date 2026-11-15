@@ -81,6 +81,8 @@ pub struct Pane<State> {
     on_wake: fn(&mut State, &mut PaneState) -> (),
     on_exit: fn(&mut State, &mut PaneState) -> (),
     started: bool,
+    #[cfg(feature = "debug-overlay")]
+    pub(crate) debug_label: Option<String>,
 }
 
 struct ActiveGesture<State> {
@@ -469,6 +471,8 @@ impl<State: 'static> Pane<State> {
             on_wake: config.on_wake,
             on_exit: config.on_exit,
             started: false,
+            #[cfg(feature = "debug-overlay")]
+            debug_label: None,
         }
     }
 
@@ -564,6 +568,13 @@ impl<State: 'static> Pane<State> {
         };
         let draw_items = {
             let mut layout = view(state, &mut self.pane_state);
+            #[cfg(feature = "debug-overlay")]
+            if let Some(label) = self.debug_label.take() {
+                layout = crate::stack(vec![
+                    layout,
+                    crate::platforms::winit::debug_overlay(label, &mut self.pane_state),
+                ]);
+            }
             layout.draw(pane_area, &mut self.pane_state)
         };
 
@@ -597,7 +608,6 @@ impl<State: 'static> Pane<State> {
                         DrawableType::Path(view) => Some(view.id),
                         DrawableType::Svg(view) => Some(view.id),
                         DrawableType::Image(view) => Some(view.id),
-                        DrawableType::Shadow(view) => Some(view.id),
                         DrawableType::PushLayer { .. } | DrawableType::PopLayer => None,
                     };
                     let draw_area = area;
@@ -636,20 +646,16 @@ impl<State: 'static> Pane<State> {
                             image,
                             area: draw_area,
                         },
-                        DrawableType::Shadow(shadow) => RenderItem::Shadow {
-                            shadow,
-                            area: draw_area,
-                        },
                         DrawableType::PushLayer {
                             path,
                             blend,
                             alpha,
-                            filter,
+                            effect,
                         } => RenderItem::PushLayer {
                             path,
                             blend,
                             alpha,
-                            filter,
+                            effect,
                         },
                         DrawableType::PopLayer => RenderItem::PopLayer,
                     };
@@ -876,7 +882,7 @@ impl<State: 'static> Pane<State> {
         self.take_effects()
     }
 
-    pub(crate) fn modifiers_changed(&mut self, modifiers: Modifiers) -> Vec<PaneEffect> {
+    pub fn modifiers_changed(&mut self, modifiers: Modifiers) -> Vec<PaneEffect> {
         self.pane_state.modifiers = Some(modifiers);
         self.take_effects()
     }
@@ -888,7 +894,7 @@ impl<State: 'static> Pane<State> {
         self.take_effects()
     }
 
-    pub(crate) fn exit(&mut self, state: &mut State) -> Vec<PaneEffect> {
+    pub fn exit(&mut self, state: &mut State) -> Vec<PaneEffect> {
         self.cursor_position = None;
         let mut needs_redraw = false;
         let mut seen = HashSet::new();
@@ -1226,7 +1232,7 @@ impl<State: 'static> Pane<State> {
         self.take_effects()
     }
 
-    pub(crate) fn scroll(&mut self, state: &mut State, delta: ScrollDelta) -> Vec<PaneEffect> {
+    pub fn scroll(&mut self, state: &mut State, delta: ScrollDelta) -> Vec<PaneEffect> {
         let mut needs_redraw = false;
         let cursor_position = self.cursor_position;
         if let Some(current) = cursor_position {

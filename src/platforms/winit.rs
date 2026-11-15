@@ -5,9 +5,7 @@ use crate::{Key, Modifier, Modifiers, NamedKey};
 #[cfg(feature = "platform-winit")]
 use crate::pane::{Pane, PaneEffect};
 #[cfg(feature = "debug-overlay")]
-use crate::render::Frame;
-#[cfg(feature = "debug-overlay")]
-use crate::{Color, Stroke, rect, stack, text};
+use crate::{Color, PaneState, Stroke, View, rect, stack, text};
 #[cfg(feature = "platform-winit")]
 use crate::{PaneBuilder, ScrollDelta};
 #[cfg(feature = "debug-overlay")]
@@ -78,7 +76,7 @@ enum WinitEvent {
 }
 
 #[cfg(feature = "platform-winit")]
-use crate::render::Renderer;
+use crate::render::HybridTextureRenderer;
 
 #[cfg(feature = "platform-winit")]
 pub struct WinitApp<State> {
@@ -93,7 +91,8 @@ pub struct WinitApp<State> {
 #[cfg(feature = "platform-winit")]
 struct WinitSurface<State> {
     surface: wgpu::Surface<'static>,
-    renderer: Renderer,
+    device: wgpu::Device,
+    renderer: HybridTextureRenderer,
     window: Arc<WinitWindow>,
     pane: Pane<State>,
     #[cfg(feature = "debug-overlay")]
@@ -101,8 +100,8 @@ struct WinitSurface<State> {
 }
 
 #[cfg(feature = "debug-overlay")]
+#[derive(Default)]
 struct DebugOverlayState {
-    pane: Pane<DebugOverlayMetrics>,
     last_redraw: Option<Instant>,
     frame_ms: Option<f64>,
     smoothed_fps: Option<f64>,
@@ -110,39 +109,30 @@ struct DebugOverlayState {
 }
 
 #[cfg(feature = "debug-overlay")]
-impl Default for DebugOverlayState {
-    fn default() -> Self {
-        Self {
-            pane: PaneBuilder::<DebugOverlayMetrics>::new("debug-overlay", |metrics, ctx| {
-                stack(vec![
-                    rect(crate::id!())
-                        .fill(Color::from_rgb8(0, 0, 0).with_alpha(0.68))
-                        .stroke(
-                            Color::from_rgb8(255, 255, 255).with_alpha(0.18),
-                            Stroke::new(1.),
-                        )
-                        .corner_rounding(5.)
-                        .build(ctx)
-                        .inert(),
-                    text(crate::id!(), metrics.label())
-                        .font_size(12)
-                        .align(parley::Alignment::Start)
-                        .fill(Color::from_rgb8(245, 245, 245))
-                        .build(ctx)
-                        .pad_x(6.)
-                        .pad_y(5.),
-                ])
-                .pad(8.)
-                .align(Align::BottomTrailing)
-            })
-            .transparent(true)
-            .build(),
-            last_redraw: None,
-            frame_ms: None,
-            smoothed_fps: None,
-            frame_times: VecDeque::new(),
-        }
-    }
+pub(crate) fn debug_overlay<'a, State: 'static>(
+    label: String,
+    ctx: &mut PaneState,
+) -> View<'a, State> {
+    stack(vec![
+        rect(crate::id!())
+            .fill(Color::from_rgb8(0, 0, 0).with_alpha(0.68))
+            .stroke(
+                Color::from_rgb8(255, 255, 255).with_alpha(0.18),
+                Stroke::new(1.),
+            )
+            .corner_rounding(5.)
+            .build(ctx)
+            .inert(),
+        text(crate::id!(), label)
+            .font_size(12)
+            .align(parley::Alignment::Start)
+            .fill(Color::from_rgb8(245, 245, 245))
+            .build(ctx)
+            .pad_x(6.)
+            .pad_y(5.),
+    ])
+    .pad(8.)
+    .align(Align::BottomTrailing)
 }
 
 #[cfg(feature = "debug-overlay")]
@@ -184,20 +174,6 @@ impl DebugOverlayState {
                 .map(|(_, frame_ms)| *frame_ms)
                 .reduce(f64::max),
         }
-    }
-
-    fn append_to(
-        &mut self,
-        frame: &mut Frame,
-        effects: &mut Vec<PaneEffect>,
-        target_frame_ms: f64,
-    ) {
-        let mut metrics = self.update(target_frame_ms);
-        let (overlay, overlay_effects) =
-            self.pane
-                .redraw(&mut metrics, frame.width, frame.height, frame.scale_factor);
-        frame.items.extend(overlay.items);
-        effects.extend(overlay_effects);
     }
 
     fn finish_frame(&mut self, frame_started: Instant) {
@@ -377,7 +353,41 @@ impl<State: 'static> WinitApp<State> {
         let window = Arc::new(event_loop.create_window(attributes).unwrap());
         let size = window.inner_size();
         let window_id = window.id();
-        let (renderer, surface) = Renderer::for_window(window.clone(), size.width, size.height);
+        let instance = wgpu::Instance::default();
+        let surface = instance
+            .create_surface(window.clone())
+            .expect("window surface");
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            compatible_surface: Some(&surface),
+            ..Default::default()
+        }))
+        .expect("graphics adapter");
+        let (device, queue) =
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+                .expect("graphics device");
+        let formats = surface.get_capabilities(&adapter).formats;
+        let format = [
+            wgpu::TextureFormat::Bgra8Unorm,
+            wgpu::TextureFormat::Rgba8Unorm,
+        ]
+        .into_iter()
+        .find(|format| formats.contains(format))
+        .expect("supported surface format");
+        surface.configure(
+            &device,
+            &wgpu::SurfaceConfiguration {
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                format,
+                width: size.width.max(1),
+                height: size.height.max(1),
+                present_mode: wgpu::PresentMode::AutoVsync,
+                desired_maximum_frame_latency: 2,
+                alpha_mode: wgpu::CompositeAlphaMode::Auto,
+                view_formats: Vec::new(),
+            },
+        );
+        let renderer = HybridTextureRenderer::with_device(&device, &queue, format)
+            .expect("supported surface format");
 
         #[cfg(target_os = "windows")]
         window.set_visible(true);
@@ -394,6 +404,7 @@ impl<State: 'static> WinitApp<State> {
             window_id,
             WinitSurface {
                 surface,
+                device,
                 renderer,
                 window,
                 pane,
@@ -452,6 +463,17 @@ impl<State: 'static> WinitApp<State> {
         let width = size.width;
         let height = size.height;
 
+        #[cfg(feature = "debug-overlay")]
+        {
+            let target_frame_ms = target_frame_ms(
+                surface
+                    .window
+                    .current_monitor()
+                    .and_then(|monitor| monitor.refresh_rate_millihertz()),
+            );
+            surface.pane.debug_label = Some(surface.debug_overlay.update(target_frame_ms).label());
+        }
+
         let (frame, effects) = surface.pane.redraw(
             &mut self.state,
             width,
@@ -459,24 +481,34 @@ impl<State: 'static> WinitApp<State> {
             surface.window.scale_factor(),
         );
 
-        #[cfg(feature = "debug-overlay")]
-        let (mut frame, mut effects) = (frame, effects);
-
-        #[cfg(feature = "debug-overlay")]
-        let target_frame_ms = target_frame_ms(
-            surface
-                .window
-                .current_monitor()
-                .and_then(|monitor| monitor.refresh_rate_millihertz()),
-        );
-
-        #[cfg(feature = "debug-overlay")]
-        surface
-            .debug_overlay
-            .append_to(&mut frame, &mut effects, target_frame_ms);
-
-        surface.window.pre_present_notify();
-        surface.renderer.render_window(&frame, &surface.surface);
+        if width > 0 && height > 0 {
+            let mut config = surface
+                .surface
+                .get_configuration()
+                .expect("configured window surface");
+            if (config.width, config.height) != (width, height) {
+                config.width = width;
+                config.height = height;
+                surface.surface.configure(&surface.device, &config);
+            }
+            match surface.surface.get_current_texture() {
+                wgpu::CurrentSurfaceTexture::Success(texture)
+                | wgpu::CurrentSurfaceTexture::Suboptimal(texture) => {
+                    surface.renderer.render(
+                        &frame,
+                        &texture
+                            .texture
+                            .create_view(&wgpu::TextureViewDescriptor::default()),
+                    );
+                    surface.window.pre_present_notify();
+                    texture.present();
+                }
+                wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+                    surface.surface.configure(&surface.device, &config);
+                }
+                _ => {}
+            }
+        }
 
         #[cfg(feature = "debug-overlay")]
         surface.debug_overlay.finish_frame(frame_started);

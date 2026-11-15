@@ -1,13 +1,13 @@
 mod image;
-#[cfg(feature = "platform-winit")]
-mod window;
+
+pub use image::HybridImageRenderer;
 
 use crate::Area;
-use crate::draw_layout::draw_layout;
 use crate::primitives::ImageSource;
-use crate::render::{Filter, Frame, RenderItem};
+use crate::render::{Frame, LayerEffect, RenderItem};
 use ::image::{DynamicImage, ImageBuffer, Rgba};
-use kurbo::{Affine, BezPath, Point, Rect, RoundedRect, Shape, Size, Stroke, Vec2};
+use kurbo::{Affine, Line, Point, Rect, RoundedRect, Shape, Size, Stroke, Vec2};
+use parley::{Layout, PositionedLayoutItem};
 use peniko::{self, BlendMode, Brush, Compose, Fill, Mix};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -18,43 +18,19 @@ use vello_svg::usvg;
 
 const TOLERANCE: f64 = 0.1;
 
-pub struct Renderer {
+pub struct HybridTextureRenderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    format: wgpu::TextureFormat,
     vello: vello_hybrid::Renderer,
     resources: Resources,
     scene: vello_hybrid::Scene,
-    images: HashMap<ImageKey, Option<peniko::ImageData>>,
+    images: HashMap<u64, Option<peniko::ImageData>>,
+    embedded_images: HashMap<*const Vec<u8>, Option<peniko::ImageData>>,
     svgs: HashMap<u64, Option<Arc<usvg::Tree>>>,
     uploaded_images: HashMap<u64, ImageId>,
 }
 
-#[derive(PartialEq, Eq, Hash)]
-enum ImageKey {
-    View(u64),
-    Embedded(Arc<Vec<u8>>),
-}
-
-impl Default for Renderer {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Renderer {
-    pub fn new() -> Self {
-        let instance = wgpu::Instance::default();
-        let adapter =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-                .expect("graphics adapter");
-        let (device, queue) =
-            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-                .expect("graphics device");
-        Self::with_device(&device, &queue, wgpu::TextureFormat::Rgba8Unorm)
-            .expect("supported image format")
-    }
-
+impl HybridTextureRenderer {
     pub fn with_device(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -72,7 +48,6 @@ impl Renderer {
         Some(Self {
             device: device.clone(),
             queue: queue.clone(),
-            format,
             vello: vello_hybrid::Renderer::new(
                 device,
                 &RenderTargetConfig {
@@ -84,12 +59,13 @@ impl Renderer {
             resources: Resources::new(),
             scene: vello_hybrid::Scene::new(1, 1),
             images: HashMap::new(),
+            embedded_images: HashMap::new(),
             svgs: HashMap::new(),
             uploaded_images: HashMap::new(),
         })
     }
 
-    pub fn render_texture(&mut self, frame: &Frame, target: &wgpu::TextureView) {
+    pub fn render(&mut self, frame: &Frame, target: &wgpu::TextureView) {
         let (width, height) = (frame.width as u16, frame.height as u16);
         if self.scene.width() != width || self.scene.height() != height {
             self.scene = vello_hybrid::Scene::new(width, height);
@@ -98,34 +74,34 @@ impl Renderer {
         }
         let scale = Affine::scale(frame.scale_factor);
         let bounds = Rect::new(0., 0., frame.width as f64, frame.height as f64);
-        self.fill(
-            Fill::NonZero,
-            Affine::IDENTITY,
-            &Brush::Solid(frame.base_color),
-            Affine::IDENTITY,
-            &bounds.to_path(TOLERANCE),
-        );
+        self.scene.set_transform(Affine::IDENTITY);
+        self.scene.set_fill_rule(Fill::NonZero);
+        self.set_brush(&Brush::Solid(frame.base_color), Affine::IDENTITY);
+        self.scene.fill_rect(&bounds);
         for item in &frame.items {
             match item {
                 RenderItem::PushLayer {
                     path,
                     blend,
                     alpha,
-                    filter,
+                    effect,
                 } => {
-                    let unclipped = filter.map(|_| scale.inverse() * bounds.to_path(TOLERANCE));
-                    self.push_layer(
-                        *blend,
-                        *alpha,
-                        scale,
-                        unclipped.as_ref().unwrap_or(path),
-                        filter.map(|filter| {
-                            vello_common::filter_effects::Filter::from_primitive(match filter {
-                                Filter::Blur { radius } => FilterPrimitive::GaussianBlur {
+                    let unclipped = effect.map(|_| scale.inverse() * bounds.to_path(TOLERANCE));
+                    self.scene.set_transform(scale);
+                    self.scene
+                        .push_clip_path(unclipped.as_ref().unwrap_or(path));
+                    self.scene.push_layer(
+                        None,
+                        Some(*blend),
+                        Some(*alpha),
+                        None,
+                        effect.map(|effect| {
+                            vello_common::filter_effects::Filter::from_primitive(match effect {
+                                LayerEffect::Blur { radius } => FilterPrimitive::GaussianBlur {
                                     std_deviation: radius,
                                     edge_mode: EdgeMode::None,
                                 },
-                                Filter::DropShadow {
+                                LayerEffect::DropShadow {
                                     dx,
                                     dy,
                                     blur,
@@ -141,37 +117,37 @@ impl Renderer {
                         }),
                     );
                 }
-                RenderItem::PopLayer => self.pop_layer(),
-                RenderItem::Text(text) => {
-                    for (rect, brush) in &text.backgrounds {
-                        self.fill(
-                            Fill::NonZero,
-                            text.transform,
-                            brush,
-                            Affine::IDENTITY,
-                            &rect.to_path(TOLERANCE),
-                        );
-                    }
-                    draw_layout(self, text.transform, &text.layout);
+                RenderItem::PopLayer => {
+                    self.scene.pop_layer();
+                    self.scene.pop_clip_path();
                 }
-                RenderItem::Layout { layout, transform } => draw_layout(self, *transform, layout),
+                RenderItem::Text(text) => {
+                    self.scene.set_transform(text.transform);
+                    self.scene.set_fill_rule(Fill::NonZero);
+                    for (rect, brush) in &text.backgrounds {
+                        self.set_brush(brush, Affine::IDENTITY);
+                        self.scene.fill_rect(rect);
+                    }
+                    self.draw_layout(text.transform, &text.layout);
+                }
+                RenderItem::Layout { layout, transform } => self.draw_layout(*transform, layout),
                 RenderItem::Path {
                     path, fill, stroke, ..
                 } => {
+                    self.scene.set_transform(scale);
+                    self.scene.set_fill_rule(Fill::EvenOdd);
                     if fill.is_none() && stroke.is_none() {
-                        self.fill(
-                            Fill::EvenOdd,
-                            scale,
-                            &Brush::Solid(peniko::Color::BLACK),
-                            Affine::IDENTITY,
-                            path,
-                        );
+                        self.set_brush(&Brush::Solid(peniko::Color::BLACK), Affine::IDENTITY);
+                        self.scene.fill_path(path);
                     }
                     if let Some(brush) = fill {
-                        self.fill(Fill::EvenOdd, scale, brush, Affine::IDENTITY, path);
+                        self.set_brush(brush, Affine::IDENTITY);
+                        self.scene.fill_path(path);
                     }
                     if let Some((brush, stroke)) = stroke {
-                        self.stroke(stroke, scale, brush, Affine::IDENTITY, path);
+                        self.scene.set_stroke(stroke.clone());
+                        self.set_brush(brush, Affine::IDENTITY);
+                        self.scene.stroke_path(path);
                     }
                 }
                 RenderItem::Svg {
@@ -196,32 +172,32 @@ impl Renderer {
                             fit(size, *area, frame.scale_factor, svg.unlocked_aspect_ratio);
                         let target = scaled_rect(*area, frame.scale_factor).to_path(TOLERANCE);
                         if svg.fill.is_some() {
-                            self.push_layer(
-                                BlendMode::default(),
-                                1.,
-                                Affine::IDENTITY,
-                                &target,
-                                None,
-                            );
+                            self.scene.set_transform(Affine::IDENTITY);
+                            self.scene.push_clip_path(&target);
+                            self.scene.push_layer(None, None, None, None, None);
                         }
-                        self.draw_svg(&tree, transform);
+                        vello_svg::append_tree_with_transform(
+                            &mut SvgPainter(self),
+                            &tree,
+                            transform,
+                        );
                         if let Some(fill) = &svg.fill {
-                            self.push_layer(
-                                BlendMode::new(Mix::Normal, Compose::SrcIn),
-                                1.,
-                                Affine::IDENTITY,
-                                &target,
+                            self.scene.set_transform(Affine::IDENTITY);
+                            self.scene.push_clip_path(&target);
+                            self.scene.push_layer(
+                                None,
+                                Some(BlendMode::new(Mix::Normal, Compose::SrcIn)),
+                                None,
+                                None,
                                 None,
                             );
-                            self.fill(
-                                Fill::NonZero,
-                                Affine::IDENTITY,
-                                fill,
-                                Affine::IDENTITY,
-                                &target,
-                            );
-                            self.pop_layer();
-                            self.pop_layer();
+                            self.scene.set_fill_rule(Fill::NonZero);
+                            self.set_brush(fill, Affine::IDENTITY);
+                            self.scene.fill_path(&target);
+                            for _ in 0..2 {
+                                self.scene.pop_layer();
+                                self.scene.pop_clip_path();
+                            }
                         }
                     }
                 }
@@ -232,7 +208,7 @@ impl Renderer {
                 } => {
                     let Some(data) = self
                         .images
-                        .entry(ImageKey::View(*cache_key))
+                        .entry(*cache_key)
                         .or_insert_with(|| {
                             load_image(&image.source)
                                 .inspect_err(|err| eprintln!("Loading image failed: {err}"))
@@ -245,11 +221,13 @@ impl Renderer {
                     let size = Size::new(data.width as f64, data.height as f64);
                     let (transform, scale) =
                         fit(size, *area, frame.scale_factor, image.unlocked_aspect_ratio);
-                    self.fill(
-                        Fill::NonZero,
-                        transform,
+                    self.scene.set_transform(transform);
+                    self.scene.set_fill_rule(Fill::NonZero);
+                    self.set_brush(
                         &Brush::Image(peniko::ImageBrush::new(data)),
                         Affine::IDENTITY,
+                    );
+                    self.scene.fill_path(
                         &RoundedRect::from_origin_size(
                             Point::ZERO,
                             size,
@@ -258,12 +236,6 @@ impl Renderer {
                         .to_path(TOLERANCE),
                     );
                 }
-                RenderItem::Shadow { shadow, area } => self.blurred_rounded_rect(
-                    shadow.rect(*area, frame.scale_factor),
-                    shadow.color,
-                    shadow.corner_rounding * frame.scale_factor,
-                    shadow.blur * frame.scale_factor,
-                ),
             }
         }
         let mut encoder = self
@@ -287,97 +259,68 @@ impl Renderer {
         self.queue.submit([encoder.finish()]);
     }
 
-    fn draw_svg(&mut self, tree: &usvg::Tree, transform: Affine) {
-        struct Backend<'a>(&'a mut Renderer);
-
-        impl vello_svg::RenderSink for Backend<'_> {
-            fn push_layer(
-                &mut self,
-                blend: impl Into<BlendMode>,
-                alpha: f32,
-                transform: Affine,
-                shape: &impl Shape,
-            ) {
-                self.0.push_layer(
-                    blend.into(),
-                    alpha,
-                    transform,
-                    &shape.to_path(TOLERANCE),
-                    None,
-                );
-            }
-
-            fn pop_layer(&mut self) {
-                self.0.pop_layer();
-            }
-
-            fn fill(
-                &mut self,
-                fill: Fill,
-                transform: Affine,
-                brush: &Brush,
-                brush_transform: Affine,
-                shape: &impl Shape,
-            ) {
-                self.0.fill(
-                    fill,
-                    transform,
-                    brush,
-                    brush_transform,
-                    &shape.to_path(TOLERANCE),
-                );
-            }
-
-            fn stroke(
-                &mut self,
-                stroke: &Stroke,
-                transform: Affine,
-                brush: &Brush,
-                brush_transform: Affine,
-                shape: &impl Shape,
-            ) {
-                self.0.stroke(
-                    stroke,
-                    transform,
-                    brush,
-                    brush_transform,
-                    &shape.to_path(TOLERANCE),
-                );
-            }
-
-            fn draw_image(&mut self, image: &usvg::Image, transform: Affine) {
-                let (usvg::ImageKind::JPEG(data)
-                | usvg::ImageKind::PNG(data)
-                | usvg::ImageKind::GIF(data)
-                | usvg::ImageKind::WEBP(data)) = image.kind()
-                else {
-                    return;
+    fn draw_layout(&mut self, transform: Affine, layout: &Layout<Brush>) {
+        self.scene.set_transform(transform);
+        self.scene.set_fill_rule(Fill::NonZero);
+        for line in layout.lines() {
+            for item in line.items() {
+                let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
+                    continue;
                 };
-                let Some(data) = self
-                    .0
-                    .images
-                    .entry(ImageKey::Embedded(data.clone()))
-                    .or_insert_with(|| {
-                        load_image(&ImageSource::Bytes(data.clone()))
-                            .inspect_err(|err| eprintln!("Loading image failed: {err}"))
-                            .ok()
+                let style = glyph_run.style();
+                let run = glyph_run.run();
+                let metrics = run.metrics();
+                let decoration = |offset: f32, size: f32| {
+                    let y = (glyph_run.baseline() - offset + size / 2.) as f64;
+                    Line::new(
+                        (glyph_run.offset() as f64, y),
+                        ((glyph_run.offset() + glyph_run.advance()) as f64, y),
+                    )
+                };
+                self.set_brush(&style.brush, Affine::IDENTITY);
+                if let Some(underline) = &style.underline {
+                    let width = underline.size.unwrap_or(metrics.underline_size);
+                    let offset = underline.offset.unwrap_or(metrics.underline_offset);
+                    self.scene.set_stroke(Stroke::new(width.into()));
+                    self.scene
+                        .stroke_path(&decoration(offset, width).to_path(TOLERANCE));
+                }
+                let mut x = glyph_run.offset();
+                let y = glyph_run.baseline();
+                let glyphs: Vec<_> = glyph_run
+                    .glyphs()
+                    .map(|glyph| {
+                        let gx = x + glyph.x;
+                        x += glyph.advance;
+                        glifo::Glyph {
+                            id: glyph.id as _,
+                            x: gx,
+                            y: y - glyph.y,
+                        }
                     })
-                    .clone()
-                else {
-                    return;
-                };
-                let (width, height) = (data.width, data.height);
-                self.0.fill(
-                    Fill::NonZero,
-                    transform,
-                    &Brush::Image(peniko::ImageBrush::new(data)),
-                    Affine::IDENTITY,
-                    &Rect::new(0., 0., width as f64, height as f64).to_path(TOLERANCE),
-                );
+                    .collect();
+                self.scene
+                    .glyph_run(&mut self.resources, run.font())
+                    .font_size(run.font_size())
+                    .hint(true)
+                    .normalized_coords(run.normalized_coords())
+                    .glyph_transform(
+                        run.synthesis()
+                            .skew()
+                            .map(|angle| Affine::skew(angle.to_radians().tan() as f64, 0.))
+                            .unwrap_or_default(),
+                    )
+                    .fill_glyphs(glyphs.into_iter());
+                if let Some(strikethrough) = &style.strikethrough {
+                    let width = strikethrough.size.unwrap_or(metrics.strikethrough_size);
+                    let offset = strikethrough.offset.unwrap_or(metrics.strikethrough_offset);
+                    self.scene.set_stroke(Stroke::new(width.into()));
+                    self.scene.stroke_path(
+                        &decoration(offset, metrics.strikethrough_size).to_path(TOLERANCE),
+                    );
+                }
             }
         }
-
-        vello_svg::append_tree_with_transform(&mut Backend(self), tree, transform);
     }
 
     fn set_brush(&mut self, brush: &Brush, brush_transform: Affine) {
@@ -419,81 +362,87 @@ impl Renderer {
         self.scene.set_paint(paint);
         self.scene.set_paint_transform(brush_transform);
     }
+}
+
+struct SvgPainter<'a>(&'a mut HybridTextureRenderer);
+
+impl vello_svg::RenderSink for SvgPainter<'_> {
+    fn push_layer(
+        &mut self,
+        blend: impl Into<BlendMode>,
+        alpha: f32,
+        transform: Affine,
+        shape: &impl Shape,
+    ) {
+        self.0.scene.set_transform(transform);
+        self.0.scene.push_clip_path(&shape.to_path(TOLERANCE));
+        self.0
+            .scene
+            .push_layer(None, Some(blend.into()), Some(alpha), None, None);
+    }
+
+    fn pop_layer(&mut self) {
+        self.0.scene.pop_layer();
+        self.0.scene.pop_clip_path();
+    }
 
     fn fill(
         &mut self,
-        rule: Fill,
+        fill: Fill,
         transform: Affine,
         brush: &Brush,
         brush_transform: Affine,
-        path: &BezPath,
+        shape: &impl Shape,
     ) {
-        self.scene.set_transform(transform);
-        self.scene.set_fill_rule(rule);
-        self.set_brush(brush, brush_transform);
-        self.scene.fill_path(path);
+        self.0.scene.set_transform(transform);
+        self.0.scene.set_fill_rule(fill);
+        self.0.set_brush(brush, brush_transform);
+        self.0.scene.fill_path(&shape.to_path(TOLERANCE));
     }
 
-    pub(crate) fn stroke(
+    fn stroke(
         &mut self,
         stroke: &Stroke,
         transform: Affine,
         brush: &Brush,
         brush_transform: Affine,
-        path: &BezPath,
+        shape: &impl Shape,
     ) {
-        self.scene.set_transform(transform);
-        self.scene.set_stroke(stroke.clone());
-        self.set_brush(brush, brush_transform);
-        self.scene.stroke_path(path);
+        self.0.scene.set_transform(transform);
+        self.0.scene.set_stroke(stroke.clone());
+        self.0.set_brush(brush, brush_transform);
+        self.0.scene.stroke_path(&shape.to_path(TOLERANCE));
     }
 
-    pub(crate) fn glyphs(
-        &mut self,
-        font: &peniko::FontData,
-        font_size: f32,
-        normalized_coords: &[i16],
-        brush: &Brush,
-        transform: Affine,
-        glyph_transform: Affine,
-        glyphs: impl Iterator<Item = glifo::Glyph> + Clone,
-    ) {
-        self.scene.set_transform(transform);
-        self.scene.set_fill_rule(Fill::NonZero);
-        self.set_brush(brush, Affine::IDENTITY);
-        self.scene
-            .glyph_run(&mut self.resources, font)
-            .font_size(font_size)
-            .hint(true)
-            .normalized_coords(normalized_coords)
-            .glyph_transform(glyph_transform)
-            .fill_glyphs(glyphs);
-    }
-
-    fn push_layer(
-        &mut self,
-        blend: BlendMode,
-        alpha: f32,
-        transform: Affine,
-        clip: &BezPath,
-        filter: Option<vello_common::filter_effects::Filter>,
-    ) {
-        self.scene.set_transform(transform);
-        self.scene.push_clip_path(clip);
-        self.scene
-            .push_layer(None, Some(blend), Some(alpha), None, filter);
-    }
-
-    fn pop_layer(&mut self) {
-        self.scene.pop_layer();
-        self.scene.pop_clip_path();
-    }
-
-    fn blurred_rounded_rect(&mut self, rect: Rect, color: peniko::Color, radius: f64, blur: f64) {
-        self.scene.set_transform(Affine::IDENTITY);
-        self.set_brush(&Brush::Solid(color), Affine::IDENTITY);
-        self.scene
-            .fill_blurred_rounded_rect(&rect, radius as f32, blur as f32, false);
+    fn draw_image(&mut self, image: &usvg::Image, transform: Affine) {
+        let (usvg::ImageKind::JPEG(data)
+        | usvg::ImageKind::PNG(data)
+        | usvg::ImageKind::GIF(data)
+        | usvg::ImageKind::WEBP(data)) = image.kind()
+        else {
+            return;
+        };
+        let Some(data) = self
+            .0
+            .embedded_images
+            .entry(Arc::as_ptr(data))
+            .or_insert_with(|| {
+                load_image(&ImageSource::Bytes(data.clone()))
+                    .inspect_err(|err| eprintln!("Loading image failed: {err}"))
+                    .ok()
+            })
+            .clone()
+        else {
+            return;
+        };
+        let rect = Rect::new(0., 0., data.width as f64, data.height as f64);
+        self.0.scene.set_transform(transform);
+        self.0.scene.set_fill_rule(Fill::NonZero);
+        self.0.set_brush(
+            &Brush::Image(peniko::ImageBrush::new(data)),
+            Affine::IDENTITY,
+        );
+        self.0.scene.fill_rect(&rect);
     }
 }
 
@@ -575,7 +524,7 @@ mod tests {
     #[test]
     #[ignore = "requires a graphics adapter"]
     fn svg_drawing_preserves_layers_and_paint_order() {
-        let mut renderer = Renderer::new();
+        let mut renderer = HybridImageRenderer::new();
         for scale in [1, 2] {
             let mut frame = Frame {
                 base_color: peniko::Color::BLACK,
@@ -623,7 +572,7 @@ mod tests {
                     },
                 }],
             };
-            let image = renderer.render_image(&frame);
+            let image = renderer.render(&frame);
             for (x, y, expected) in [
                 (14, 16, [128, 0, 0, 255]),
                 (24, 16, [0, 0, 0, 255]),
@@ -649,7 +598,7 @@ mod tests {
             if let RenderItem::Svg { svg, .. } = &mut frame.items[0] {
                 svg.fill = Some(Brush::Solid(peniko::Color::from_rgb8(0, 255, 0)));
             }
-            let image = renderer.render_image(&frame);
+            let image = renderer.render(&frame);
             assert_eq!(image.get_pixel(56 * scale, 32 * scale).0, [0, 255, 0, 255]);
             assert_eq!(image.get_pixel(32 * scale, 56 * scale).0, [0, 0, 0, 255]);
         }
@@ -702,16 +651,15 @@ mod tests {
                 view_formats: &[],
             });
             let view = target.create_view(&Default::default());
-            let mut renderer = Renderer::with_device(&device, &queue, format).unwrap();
+            let mut renderer = HybridTextureRenderer::with_device(&device, &queue, format).unwrap();
             for _ in 0..32 {
-                renderer.render_texture(&frame, &view);
+                renderer.render(&frame, &view);
             }
             device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
             assert_eq!(renderer.uploaded_images.len(), 1);
-            let image = renderer.render_image(&frame);
-            assert_eq!(image.get_pixel(8, 8).0, [255, 0, 0, 255]);
-            assert_eq!(renderer.uploaded_images.len(), 1);
         }
+        let image = HybridImageRenderer::new().render(&frame);
+        assert_eq!(image.get_pixel(8, 8).0, [255, 0, 0, 255]);
     }
 
     #[test]
@@ -726,7 +674,7 @@ mod tests {
             wgpu::TextureFormat::Rgba8Uint,
             wgpu::TextureFormat::Depth32Float,
         ] {
-            assert!(Renderer::with_device(&device, &queue, format).is_none());
+            assert!(HybridTextureRenderer::with_device(&device, &queue, format).is_none());
         }
     }
 }
