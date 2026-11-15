@@ -3,6 +3,7 @@
 mod brush_source;
 mod editor;
 mod gestures;
+mod hybrid;
 mod models;
 mod pane;
 mod platforms;
@@ -11,8 +12,6 @@ mod primitives;
 #[cfg(test)]
 mod public_api_test;
 pub mod render;
-#[cfg(feature = "renderer")]
-mod renderers;
 mod utils;
 mod view;
 

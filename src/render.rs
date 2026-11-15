@@ -1,5 +1,4 @@
-#[cfg(feature = "renderer")]
-pub use crate::renderers::{HybridImageRenderer, HybridTextureRenderer};
+pub use crate::hybrid::{HybridImageRenderer, HybridTextureRenderer};
 
 use crate::primitives::{Image, Svg};
 use crate::{Area, Color};

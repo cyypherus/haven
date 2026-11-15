@@ -45,11 +45,6 @@ path = "examples/text_fields.rs"
 required-features = ["platform-winit"]
 
 [[example]]
-name = "automated_testing"
-path = "examples/automated_testing.rs"
-required-features = ["renderer"]
-
-[[example]]
 name = "effects"
 path = "examples/effects.rs"
 required-features = ["platform-winit"]
@@ -59,7 +54,7 @@ backer = "0.12.0"
 # backer = { path = "../backer" }
 bytemuck = { version = "1", features = ["derive"] }
 clipboard-rs = "0.3.0"
-glifo = { version = "0.2", optional = true }
+glifo = "0.2"
 image = { version = "0.25", default-features = false, features = [
     "png",
     "jpeg",
@@ -70,11 +65,11 @@ kurbo = "0.13.0"
 lilt = "0.8"
 parley = "0.11.1"
 peniko = "0.6.0"
-pollster = { version = "0.4", optional = true }
-vello_common = { version = "0.1", optional = true }
-vello_hybrid = { version = "0.1", optional = true }
-vello_svg = { version = "0.11", default-features = false, optional = true }
-wgpu = { version = "29", optional = true }
+pollster = "0.4"
+vello_common = "0.1"
+vello_hybrid = "0.1"
+vello_svg = { version = "0.11", default-features = false }
+wgpu = "29"
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 tokio-util = { version = "0.7", features = ["rt"] }
@@ -84,15 +79,7 @@ winit = { version = "0.30.12", optional = true }
 default = ["platform-winit"]
 test-api = []
 debug-overlay = ["platform-winit"]
-renderer = [
-    "dep:glifo",
-    "dep:pollster",
-    "dep:vello_svg",
-    "dep:vello_common",
-    "dep:vello_hybrid",
-    "dep:wgpu",
-]
-platform-winit = ["dep:winit", "renderer"]
+platform-winit = ["dep:winit"]
 
 [dev-dependencies]
 arboard = "3.4"
