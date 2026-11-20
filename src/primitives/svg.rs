@@ -8,10 +8,10 @@ use peniko::Brush;
 #[derive(Debug, Clone)]
 pub struct Svg {
     pub(crate) id: u64,
-    pub(crate) content: String,
-    pub(crate) unlocked_aspect_ratio: bool,
+    pub content: String,
+    pub unlocked_aspect_ratio: bool,
     pub(crate) svg_id: Option<String>,
-    pub(crate) fill: Option<Brush>,
+    pub fill: Option<Brush>,
 }
 
 pub fn svg(id: u64, content: impl AsRef<str>) -> Svg {

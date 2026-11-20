@@ -5,13 +5,11 @@ use crate::{Key, Modifier, Modifiers, NamedKey};
 #[cfg(feature = "platform-winit")]
 use crate::pane::{Pane, PaneEffect};
 #[cfg(feature = "debug-overlay")]
-use crate::primitives::{PathData, text};
-#[cfg(feature = "debug-overlay")]
-use crate::render::Frame;
-#[cfg(feature = "debug-overlay")]
-use crate::{Area, Color, Stroke};
+use crate::{Color, PaneState, Stroke, View, rect, stack, text};
 #[cfg(feature = "platform-winit")]
 use crate::{PaneBuilder, ScrollDelta};
+#[cfg(feature = "debug-overlay")]
+use backer::Align;
 #[cfg(feature = "platform-winit")]
 use std::collections::HashMap;
 #[cfg(feature = "debug-overlay")]
@@ -78,78 +76,7 @@ enum WinitEvent {
 }
 
 #[cfg(feature = "platform-winit")]
-use crate::renderers::anyrender::Renderer;
-
-#[cfg(all(
-    feature = "platform-winit",
-    not(any(
-        feature = "renderer-vello-hybrid",
-        feature = "renderer-vello",
-        feature = "renderer-vello-cpu",
-        feature = "renderer-skia"
-    ))
-))]
-compile_error!(
-    "enable one renderer feature: renderer-vello-hybrid, renderer-vello, renderer-vello-cpu, or renderer-skia"
-);
-
-#[cfg(all(
-    feature = "platform-winit",
-    feature = "renderer-vello",
-    any(feature = "renderer-vello-cpu", feature = "renderer-skia")
-))]
-compile_error!("enable exactly one renderer feature");
-
-#[cfg(all(
-    feature = "platform-winit",
-    feature = "renderer-vello-cpu",
-    feature = "renderer-skia"
-))]
-compile_error!("enable exactly one renderer feature");
-
-#[cfg(all(
-    feature = "renderer-vello-hybrid",
-    any(
-        feature = "renderer-vello",
-        feature = "renderer-vello-cpu",
-        feature = "renderer-skia"
-    )
-))]
-compile_error!("enable exactly one renderer feature");
-
-#[cfg(feature = "renderer-vello-hybrid")]
-type SelectedWindowRenderer = anyrender_vello_hybrid::VelloHybridWindowRenderer;
-
-#[cfg(feature = "renderer-vello-hybrid")]
-fn window_renderer() -> SelectedWindowRenderer {
-    let mut options = anyrender_vello_hybrid::VelloHybridRendererOptions::default();
-    options.base_color = crate::TRANSPARENT;
-    anyrender_vello_hybrid::VelloHybridWindowRenderer::with_options(options)
-}
-
-#[cfg(feature = "renderer-vello")]
-type SelectedWindowRenderer = anyrender_vello::VelloWindowRenderer;
-#[cfg(feature = "renderer-vello-cpu")]
-type SelectedWindowRenderer = anyrender_vello_cpu::VelloCpuWindowRenderer;
-#[cfg(feature = "renderer-skia")]
-type SelectedWindowRenderer = anyrender_skia::SkiaWindowRenderer;
-
-#[cfg(feature = "renderer-vello")]
-fn window_renderer() -> SelectedWindowRenderer {
-    anyrender_vello::VelloWindowRenderer::with_options(
-        anyrender_vello::VelloRendererOptions::new().base_color(crate::TRANSPARENT),
-    )
-}
-
-#[cfg(feature = "renderer-vello-cpu")]
-fn window_renderer() -> SelectedWindowRenderer {
-    anyrender_vello_cpu::VelloCpuWindowRenderer::new()
-}
-
-#[cfg(feature = "renderer-skia")]
-fn window_renderer() -> SelectedWindowRenderer {
-    anyrender_skia::SkiaWindowRenderer::new()
-}
+use crate::render::HybridTextureRenderer;
 
 #[cfg(feature = "platform-winit")]
 pub struct WinitApp<State> {
@@ -163,7 +90,9 @@ pub struct WinitApp<State> {
 
 #[cfg(feature = "platform-winit")]
 struct WinitSurface<State> {
-    renderer: Renderer<SelectedWindowRenderer>,
+    surface: wgpu::Surface<'static>,
+    device: wgpu::Device,
+    renderer: HybridTextureRenderer,
     window: Arc<WinitWindow>,
     pane: Pane<State>,
     #[cfg(feature = "debug-overlay")]
@@ -177,6 +106,33 @@ struct DebugOverlayState {
     frame_ms: Option<f64>,
     smoothed_fps: Option<f64>,
     frame_times: VecDeque<(Instant, f64)>,
+}
+
+#[cfg(feature = "debug-overlay")]
+pub(crate) fn debug_overlay<'a, State: 'static>(
+    label: String,
+    ctx: &mut PaneState,
+) -> View<'a, State> {
+    stack(vec![
+        rect(crate::id!())
+            .fill(Color::from_rgb8(0, 0, 0).with_alpha(0.68))
+            .stroke(
+                Color::from_rgb8(255, 255, 255).with_alpha(0.18),
+                Stroke::new(1.),
+            )
+            .corner_rounding(5.)
+            .build(ctx)
+            .inert(),
+        text(crate::id!(), label)
+            .font_size(12)
+            .align(parley::Alignment::Start)
+            .fill(Color::from_rgb8(245, 245, 245))
+            .build(ctx)
+            .pad_x(6.)
+            .pad_y(5.),
+    ])
+    .pad(8.)
+    .align(Align::BottomTrailing)
 }
 
 #[cfg(feature = "debug-overlay")]
@@ -218,53 +174,6 @@ impl DebugOverlayState {
                 .map(|(_, frame_ms)| *frame_ms)
                 .reduce(f64::max),
         }
-    }
-
-    fn append_to<State>(
-        &mut self,
-        frame: &mut Frame,
-        pane: &mut Pane<State>,
-        target_frame_ms: f64,
-    ) {
-        let label = self.update(target_frame_ms).label();
-        let line_count = label.lines().count() as f32;
-        let max_line_len = label.lines().map(str::len).max().unwrap_or_default() as f32;
-        let width = 16. + max_line_len * 7.;
-        let height = 12. + line_count * 14.;
-        let logical_width = frame.width as f32 / frame.scale_factor as f32;
-        let logical_height = frame.height as f32 / frame.scale_factor as f32;
-        let background_area = Area {
-            x: (logical_width - width - 8.).max(8.),
-            y: (logical_height - height - 8.).max(8.),
-            width,
-            height,
-        };
-        let text_area = Area {
-            x: background_area.x + 6.,
-            y: background_area.y + 5.,
-            width: width - 12.,
-            height: height - 10.,
-        };
-
-        frame.items.push(crate::render::RenderItem::Path {
-            path: Box::new(PathData {
-                id: crate::const_hash(file!(), line!(), column!()),
-                builder: crate::primitives::shape::rect_path((5., 5., 5., 5.)),
-                fill: Some(Color::from_rgb8(0, 0, 0).with_alpha(0.68).into()),
-                stroke: Some((
-                    Color::from_rgb8(255, 255, 255).with_alpha(0.18).into(),
-                    Stroke::new(1.),
-                )),
-            }),
-            area: background_area,
-        });
-        frame.items.push(
-            text(crate::const_hash(file!(), line!(), column!()), label)
-                .font_size(12)
-                .align(parley::Alignment::Start)
-                .fill(Color::from_rgb8(245, 245, 245))
-                .render_item(frame.scale_factor, text_area, &mut pane.pane_state),
-        );
     }
 
     fn finish_frame(&mut self, frame_started: Instant) {
@@ -444,7 +353,41 @@ impl<State: 'static> WinitApp<State> {
         let window = Arc::new(event_loop.create_window(attributes).unwrap());
         let size = window.inner_size();
         let window_id = window.id();
-        let renderer = Renderer::new(window_renderer(), window.clone(), size.width, size.height);
+        let instance = wgpu::Instance::default();
+        let surface = instance
+            .create_surface(window.clone())
+            .expect("window surface");
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            compatible_surface: Some(&surface),
+            ..Default::default()
+        }))
+        .expect("graphics adapter");
+        let (device, queue) =
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+                .expect("graphics device");
+        let formats = surface.get_capabilities(&adapter).formats;
+        let format = [
+            wgpu::TextureFormat::Bgra8Unorm,
+            wgpu::TextureFormat::Rgba8Unorm,
+        ]
+        .into_iter()
+        .find(|format| formats.contains(format))
+        .expect("supported surface format");
+        surface.configure(
+            &device,
+            &wgpu::SurfaceConfiguration {
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                format,
+                width: size.width.max(1),
+                height: size.height.max(1),
+                present_mode: wgpu::PresentMode::AutoVsync,
+                desired_maximum_frame_latency: 2,
+                alpha_mode: wgpu::CompositeAlphaMode::Auto,
+                view_formats: Vec::new(),
+            },
+        );
+        let renderer = HybridTextureRenderer::with_device(&device, &queue, format)
+            .expect("supported surface format");
 
         #[cfg(target_os = "windows")]
         window.set_visible(true);
@@ -460,6 +403,8 @@ impl<State: 'static> WinitApp<State> {
         self.windows.insert(
             window_id,
             WinitSurface {
+                surface,
+                device,
                 renderer,
                 window,
                 pane,
@@ -517,7 +462,17 @@ impl<State: 'static> WinitApp<State> {
         let size = surface.window.inner_size();
         let width = size.width;
         let height = size.height;
-        surface.renderer.resize(width, height);
+
+        #[cfg(feature = "debug-overlay")]
+        {
+            let target_frame_ms = target_frame_ms(
+                surface
+                    .window
+                    .current_monitor()
+                    .and_then(|monitor| monitor.refresh_rate_millihertz()),
+            );
+            surface.pane.debug_label = Some(surface.debug_overlay.update(target_frame_ms).label());
+        }
 
         let (frame, effects) = surface.pane.redraw(
             &mut self.state,
@@ -526,26 +481,34 @@ impl<State: 'static> WinitApp<State> {
             surface.window.scale_factor(),
         );
 
-        #[cfg(feature = "debug-overlay")]
-        let mut frame = frame;
-
-        #[cfg(feature = "debug-overlay")]
-        let target_frame_ms = target_frame_ms(
-            surface
-                .window
-                .current_monitor()
-                .and_then(|monitor| monitor.refresh_rate_millihertz()),
-        );
-
-        #[cfg(feature = "debug-overlay")]
-        surface
-            .debug_overlay
-            .append_to(&mut frame, &mut surface.pane, target_frame_ms);
-
-        let window = surface.window.clone();
-        surface.renderer.render(&frame, || {
-            window.pre_present_notify();
-        });
+        if width > 0 && height > 0 {
+            let mut config = surface
+                .surface
+                .get_configuration()
+                .expect("configured window surface");
+            if (config.width, config.height) != (width, height) {
+                config.width = width;
+                config.height = height;
+                surface.surface.configure(&surface.device, &config);
+            }
+            match surface.surface.get_current_texture() {
+                wgpu::CurrentSurfaceTexture::Success(texture)
+                | wgpu::CurrentSurfaceTexture::Suboptimal(texture) => {
+                    surface.renderer.render(
+                        &frame,
+                        &texture
+                            .texture
+                            .create_view(&wgpu::TextureViewDescriptor::default()),
+                    );
+                    surface.window.pre_present_notify();
+                    texture.present();
+                }
+                wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+                    surface.surface.configure(&surface.device, &config);
+                }
+                _ => {}
+            }
+        }
 
         #[cfg(feature = "debug-overlay")]
         surface.debug_overlay.finish_frame(frame_started);
@@ -711,7 +674,10 @@ impl<State: 'static> ApplicationHandler<WinitEvent> for WinitApp<State> {
 #[cfg(feature = "platform-winit")]
 fn scroll_delta(delta: MouseScrollDelta) -> ScrollDelta {
     match delta {
-        MouseScrollDelta::LineDelta(x, y) => ScrollDelta { x, y },
+        MouseScrollDelta::LineDelta(x, y) => ScrollDelta {
+            x: x * 40.0,
+            y: y * 40.0,
+        },
         MouseScrollDelta::PixelDelta(physical_position) => ScrollDelta {
             x: physical_position.x as f32,
             y: physical_position.y as f32,

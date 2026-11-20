@@ -1,5 +1,6 @@
 ---
 source: src/public_api_test.rs
+assertion_line: 19
 expression: public_api
 ---
 pub mod haven
@@ -24,27 +25,37 @@ pub fn haven::gesture::hover(id: u64) -> haven::gestures::HoverGesture
 pub fn haven::gesture::key(id: u64) -> haven::gestures::KeyGesture
 pub fn haven::gesture::scroll(id: u64) -> haven::gestures::ScrollGesture
 pub mod haven::render
+pub enum haven::render::LayerEffect
+pub haven::render::LayerEffect::Blur
+pub haven::render::LayerEffect::Blur::radius: f32
+pub haven::render::LayerEffect::DropShadow
+pub haven::render::LayerEffect::DropShadow::blur: f32
+pub haven::render::LayerEffect::DropShadow::color: haven::Color
+pub haven::render::LayerEffect::DropShadow::dx: f32
+pub haven::render::LayerEffect::DropShadow::dy: f32
 pub enum haven::render::RenderItem
 pub haven::render::RenderItem::Image
 pub haven::render::RenderItem::Image::area: backer::types::Area
+pub haven::render::RenderItem::Image::cache_key: u64
 pub haven::render::RenderItem::Image::image: haven::Image
 pub haven::render::RenderItem::Layout
 pub haven::render::RenderItem::Layout::layout: parley::layout::layout::Layout<peniko::brush::Brush>
 pub haven::render::RenderItem::Layout::transform: kurbo::affine::Affine
 pub haven::render::RenderItem::Path
 pub haven::render::RenderItem::Path::area: backer::types::Area
-pub haven::render::RenderItem::Path::path: alloc::boxed::Box<haven::PathData>
+pub haven::render::RenderItem::Path::fill: core::option::Option<peniko::brush::Brush>
+pub haven::render::RenderItem::Path::id: u64
+pub haven::render::RenderItem::Path::path: kurbo::bezpath::BezPath
+pub haven::render::RenderItem::Path::stroke: core::option::Option<(peniko::brush::Brush, kurbo::stroke::Stroke)>
 pub haven::render::RenderItem::PopLayer
 pub haven::render::RenderItem::PushLayer
 pub haven::render::RenderItem::PushLayer::alpha: f32
 pub haven::render::RenderItem::PushLayer::blend: peniko::blend::BlendMode
-pub haven::render::RenderItem::PushLayer::filter: core::option::Option<alloc::sync::Arc<anyrender::filters::Filter>>
+pub haven::render::RenderItem::PushLayer::effect: core::option::Option<haven::render::LayerEffect>
 pub haven::render::RenderItem::PushLayer::path: kurbo::bezpath::BezPath
-pub haven::render::RenderItem::Shadow
-pub haven::render::RenderItem::Shadow::area: backer::types::Area
-pub haven::render::RenderItem::Shadow::shadow: haven::Shadow
 pub haven::render::RenderItem::Svg
 pub haven::render::RenderItem::Svg::area: backer::types::Area
+pub haven::render::RenderItem::Svg::cache_key: u64
 pub haven::render::RenderItem::Svg::svg: haven::Svg
 pub haven::render::RenderItem::Text(haven::render::TextRenderLayout)
 pub struct haven::render::Frame
@@ -53,6 +64,14 @@ pub haven::render::Frame::height: u32
 pub haven::render::Frame::items: alloc::vec::Vec<haven::render::RenderItem>
 pub haven::render::Frame::scale_factor: f64
 pub haven::render::Frame::width: u32
+pub struct haven::render::HybridImageRenderer(_)
+impl haven::render::HybridImageRenderer
+pub fn haven::render::HybridImageRenderer::new() -> Self
+pub fn haven::render::HybridImageRenderer::render(&mut self, frame: &haven::render::Frame) -> image::images::buffer::RgbaImage
+pub struct haven::render::HybridTextureRenderer
+impl haven::render::HybridTextureRenderer
+pub fn haven::render::HybridTextureRenderer::render(&mut self, frame: &haven::render::Frame, target: &wgpu::api::texture_view::TextureView)
+pub fn haven::render::HybridTextureRenderer::with_device(device: &wgpu::api::device::Device, queue: &wgpu::api::queue::Queue, format: wgpu_types::texture::format::TextureFormat) -> core::option::Option<Self>
 pub struct haven::render::TextRenderLayout
 pub haven::render::TextRenderLayout::backgrounds: alloc::vec::Vec<(kurbo::rect::Rect, peniko::brush::Brush)>
 pub haven::render::TextRenderLayout::layout: parley::layout::layout::Layout<peniko::brush::Brush>
@@ -84,6 +103,9 @@ impl<V> core::convert::From<peniko::gradient::Gradient> for haven::BrushSource<V
 pub fn haven::BrushSource<V>::from(value: peniko::gradient::Gradient) -> Self
 impl<V> core::fmt::Debug for haven::BrushSource<V>
 pub fn haven::BrushSource<V>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum haven::Cells<F: core::ops::function::Fn(usize, u64, &mut haven::PaneState) -> R, R>
+pub haven::Cells::Column(F)
+pub haven::Cells::Row(F)
 pub enum haven::ClickPhase
 pub haven::ClickPhase::Cancelled
 pub haven::ClickPhase::Completed
@@ -310,6 +332,9 @@ impl<State: ?core::marker::Sized> core::clone::Clone for haven::Gesture<State>
 pub fn haven::Gesture<State>::clone(&self) -> Self
 pub struct haven::GestureId(_)
 pub struct haven::Image
+pub haven::Image::corner_rounding: f32
+pub haven::Image::source: haven::ImageSource
+pub haven::Image::unlocked_aspect_ratio: bool
 impl haven::Image
 pub fn haven::Image::corner_rounding(self, radius: f32) -> Self
 pub fn haven::Image::finish<State: 'static>(self, ctx: &mut haven::PaneState) -> backer::types::Layout<'static, haven::PaneElement<State>, haven::PaneState>
@@ -342,11 +367,14 @@ pub fn haven::Pane<State>::drag(&mut self, state: &mut State, from: kurbo::point
 pub fn haven::Pane<State>::location(&self, id: u64) -> core::option::Option<kurbo::point::Point>
 pub fn haven::Pane<State>::redraw(&mut self, state: &mut State, width: u32, height: u32, scale_factor: f64) -> (haven::render::Frame, alloc::vec::Vec<haven::PaneEffect>)
 impl<State: 'static> haven::Pane<State>
+pub fn haven::Pane<State>::exit(&mut self, state: &mut State) -> alloc::vec::Vec<haven::PaneEffect>
 pub fn haven::Pane<State>::key_pressed(&mut self, state: &mut State, key: impl core::convert::Into<haven::Key>) -> alloc::vec::Vec<haven::PaneEffect>
 pub fn haven::Pane<State>::key_released(&mut self, state: &mut State, key: impl core::convert::Into<haven::Key>) -> alloc::vec::Vec<haven::PaneEffect>
+pub fn haven::Pane<State>::modifiers_changed(&mut self, modifiers: haven::Modifiers) -> alloc::vec::Vec<haven::PaneEffect>
 pub fn haven::Pane<State>::move_to(&mut self, state: &mut State, pos: kurbo::point::Point) -> alloc::vec::Vec<haven::PaneEffect>
 pub fn haven::Pane<State>::press_button(&mut self, state: &mut State, button: haven::MouseButton) -> alloc::vec::Vec<haven::PaneEffect>
 pub fn haven::Pane<State>::release_button(&mut self, state: &mut State, button: haven::MouseButton) -> alloc::vec::Vec<haven::PaneEffect>
+pub fn haven::Pane<State>::scroll(&mut self, state: &mut State, delta: haven::ScrollDelta) -> alloc::vec::Vec<haven::PaneEffect>
 pub struct haven::PaneBuilder<State>
 impl<State> haven::PaneBuilder<State>
 pub fn haven::PaneBuilder<State>::add_font_bytes(self, bytes: alloc::vec::Vec<u8>, family: core::option::Option<&str>) -> Self
@@ -396,14 +424,6 @@ pub fn haven::Rect::view<State: 'static>(self) -> haven::Drawable<State>
 pub struct haven::ScrollDelta
 pub haven::ScrollDelta::x: f32
 pub haven::ScrollDelta::y: f32
-pub struct haven::Shadow
-impl haven::Shadow
-pub fn haven::Shadow::blur(self, blur: f64) -> Self
-pub fn haven::Shadow::build<State: 'static>(self, ctx: &mut haven::PaneState) -> backer::types::Layout<'static, haven::PaneElement<State>, haven::PaneState>
-pub fn haven::Shadow::color(self, color: haven::Color) -> Self
-pub fn haven::Shadow::corner_rounding(self, radius: f32) -> Self
-pub fn haven::Shadow::spread(self, spread: f64) -> Self
-pub fn haven::Shadow::view<State: 'static>(self) -> haven::Drawable<State>
 pub struct haven::Slider<'a, State>
 impl<'a, State> haven::Slider<'a, State>
 pub fn haven::Slider<'a, State>::background(self, f: impl core::ops::function::Fn(haven::SliderState, backer::types::Area, &mut haven::PaneState) -> haven::View<'a, State> + 'a) -> Self
@@ -434,6 +454,9 @@ pub fn haven::Span::from(s: &str) -> Self
 impl core::convert::From<alloc::string::String> for haven::Span
 pub fn haven::Span::from(s: alloc::string::String) -> Self
 pub struct haven::Svg
+pub haven::Svg::content: alloc::string::String
+pub haven::Svg::fill: core::option::Option<peniko::brush::Brush>
+pub haven::Svg::unlocked_aspect_ratio: bool
 impl haven::Svg
 pub fn haven::Svg::fill(self, fill: impl core::convert::Into<peniko::brush::Brush>) -> Self
 pub fn haven::Svg::finish<State: 'static>(self, ctx: &mut haven::PaneState) -> backer::types::Layout<'static, haven::PaneElement<State>, haven::PaneState>
@@ -547,8 +570,7 @@ pub fn haven::rect_path(area: backer::types::Area) -> kurbo::bezpath::BezPath
 pub fn haven::rich_text(id: u64, spans: impl core::iter::traits::collect::IntoIterator<Item = haven::Span>) -> haven::Text
 pub fn haven::rounded_rect_path(area: backer::types::Area, radius: f32) -> kurbo::bezpath::BezPath
 pub fn haven::scope<'a, Parent: 'static, Sub: 'static>(layout: haven::View<'a, Sub>, binding: haven::Binding<Parent, Sub>) -> haven::View<'a, Parent>
-pub fn haven::scroller<'a, State: 'static>(id: u64, backing: core::option::Option<haven::View<'a, State>>, cell: impl core::ops::function::Fn(usize, u64, &mut haven::PaneState) -> core::option::Option<haven::View<'a, State>> + 'a, ctx: &mut haven::PaneState) -> haven::View<'a, State>
-pub fn haven::shadow(id: u64) -> haven::Shadow
+pub fn haven::scroller<'a, State: 'static>(id: u64, backing: core::option::Option<haven::View<'a, State>>, cells: haven::Cells<impl core::ops::function::Fn(usize, u64, &mut haven::PaneState) -> core::option::Option<haven::View<'a, State>> + 'a, core::option::Option<haven::View<'a, State>>>, ctx: &mut haven::PaneState) -> haven::View<'a, State>
 pub fn haven::slider<'a, State>(id: u64, state: (&haven::SliderState, haven::Binding<State, haven::SliderState>)) -> haven::Slider<'a, State>
 pub fn haven::span(text: impl core::convert::Into<alloc::string::String>) -> haven::Span
 pub fn haven::svg(id: u64, content: impl core::convert::AsRef<str>) -> haven::Svg

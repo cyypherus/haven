@@ -52,14 +52,9 @@ required-features = ["platform-winit"]
 [dependencies]
 backer = "0.12.0"
 # backer = { path = "../backer" }
-anyrender = "0.13.0"
-anyrender_skia = { version = "0.11.0", optional = true }
-anyrender_svg = { version = "0.14.0", optional = true }
-anyrender_vello = { version = "0.14.0", optional = true }
-anyrender_vello_cpu = { version = "0.17.0", optional = true, features = ["filters"] }
-anyrender_vello_hybrid = { version = "0.10.0", optional = true }
 bytemuck = { version = "1", features = ["derive"] }
 clipboard-rs = "0.3.0"
+glifo = "0.2"
 image = { version = "0.25", default-features = false, features = [
     "png",
     "jpeg",
@@ -70,24 +65,21 @@ kurbo = "0.13.0"
 lilt = "0.8"
 parley = "0.11.1"
 peniko = "0.6.0"
+pollster = "0.4"
+vello_common = "0.1"
+vello_hybrid = "0.1"
+vello_svg = { version = "0.11", default-features = false }
+wgpu = "29"
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 winit = { version = "0.30.12", optional = true }
 
 [features]
-default = ["renderer-vello-hybrid"]
+default = ["platform-winit"]
 test-api = []
 debug-overlay = ["platform-winit"]
-renderer-skia = ["platform-winit", "dep:anyrender_skia"]
-renderer-vello-hybrid = ["platform-winit", "dep:anyrender_vello_hybrid"]
-renderer-vello = ["platform-winit", "dep:anyrender_vello"]
-renderer-vello-cpu = [
-    "platform-winit",
-    "dep:anyrender_vello_cpu",
-    "anyrender_vello_cpu/pixels_window_renderer",
-]
-platform-winit = ["dep:winit", "dep:anyrender_svg"]
+platform-winit = ["dep:winit"]
 
 [dev-dependencies]
 arboard = "3.4"
@@ -99,3 +91,6 @@ rustup-toolchain = "0.1.9"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1.43.0", features = ["fs"] }
+
+[profile.dev.package."*"]
+opt-level = 3

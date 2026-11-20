@@ -9,10 +9,10 @@ use std::sync::Arc;
 #[derive(Debug, Clone)]
 pub struct Image {
     pub(crate) id: u64,
-    pub(crate) source: ImageSource,
-    pub(crate) unlocked_aspect_ratio: bool,
+    pub source: ImageSource,
+    pub unlocked_aspect_ratio: bool,
     pub(crate) image_id: Option<String>,
-    pub(crate) corner_rounding: f32,
+    pub corner_rounding: f32,
 }
 
 #[derive(Debug, Clone)]

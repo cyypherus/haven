@@ -1,3 +1,4 @@
+use haven::render::HybridImageRenderer;
 use haven::*;
 
 #[derive(Default)]
@@ -32,8 +33,11 @@ fn main() {
     let mut state = State::default();
     let mut button_pane = PaneBuilder::new("button", button_view).build();
 
-    let (_frame, effects) = button_pane.redraw(&mut state, 300, 200, 1.0);
+    let (frame, effects) = button_pane.redraw(&mut state, 300, 200, 1.0);
     assert!(effects.is_empty());
+
+    let image = HybridImageRenderer::new().render(&frame);
+    assert_eq!(image.dimensions(), (300, 200));
 
     let button_location = button_pane.location(BUTTON).expect("button exists");
     assert!(button_pane.click(&mut state, button_location).is_empty());

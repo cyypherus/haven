@@ -15,7 +15,7 @@ use parley::fontique::Blob;
 use parley::fontique::FontInfoOverride;
 use parley::{FontContext, LayoutContext};
 use peniko::{self, Brush, Color};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -81,6 +81,8 @@ pub struct Pane<State> {
     on_wake: fn(&mut State, &mut PaneState) -> (),
     on_exit: fn(&mut State, &mut PaneState) -> (),
     started: bool,
+    #[cfg(feature = "debug-overlay")]
+    pub(crate) debug_label: Option<String>,
 }
 
 struct ActiveGesture<State> {
@@ -325,7 +327,7 @@ struct TextEditing {
     focused_field: Option<u64>,
     text_edit_command_revision: u64,
     applied_text_edit_command_revision: u64,
-    lifecycle_events: Vec<(u64, EditInteraction)>,
+    lifecycle_events: VecDeque<(u64, EditInteraction)>,
 }
 
 impl TextEditing {
@@ -335,11 +337,12 @@ impl TextEditing {
         }
         if let Some(focused_field) = self.focused_field {
             self.lifecycle_events
-                .push((focused_field, EditInteraction::End));
+                .push_back((focused_field, EditInteraction::End));
         }
         self.focused_field = field;
         if let Some(field) = field {
-            self.lifecycle_events.push((field, EditInteraction::Start));
+            self.lifecycle_events
+                .push_back((field, EditInteraction::Start));
         }
         true
     }
@@ -468,6 +471,8 @@ impl<State: 'static> Pane<State> {
             on_wake: config.on_wake,
             on_exit: config.on_exit,
             started: false,
+            #[cfg(feature = "debug-overlay")]
+            debug_label: None,
         }
     }
 
@@ -513,15 +518,9 @@ impl<State: 'static> Pane<State> {
     }
 
     fn dispatch_text_edit_lifecycle_events(&mut self, state: &mut State) {
-        loop {
-            let edits = std::mem::take(&mut self.pane_state.text_editing.lifecycle_events);
-            if edits.is_empty() {
-                return;
-            }
-            for (id, edit) in edits {
-                if let Some(handler) = self.edit_handlers.get(&id).cloned() {
-                    handler(state, &mut self.pane_state, edit);
-                }
+        while let Some((id, edit)) = self.pane_state.text_editing.lifecycle_events.pop_front() {
+            if let Some(handler) = self.edit_handlers.get(&id).cloned() {
+                handler(state, &mut self.pane_state, edit);
             }
         }
     }
@@ -569,6 +568,13 @@ impl<State: 'static> Pane<State> {
         };
         let draw_items = {
             let mut layout = view(state, &mut self.pane_state);
+            #[cfg(feature = "debug-overlay")]
+            if let Some(label) = self.debug_label.take() {
+                layout = crate::stack(vec![
+                    layout,
+                    crate::platforms::winit::debug_overlay(label, &mut self.pane_state),
+                ]);
+            }
             layout.draw(pane_area, &mut self.pane_state)
         };
 
@@ -602,7 +608,6 @@ impl<State: 'static> Pane<State> {
                         DrawableType::Path(view) => Some(view.id),
                         DrawableType::Svg(view) => Some(view.id),
                         DrawableType::Image(view) => Some(view.id),
-                        DrawableType::Shadow(view) => Some(view.id),
                         DrawableType::PushLayer { .. } | DrawableType::PopLayer => None,
                     };
                     let draw_area = area;
@@ -623,31 +628,34 @@ impl<State: 'static> Pane<State> {
                             RenderItem::Layout { layout, transform }
                         }
                         DrawableType::Path(path) => RenderItem::Path {
-                            path,
+                            id: path.id,
+                            path: (path.builder)(draw_area),
+                            fill: path.fill.map(|fill| fill.resolve(draw_area, &())),
+                            stroke: path
+                                .stroke
+                                .map(|(brush, stroke)| (brush.resolve(draw_area, &()), stroke)),
                             area: draw_area,
                         },
                         DrawableType::Svg(svg) => RenderItem::Svg {
+                            cache_key: svg.cache_key(),
                             svg,
                             area: draw_area,
                         },
                         DrawableType::Image(image) => RenderItem::Image {
+                            cache_key: image.cache_key(),
                             image,
-                            area: draw_area,
-                        },
-                        DrawableType::Shadow(shadow) => RenderItem::Shadow {
-                            shadow,
                             area: draw_area,
                         },
                         DrawableType::PushLayer {
                             path,
                             blend,
                             alpha,
-                            filter,
+                            effect,
                         } => RenderItem::PushLayer {
                             path,
                             blend,
                             alpha,
-                            filter,
+                            effect,
                         },
                         DrawableType::PopLayer => RenderItem::PopLayer,
                     };
@@ -874,7 +882,7 @@ impl<State: 'static> Pane<State> {
         self.take_effects()
     }
 
-    pub(crate) fn modifiers_changed(&mut self, modifiers: Modifiers) -> Vec<PaneEffect> {
+    pub fn modifiers_changed(&mut self, modifiers: Modifiers) -> Vec<PaneEffect> {
         self.pane_state.modifiers = Some(modifiers);
         self.take_effects()
     }
@@ -886,7 +894,7 @@ impl<State: 'static> Pane<State> {
         self.take_effects()
     }
 
-    pub(crate) fn exit(&mut self, state: &mut State) -> Vec<PaneEffect> {
+    pub fn exit(&mut self, state: &mut State) -> Vec<PaneEffect> {
         self.cursor_position = None;
         let mut needs_redraw = false;
         let mut seen = HashSet::new();
@@ -1224,7 +1232,7 @@ impl<State: 'static> Pane<State> {
         self.take_effects()
     }
 
-    pub(crate) fn scroll(&mut self, state: &mut State, delta: ScrollDelta) -> Vec<PaneEffect> {
+    pub fn scroll(&mut self, state: &mut State, delta: ScrollDelta) -> Vec<PaneEffect> {
         let mut needs_redraw = false;
         let cursor_position = self.cursor_position;
         if let Some(current) = cursor_position {
