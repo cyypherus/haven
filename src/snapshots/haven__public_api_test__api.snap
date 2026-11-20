@@ -1,5 +1,6 @@
 ---
 source: src/public_api_test.rs
+assertion_line: 19
 expression: public_api
 ---
 pub mod haven
@@ -102,6 +103,9 @@ impl<V> core::convert::From<peniko::gradient::Gradient> for haven::BrushSource<V
 pub fn haven::BrushSource<V>::from(value: peniko::gradient::Gradient) -> Self
 impl<V> core::fmt::Debug for haven::BrushSource<V>
 pub fn haven::BrushSource<V>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum haven::Cells<F: core::ops::function::Fn(usize, u64, &mut haven::PaneState) -> R, R>
+pub haven::Cells::Column(F)
+pub haven::Cells::Row(F)
 pub enum haven::ClickPhase
 pub haven::ClickPhase::Cancelled
 pub haven::ClickPhase::Completed
@@ -566,7 +570,7 @@ pub fn haven::rect_path(area: backer::types::Area) -> kurbo::bezpath::BezPath
 pub fn haven::rich_text(id: u64, spans: impl core::iter::traits::collect::IntoIterator<Item = haven::Span>) -> haven::Text
 pub fn haven::rounded_rect_path(area: backer::types::Area, radius: f32) -> kurbo::bezpath::BezPath
 pub fn haven::scope<'a, Parent: 'static, Sub: 'static>(layout: haven::View<'a, Sub>, binding: haven::Binding<Parent, Sub>) -> haven::View<'a, Parent>
-pub fn haven::scroller<'a, State: 'static>(id: u64, backing: core::option::Option<haven::View<'a, State>>, cell: impl core::ops::function::Fn(usize, u64, &mut haven::PaneState) -> core::option::Option<haven::View<'a, State>> + 'a, ctx: &mut haven::PaneState) -> haven::View<'a, State>
+pub fn haven::scroller<'a, State: 'static>(id: u64, backing: core::option::Option<haven::View<'a, State>>, cells: haven::Cells<impl core::ops::function::Fn(usize, u64, &mut haven::PaneState) -> core::option::Option<haven::View<'a, State>> + 'a, core::option::Option<haven::View<'a, State>>>, ctx: &mut haven::PaneState) -> haven::View<'a, State>
 pub fn haven::slider<'a, State>(id: u64, state: (&haven::SliderState, haven::Binding<State, haven::SliderState>)) -> haven::Slider<'a, State>
 pub fn haven::span(text: impl core::convert::Into<alloc::string::String>) -> haven::Span
 pub fn haven::svg(id: u64, content: impl core::convert::AsRef<str>) -> haven::Svg

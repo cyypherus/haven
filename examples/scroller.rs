@@ -45,24 +45,26 @@ fn main() {
                 let short_scroller = scroller(
                     id!(),
                     Some(backing(app)),
-                    move |index, _id, ctx| short.get(index).map(|s| text_cell(index, s, ctx)),
+                    Cells::Column(move |index, _id, ctx| {
+                        short.get(index).map(|s| text_cell(index, s, ctx))
+                    }),
                     app,
                 );
 
                 let long_scroller = scroller(
                     id!(),
                     Some(backing(app)),
-                    {
+                    Cells::Column({
                         let long = long.clone();
                         move |index, _id, ctx| long.get(index).map(|s| text_cell(index, s, ctx))
-                    },
+                    }),
                     app,
                 );
 
                 let unconstrained_scroller = scroller(
                     id!(),
                     Some(backing(app)),
-                    move |index, _id, ctx| {
+                    Cells::Column(move |index, _id, ctx| {
                         if index < 3 {
                             Some(
                                 rect(id!(index as u64))
@@ -78,7 +80,7 @@ fn main() {
                         } else {
                             None
                         }
-                    },
+                    }),
                     app,
                 );
 
