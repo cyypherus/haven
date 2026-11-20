@@ -6,7 +6,7 @@ use crate::{
 };
 use backer::{
     Align, Area,
-    nodes::{column, draw, empty, stack},
+    nodes::{column, draw, empty, row, stack},
 };
 use std::time::Instant;
 
@@ -37,26 +37,38 @@ impl ScrollerState {
         available_area: Area,
         ctx: &mut PaneState,
         id: u64,
+        horizontal: bool,
         cell: &dyn Fn(usize, u64, &mut PaneState) -> Option<View<'a, State>>,
     ) -> bool {
         let area_changed = self.area != available_area;
-        let mut height_of = |index: usize| {
+        let extent = if horizontal {
+            available_area.width
+        } else {
+            available_area.height
+        };
+        let mut measure = |index| {
             cell(index, id, ctx).map(|mut layout| {
-                layout
-                    .min_height(available_area, ctx)
-                    .unwrap_or(available_area.height)
+                if horizontal {
+                    layout.min_width(available_area, ctx)
+                } else {
+                    layout.min_height(available_area, ctx)
+                }
+                .unwrap_or(extent)
             })
         };
-        let dt = std::mem::replace(&mut self.dt, 0.);
-        let edge_hit = self
-            .engine
-            .update(available_area.height, area_changed, dt, &mut height_of);
+        let dt = std::mem::take(&mut self.dt);
+        let edge_hit = self.engine.update(extent, area_changed, dt, &mut measure);
         self.area = available_area;
         let now = Instant::now();
-        match edge_hit {
-            EdgeHit::Top => self.edge_feedback.pulse(ScrollEdge::Top, now),
-            EdgeHit::Bottom => self.edge_feedback.pulse(ScrollEdge::Bottom, now),
-            EdgeHit::None => {}
+        let edge = match (edge_hit, horizontal) {
+            (EdgeHit::Start, true) => Some(ScrollEdge::Left),
+            (EdgeHit::End, true) => Some(ScrollEdge::Right),
+            (EdgeHit::Start, false) => Some(ScrollEdge::Top),
+            (EdgeHit::End, false) => Some(ScrollEdge::Bottom),
+            (EdgeHit::None, _) => None,
+        };
+        if let Some(edge) = edge {
+            self.edge_feedback.pulse(edge, now);
         }
         self.edge_feedback.is_animating(now)
     }
@@ -64,7 +76,7 @@ impl ScrollerState {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 struct Element {
-    height: f32,
+    extent: f32,
     index: usize,
 }
 
@@ -73,35 +85,35 @@ pub(crate) struct ScrollEngine {
     visible_window: Vec<Element>,
     pub(crate) compensated: f32,
     pub(crate) offset: f32,
-    available_height: f32,
+    viewport_extent: f32,
 }
 
 impl ScrollEngine {
     fn sum(&self) -> f32 {
-        self.visible_window.iter().fold(0., |acc, e| acc + e.height)
+        self.visible_window.iter().fold(0., |acc, e| acc + e.extent)
     }
 
     fn fill_forwards(
         &mut self,
-        available_height: f32,
-        cell_height: &mut dyn FnMut(usize) -> Option<f32>,
+        viewport_extent: f32,
+        cell_extent: &mut dyn FnMut(usize) -> Option<f32>,
     ) {
         let mut current = self.sum();
         let mut index = self.visible_window.last().map(|l| l.index + 1).unwrap_or(0);
-        while current + self.compensated < available_height {
-            let Some(h) = cell_height(index) else { break };
+        while current + self.compensated < viewport_extent {
+            let Some(h) = cell_extent(index) else { break };
             current += h;
-            self.visible_window.push(Element { height: h, index });
+            self.visible_window.push(Element { extent: h, index });
             index += 1;
         }
     }
 
     fn update(
         &mut self,
-        available_height: f32,
+        viewport_extent: f32,
         area_changed: bool,
         dt: f32,
-        cell_height: &mut dyn FnMut(usize) -> Option<f32>,
+        cell_extent: &mut dyn FnMut(usize) -> Option<f32>,
     ) -> EdgeHit {
         let mut edge_hit = EdgeHit::None;
 
@@ -110,53 +122,53 @@ impl ScrollEngine {
         if !self.visible_window.is_empty() {
             for i in 0..self.visible_window.len() {
                 let idx = self.visible_window[i].index;
-                let Some(h) = cell_height(idx) else {
+                let Some(h) = cell_extent(idx) else {
                     self.visible_window.truncate(i);
                     if i == 0 {
                         self.compensated = 0.;
                     }
                     break;
                 };
-                self.visible_window[i].height = h;
+                self.visible_window[i].extent = h;
             }
-            self.fill_forwards(available_height, cell_height);
+            self.fill_forwards(viewport_extent, cell_extent);
         }
         if area_changed && !self.visible_window.is_empty() {
             self.visible_window.drain(1..);
-            self.fill_forwards(available_height, cell_height);
+            self.fill_forwards(viewport_extent, cell_extent);
         }
         if self.visible_window.is_empty() {
-            self.fill_forwards(available_height, cell_height);
+            self.fill_forwards(viewport_extent, cell_extent);
         }
 
         self.compensated += dt;
 
         if dt < 0. {
             // Scrolling down: fetch cells at the end as they come into view.
-            self.fill_forwards(available_height, cell_height);
+            self.fill_forwards(viewport_extent, cell_extent);
         }
 
         let at_end = self
             .visible_window
             .last()
-            .map(|l| cell_height(l.index + 1).is_none())
+            .map(|l| cell_extent(l.index + 1).is_none())
             .unwrap_or(true);
 
-        if dt > 0. || at_end && self.sum() < available_height {
+        if dt > 0. || at_end && self.sum() < viewport_extent {
             // Scrolling up: prepend earlier cells as they come into view.
             while let Some(first) = self.visible_window.first().copied() {
                 if first.index == 0
-                    || self.compensated < 0. && (!at_end || self.sum() >= available_height)
+                    || self.compensated < 0. && (!at_end || self.sum() >= viewport_extent)
                 {
                     break;
                 }
-                let Some(h) = cell_height(first.index - 1) else {
+                let Some(h) = cell_extent(first.index - 1) else {
                     break;
                 };
                 self.visible_window.insert(
                     0,
                     Element {
-                        height: h,
+                        extent: h,
                         index: first.index - 1,
                     },
                 );
@@ -173,17 +185,17 @@ impl ScrollEngine {
             && self.compensated > 0.
         {
             if dt > 0. {
-                edge_hit = EdgeHit::Top;
+                edge_hit = EdgeHit::Start;
             }
             self.compensated = 0.;
         }
 
         // Clamp at bottom: can't scroll past last cell.
         if at_end {
-            let lower_bound = (available_height - self.sum()).min(0.);
+            let lower_bound = (viewport_extent - self.sum()).min(0.);
             if self.compensated < lower_bound {
                 if dt < 0. {
-                    edge_hit = EdgeHit::Bottom;
+                    edge_hit = EdgeHit::End;
                 }
                 self.compensated = lower_bound;
             }
@@ -191,24 +203,24 @@ impl ScrollEngine {
 
         // Pop cells that ended up fully off the top after clamping.
         while let Some(first) = self.visible_window.first()
-            && first.height <= -self.compensated
+            && first.extent <= -self.compensated
             && self.visible_window.len() > 1
         {
             let removed = self.visible_window.remove(0);
-            self.compensated += removed.height;
+            self.compensated += removed.extent;
         }
 
         // Pop cells that ended up fully off the bottom after clamping.
         while self.visible_window.len() > 1
-            && self.sum() - self.visible_window.last().map(|l| l.height).unwrap_or(0.)
+            && self.sum() - self.visible_window.last().map(|l| l.extent).unwrap_or(0.)
                 + self.compensated
-                >= available_height
+                >= viewport_extent
         {
             self.visible_window.pop();
         }
 
-        self.offset = -(available_height - self.sum()) * 0.5;
-        self.available_height = available_height;
+        self.offset = -(viewport_extent - self.sum()) * 0.5;
+        self.viewport_extent = viewport_extent;
 
         edge_hit
     }
@@ -217,32 +229,43 @@ impl ScrollEngine {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum EdgeHit {
     None,
-    Top,
-    Bottom,
+    Start,
+    End,
+}
+
+pub enum Cells<F: Fn(usize, u64, &mut PaneState) -> R, R> {
+    Row(F),
+    Column(F),
 }
 
 pub fn scroller<'a, State: 'static>(
     id: u64,
     backing: Option<View<'a, State>>,
-    cell: impl Fn(usize, u64, &mut PaneState) -> Option<View<'a, State>> + 'a,
+    cells: Cells<
+        impl Fn(usize, u64, &mut PaneState) -> Option<View<'a, State>> + 'a,
+        Option<View<'a, State>>,
+    >,
     ctx: &mut PaneState,
 ) -> View<'a, State> {
+    let scroll = gesture::scroll(crate::id!(id, 1u64));
+    let (cell, horizontal, scroll) = match cells {
+        Cells::Row(cell) => (cell, true, scroll.horizontal()),
+        Cells::Column(cell) => (cell, false, scroll.vertical()),
+    };
     stack(vec![
         backing.unwrap_or(empty()),
         rect(id)
             .corner_rounding(DEFAULT_CORNER_ROUNDING)
             .fill(TRANSPARENT)
             .view()
-            .gesture(gesture::scroll(crate::id!(id, 1u64)).vertical().run(
-                move |_s: &mut State, app: &mut PaneState, dt| {
-                    let entry = app.scrollers.entry(id).or_default();
-                    entry.dt += dt.y * 0.5;
-                },
-            ))
+            .gesture(scroll.run(move |_s: &mut State, app: &mut PaneState, dt| {
+                let entry = app.scrollers.entry(id).or_default();
+                entry.dt += (if horizontal { dt.x } else { dt.y }) * 0.5;
+            }))
             .build(ctx),
         draw(move |area, ctx: &mut PaneState| {
             let mut s = ctx.scrollers.remove(&id).unwrap_or_default();
-            let animating = s.update::<State>(area, ctx, id, &cell);
+            let animating = s.update::<State>(area, ctx, id, horizontal, &cell);
             if animating {
                 ctx.needs_redraw = true;
             }
@@ -254,16 +277,28 @@ pub fn scroller<'a, State: 'static>(
             let mut cells = Vec::new();
             for element in &visible {
                 if let Some(c) = cell(element.index, id, ctx) {
-                    cells.push(c.height(element.height));
+                    cells.push(if horizontal {
+                        c.width(element.extent)
+                    } else {
+                        c.height(element.extent)
+                    });
                 }
             }
-            let column_layout = column(cells).offset_y(offset_total).inert_y();
-            stack(vec![
-                column_layout,
+            let strip = if horizontal {
+                row(cells).offset_x(offset_total).inert_x()
+            } else {
+                column(cells).offset_y(offset_total).inert_y()
+            };
+            let layout = stack(vec![
+                strip,
                 scroll_edge_glows::<State>(ctx, &edge_feedback, now),
             ])
-            .align(Align::TopLeading)
-            .expand_y()
+            .align(Align::TopLeading);
+            (if horizontal {
+                layout.expand_x()
+            } else {
+                layout.expand_y()
+            })
             .draw(area, ctx)
         })
         .expand()

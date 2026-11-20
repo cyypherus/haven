@@ -1824,7 +1824,7 @@ fn text_field_without_overflow_does_not_capture_scroller_scroll() {
         scroller(
             SCROLLER,
             None,
-            |index, _, app| {
+            Cells::Column(|index, _, app| {
                 if index == 0 {
                     return Some(
                         text_field(FIELD, binding!(state.text))
@@ -1840,7 +1840,7 @@ fn text_field_without_overflow_does_not_capture_scroller_scroll() {
                         .build(app)
                         .height(60.),
                 )
-            },
+            }),
             app,
         )
         .height(90.)
@@ -1879,7 +1879,7 @@ fn text_field_horizontal_overflow_captures_horizontal_not_vertical_scroll() {
         scroller(
             SCROLLER,
             None,
-            |index, _, app| {
+            Cells::Column(|index, _, app| {
                 if index == 0 {
                     return Some(
                         text_field(FIELD, binding!(state.text))
@@ -1896,7 +1896,7 @@ fn text_field_horizontal_overflow_captures_horizontal_not_vertical_scroll() {
                         .build(app)
                         .height(60.),
                 )
-            },
+            }),
             app,
         )
         .height(90.)
@@ -3287,7 +3287,7 @@ fn scroller_shrinking_content_preserves_layout_and_clicks() {
         scroller(
             SCROLLER,
             None,
-            move |index, _, app| {
+            Cells::Column(move |index, _, app| {
                 (index < state.count).then(|| {
                     rect(CELL + index as u64)
                         .fill(DEFAULT_FG_COLOR)
@@ -3302,7 +3302,7 @@ fn scroller_shrinking_content_preserves_layout_and_clicks() {
                         .build(app)
                         .height(20.)
                 })
-            },
+            }),
             app,
         )
         .width(100.)
@@ -3384,7 +3384,7 @@ fn scroller_scroll_updates_state() {
         scroller(
             SCROLLER,
             None,
-            |index, _, app| {
+            Cells::Column(|index, _, app| {
                 if index >= 10 {
                     return None;
                 }
@@ -3393,7 +3393,7 @@ fn scroller_scroll_updates_state() {
                         .build(app)
                         .height(60.),
                 )
-            },
+            }),
             app,
         )
         .height(90.)
@@ -3422,6 +3422,56 @@ fn scroller_scroll_updates_state() {
 }
 
 #[test]
+fn row_scroller_lays_out_and_scrolls_variable_width_cells() {
+    const STRIP: u64 = 200;
+    const CELL: u64 = 300;
+    let mut pane = test_pane(PaneBuilder::new("row", |_: &(), app| {
+        scroller(
+            STRIP,
+            None,
+            Cells::Row(|index, _, ctx| {
+                [40., 70., 60., 50.].get(index).map(|width| {
+                    rect(CELL + index as u64)
+                        .build(ctx)
+                        .width(*width)
+                        .height(24.)
+                })
+            }),
+            app,
+        )
+        .width(100.)
+        .height(24.)
+    }));
+    let redraw = |pane: &mut Pane<()>| assert!(pane.redraw(&mut (), 200, 100, 1.).1.is_empty());
+    redraw(&mut pane);
+    let first = pane.location(CELL).unwrap();
+    let second = pane.location(CELL + 1).unwrap();
+    assert_eq!(second.x - first.x, 55.);
+    assert_eq!(second.y, first.y);
+    assert!(pane.location(CELL + 2).is_none());
+    assert!(pane.move_to(&mut (), first).is_empty());
+    assert!(
+        pane.scroll(&mut (), ScrollDelta { x: 0., y: -500. })
+            .is_empty()
+    );
+    redraw(&mut pane);
+    assert_eq!(pane.location(CELL), Some(first));
+    assert!(
+        pane.scroll(&mut (), ScrollDelta { x: -500., y: 0. })
+            .is_empty()
+    );
+    redraw(&mut pane);
+    assert!(pane.location(CELL).is_none());
+    assert_eq!(pane.location(CELL + 3).unwrap().x, first.x + 55.);
+    assert!(
+        pane.scroll(&mut (), ScrollDelta { x: 500., y: 0. })
+            .is_empty()
+    );
+    redraw(&mut pane);
+    assert_eq!(pane.location(CELL), Some(first));
+}
+
+#[test]
 fn nested_scroller_receives_scroll_over_its_area() {
     #[derive(Default)]
     struct State;
@@ -3433,13 +3483,13 @@ fn nested_scroller_receives_scroll_over_its_area() {
         scroller(
             OUTER,
             None,
-            |index, _, app| {
+            Cells::Column(|index, _, app| {
                 if index == 0 {
                     return Some(
                         scroller(
                             INNER,
                             None,
-                            |index, _, app| {
+                            Cells::Column(|index, _, app| {
                                 if index >= 10 {
                                     return None;
                                 }
@@ -3448,7 +3498,7 @@ fn nested_scroller_receives_scroll_over_its_area() {
                                         .build(app)
                                         .height(60.),
                                 )
-                            },
+                            }),
                             app,
                         )
                         .height(100.),
@@ -3462,7 +3512,7 @@ fn nested_scroller_receives_scroll_over_its_area() {
                         .build(app)
                         .height(60.),
                 )
-            },
+            }),
             app,
         )
         .height(120.)

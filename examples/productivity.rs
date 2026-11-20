@@ -345,12 +345,12 @@ fn task_list<'a>(state: &'a State, app: &mut PaneState) -> View<'a, State> {
                 scroller(
                     id!(),
                     None,
-                    move |index, _, ctx| {
+                    Cells::Column(move |index, _, ctx| {
                         tasks.get(index).map(|task| {
                             let button_state = row_buttons.get(index).copied().unwrap_or_default();
                             task_row(index, task, button_state, selected_task == Some(index), ctx)
                         })
-                    },
+                    }),
                     app,
                 )
                 .expand(),
