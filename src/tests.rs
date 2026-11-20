@@ -3472,6 +3472,64 @@ fn row_scroller_lays_out_and_scrolls_variable_width_cells() {
 }
 
 #[test]
+fn nested_row_and_column_forgive_scroll_drift() {
+    const ROW: u64 = 51;
+    const COLUMN: u64 = 52;
+    for (x, y, row_offset, column_offset) in [
+        (-20., -4., -10., 0.),
+        (-4., -20., 0., -10.),
+        (-20., -16., -10., -8.),
+    ] {
+        let mut pane = test_pane(PaneBuilder::new("nested", |_: &(), ctx| {
+            scroller(
+                COLUMN,
+                None,
+                Cells::Column(|index, _, ctx| match index {
+                    0 => Some(
+                        scroller(
+                            ROW,
+                            None,
+                            Cells::Row(|index, _, ctx| {
+                                (index < 10).then(|| rect(100 + index as u64).build(ctx).width(60.))
+                            }),
+                            ctx,
+                        )
+                        .width(100.)
+                        .height(80.),
+                    ),
+                    1 => Some(empty().height(120.)),
+                    _ => None,
+                }),
+                ctx,
+            )
+            .width(100.)
+            .height(100.)
+        }));
+        assert!(pane.redraw(&mut (), 300, 200, 1.).1.is_empty());
+        assert!(
+            pane.move_to(
+                &mut (),
+                Point::new(
+                    pane.location(ROW).unwrap().x,
+                    f64::from(pane.elements[&ROW].y) + 1.
+                )
+            )
+            .is_empty()
+        );
+        assert!(pane.scroll(&mut (), ScrollDelta { x, y }).is_empty());
+        assert!(pane.redraw(&mut (), 300, 200, 1.).1.is_empty());
+        assert_eq!(
+            pane.pane_state.scrollers[&ROW].engine.compensated,
+            row_offset
+        );
+        assert_eq!(
+            pane.pane_state.scrollers[&COLUMN].engine.compensated,
+            column_offset
+        );
+    }
+}
+
+#[test]
 fn nested_scroller_receives_scroll_over_its_area() {
     #[derive(Default)]
     struct State;

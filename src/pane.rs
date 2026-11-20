@@ -1274,6 +1274,15 @@ impl<State: 'static> Pane<State> {
                     }
                 }
             }
+            if matches.len() > 1 {
+                let x = delta.x.abs();
+                let y = delta.y.abs();
+                if x >= 2. * y && matches.iter().any(|(_, d)| d.x != 0.) {
+                    matches.retain(|(_, d)| d.x != 0.);
+                } else if y >= 2. * x && matches.iter().any(|(_, d)| d.y != 0.) {
+                    matches.retain(|(_, d)| d.y != 0.);
+                }
+            }
             if !matches.is_empty() {
                 needs_redraw = true;
                 matches.reverse();
